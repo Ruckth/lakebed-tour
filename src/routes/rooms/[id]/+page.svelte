@@ -3,7 +3,7 @@
 	import { getPropertyById } from '$lib/data/properties';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
 
-	const property = $derived(getPropertyById($page.params.id));
+	const property = $derived(getPropertyById($page.params.id ?? ''));
 	let showTour = $state(false);
 
 	function openTour() {
@@ -129,8 +129,7 @@
 	{#if showTour}
 		{#await import('$lib/components/TourViewer.svelte') then { default: TourViewer }}
 			<TourViewer
-				roomIds={property.tourRoomIds}
-				propertyName={property.name}
+				{property}
 				onclose={closeTour}
 			/>
 		{/await}

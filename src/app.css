@@ -70,6 +70,7 @@
 }
 
 @theme inline {
+	--font-serif: 'Cormorant Garamond', serif;
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
