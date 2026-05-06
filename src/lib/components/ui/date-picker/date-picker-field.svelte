@@ -1,26 +1,28 @@
 <script lang="ts">
 	import { DatePicker } from 'bits-ui';
-	import { CalendarDate, today, getLocalTimeZone, type DateValue } from '@internationalized/date';
+	import type { DateValue } from '@internationalized/date';
 
 	let {
 		label,
 		value = $bindable<DateValue | undefined>(undefined),
 		minValue,
 		variant = 'light',
-		isDateUnavailable
+		isDateUnavailable,
+		isDateDisabled
 	}: {
 		label: string;
 		value?: DateValue;
 		minValue?: DateValue;
 		variant?: 'light' | 'dark';
 		isDateUnavailable?: (date: DateValue) => boolean;
+		isDateDisabled?: (date: DateValue) => boolean;
 	} = $props();
 
 	const isDark = $derived(variant === 'dark');
 </script>
 
 <div>
-	<DatePicker.Root bind:value {minValue} {isDateUnavailable} weekStartsOn={1}>
+	<DatePicker.Root bind:value {minValue} {isDateUnavailable} {isDateDisabled} weekStartsOn={1}>
 		<DatePicker.Label class="mb-1 block text-xs font-medium uppercase tracking-wider {isDark ? 'text-white/50' : 'text-muted-foreground'}">
 			{label}
 		</DatePicker.Label>
@@ -38,10 +40,12 @@
 						{:else}
 							<DatePicker.Segment
 								part={seg.part}
-								class="rounded px-0.5 tabular-nums outline-none focus:bg-primary/20 focus:text-primary
+								class="min-w-[1.15ch] rounded px-0.5 tabular-nums outline-none focus:bg-primary/20 focus:text-primary
 									{isDark ? 'text-white placeholder:text-white/30' : 'text-foreground placeholder:text-muted-foreground/50'}
 									data-[placeholder]:italic"
-							/>
+							>
+								{seg.value}
+							</DatePicker.Segment>
 						{/if}
 					{/each}
 				{/snippet}

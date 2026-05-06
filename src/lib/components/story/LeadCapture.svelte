@@ -1,5 +1,33 @@
 <script lang="ts">
 	import { narrativeState } from '$lib/stores/narrative.svelte';
+	import { useConvexClient } from 'convex-svelte';
+	import { api } from 'convex/_generated/api';
+
+	let { propertySlug = '' }: { propertySlug?: string } = $props();
+
+	const client = useConvexClient();
+	let submitting = $state(false);
+	let errorMessage = $state('');
+
+	async function submitEmail() {
+		const email = narrativeState.leadEmail.trim();
+		if (!email || submitting) return;
+
+		submitting = true;
+		errorMessage = '';
+		try {
+			await client.mutation(api.leads.save, {
+				email,
+				propertySlug: propertySlug || undefined,
+				source: 'tour_completion'
+			});
+			narrativeState.markLeadSubmitted();
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Unable to save this email. Please try again.';
+		} finally {
+			submitting = false;
+		}
+	}
 </script>
 
 <div class="lead-capture-enter absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-md">
@@ -23,8 +51,13 @@
 				<p class="mt-2 text-sm text-white/60 md:text-base">We'll save this dream for you.</p>
 			</div>
 			<div class="mt-6">
-				<input type="email" placeholder="your@email.com" bind:value={narrativeState.leadEmail} class="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 backdrop-blur-sm transition focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30" onkeydown={(e) => { if (e.key === 'Enter') narrativeState.submitEmail(); }} />
-				<button onclick={() => narrativeState.submitEmail()} disabled={!narrativeState.leadEmail.trim()} class="mt-3 w-full rounded-xl bg-gold py-3 text-sm font-semibold text-navy shadow-lg shadow-gold/25 transition-all duration-300 hover:bg-gold-light disabled:opacity-40 disabled:hover:bg-gold">Send me details</button>
+				<input type="email" placeholder="your@email.com" bind:value={narrativeState.leadEmail} class="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 backdrop-blur-sm transition focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30" onkeydown={(e) => { if (e.key === 'Enter') submitEmail(); }} />
+				{#if errorMessage}
+					<p class="mt-2 text-center text-xs text-red-200">{errorMessage}</p>
+				{/if}
+				<button onclick={submitEmail} disabled={!narrativeState.leadEmail.trim() || submitting} class="mt-3 w-full rounded-xl bg-gold py-3 text-sm font-semibold text-navy shadow-lg shadow-gold/25 transition-all duration-300 hover:bg-gold-light disabled:opacity-40 disabled:hover:bg-gold">
+					{submitting ? 'Saving...' : 'Send me details'}
+				</button>
 			</div>
 			<p class="mt-4 text-center text-xs text-white/30">No spam. Just the details of your dream stay.</p>
 		{/if}

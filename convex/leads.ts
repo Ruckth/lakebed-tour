@@ -1,9 +1,11 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { assertValidEmail, normalizeEmail } from './lib/validation';
 
 export const save = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
+		propertySlug: v.optional(v.string()),
 		email: v.string(),
 		source: v.union(
 			v.literal('tour_completion'),
@@ -12,10 +14,22 @@ export const save = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
+		const email = normalizeEmail(args.email);
+		assertValidEmail(email);
+
+		let propertyId = args.propertyId;
+		if (!propertyId && args.propertySlug) {
+			const property = await ctx.db
+				.query('properties')
+				.withIndex('by_slug', (q) => q.eq('slug', args.propertySlug!))
+				.first();
+			propertyId = property?._id;
+		}
+
 		// Check for duplicate email + property combination
 		const existing = await ctx.db
 			.query('leads')
-			.withIndex('by_email', (q) => q.eq('email', args.email))
+			.withIndex('by_email', (q) => q.eq('email', email))
 			.first();
 
 		if (existing) {
@@ -23,8 +37,8 @@ export const save = mutation({
 		}
 
 		return await ctx.db.insert('leads', {
-			propertyId: args.propertyId,
-			email: args.email,
+			propertyId,
+			email,
 			source: args.source,
 			createdAt: Date.now()
 		});

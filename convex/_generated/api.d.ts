@@ -11,11 +11,27 @@
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as chat from "../chat.js";
+import type * as chatAi from "../chatAi.js";
 import type * as emails from "../emails.js";
 import type * as leads from "../leads.js";
+import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
+import type * as lib_chatFallback from "../lib/chatFallback.js";
+import type * as lib_chatLlm from "../lib/chatLlm.js";
+import type * as lib_chatTools from "../lib/chatTools.js";
+import type * as lib_codes from "../lib/codes.js";
+import type * as lib_dates from "../lib/dates.js";
+import type * as lib_pricing from "../lib/pricing.js";
+import type * as lib_validation from "../lib/validation.js";
+import type * as migrations from "../migrations.js";
 import type * as properties from "../properties.js";
 import type * as seed from "../seed.js";
-import type * as stripe from "../stripe.js";
+import type * as seeds_pricing from "../seeds/pricing.js";
+import type * as seeds_properties from "../seeds/properties.js";
+import type * as seeds_recentBookings from "../seeds/recentBookings.js";
+import type * as seeds_reviews from "../seeds/reviews.js";
+import type * as seeds_rooms from "../seeds/rooms.js";
+import type * as seeds_socialProof from "../seeds/socialProof.js";
+import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as users from "../users.js";
 
 import type {
@@ -28,11 +44,27 @@ declare const fullApi: ApiFromModules<{
   availability: typeof availability;
   bookings: typeof bookings;
   chat: typeof chat;
+  chatAi: typeof chatAi;
   emails: typeof emails;
   leads: typeof leads;
+  "lib/availabilityWrites": typeof lib_availabilityWrites;
+  "lib/chatFallback": typeof lib_chatFallback;
+  "lib/chatLlm": typeof lib_chatLlm;
+  "lib/chatTools": typeof lib_chatTools;
+  "lib/codes": typeof lib_codes;
+  "lib/dates": typeof lib_dates;
+  "lib/pricing": typeof lib_pricing;
+  "lib/validation": typeof lib_validation;
+  migrations: typeof migrations;
   properties: typeof properties;
   seed: typeof seed;
-  stripe: typeof stripe;
+  "seeds/pricing": typeof seeds_pricing;
+  "seeds/properties": typeof seeds_properties;
+  "seeds/recentBookings": typeof seeds_recentBookings;
+  "seeds/reviews": typeof seeds_reviews;
+  "seeds/rooms": typeof seeds_rooms;
+  "seeds/socialProof": typeof seeds_socialProof;
+  "seeds/tourSnippets": typeof seeds_tourSnippets;
   users: typeof users;
 }>;
 

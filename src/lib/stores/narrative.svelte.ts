@@ -49,7 +49,11 @@ class NarrativeState {
 
 		// Small CTA tag after 10 seconds once all rooms visited
 		if (this.allRoomIds.every((id) => next.has(id))) {
-			this.timers.push(setTimeout(() => { this.showAllVisitedPrompt = true; }, 10000));
+			this.timers.push(
+				setTimeout(() => {
+					this.showAllVisitedPrompt = true;
+				}, 10000)
+			);
 		}
 	}
 
@@ -66,13 +70,17 @@ class NarrativeState {
 		this.leadSubmitted = false;
 		this.leadEmail = '';
 	}
-	hideLeadCapture() { this.leadCaptureShown = false; }
-
-	submitEmail() {
-		if (this.leadEmail.trim()) this.leadSubmitted = true;
+	hideLeadCapture() {
+		this.leadCaptureShown = false;
 	}
 
-	closeConclusion() { this.showConclusion = false; }
+	markLeadSubmitted() {
+		this.leadSubmitted = true;
+	}
+
+	closeConclusion() {
+		this.showConclusion = false;
+	}
 
 	private resetOverlayState() {
 		this.showHeadline = false;
@@ -86,7 +94,9 @@ class NarrativeState {
 		this.timers = [];
 	}
 
-	destroy() { this.clearTimers(); }
+	destroy() {
+		this.clearTimers();
+	}
 }
 
 export const narrativeState = new NarrativeState();

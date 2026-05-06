@@ -1,16 +1,22 @@
 <script lang="ts">
-	import { Sun, Moon } from '@lucide/svelte';
-	import { themeState } from '$lib/stores/theme.svelte';
+  import { Moon, Monitor, Sun } from "@lucide/svelte";
+  import { themeState } from "$lib/stores/theme.svelte";
+
+  let { solid = true }: { solid?: boolean } = $props();
 </script>
 
 <button
-	onclick={() => themeState.cycle()}
-	class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-	aria-label={themeState.dark ? 'Switch to light mode' : 'Switch to dark mode'}
+  onclick={() => themeState.cycle()}
+  class="flex h-9 w-9 items-center justify-center rounded-full transition-colors {solid
+    ? 'bg-muted text-foreground hover:bg-muted/80'
+    : 'text-white/60 hover:bg-white/10 hover:text-white'}"
+  aria-label="Toggle theme: {themeState.mode}"
 >
-	{#if themeState.dark}
-		<Sun class="h-4 w-4" />
-	{:else}
-		<Moon class="h-4 w-4" />
-	{/if}
+  {#if themeState.mode === "light"}
+    <Sun class="h-4 w-4" />
+  {:else if themeState.mode === "dark"}
+    <Moon class="h-4 w-4" />
+  {:else}
+    <Monitor class="h-4 w-4" />
+  {/if}
 </button>

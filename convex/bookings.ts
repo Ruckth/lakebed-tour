@@ -1,5 +1,116 @@
 import { mutation, query } from './_generated/server';
+import type { MutationCtx } from './_generated/server';
+import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
+import { nightsBetween, todayIso } from './lib/dates';
+import {
+	assertPositiveInt,
+	assertValidEmail,
+	assertValidIsoDate
+} from './lib/validation';
+import { calculateDirectQuote } from './lib/pricing';
+import { demoCode } from './lib/codes';
+import { blockBookingDates } from './lib/availabilityWrites';
+
+const propertySnapshotValidator = v.object({
+	name: v.string(),
+	tagline: v.string(),
+	description: v.string(),
+	pricePerNight: v.number(),
+	currency: v.string(),
+	maxGuests: v.number(),
+	bedrooms: v.number(),
+	bathrooms: v.number(),
+	area: v.number(),
+	images: v.array(v.string()),
+	amenities: v.array(v.string()),
+	tourRoomIds: v.array(v.string()),
+	directDiscountPercent: v.number()
+});
+
+type PropertySnapshot = {
+	name: string;
+	tagline: string;
+	description: string;
+	pricePerNight: number;
+	currency: string;
+	maxGuests: number;
+	bedrooms: number;
+	bathrooms: number;
+	area: number;
+	images: string[];
+	amenities: string[];
+	tourRoomIds: string[];
+	directDiscountPercent: number;
+};
+
+async function loadOrCreateProperty(
+	ctx: MutationCtx,
+	slug: string,
+	snapshot: PropertySnapshot | undefined
+): Promise<Doc<'properties'>> {
+	let property = await ctx.db
+		.query('properties')
+		.withIndex('by_slug', (q) => q.eq('slug', slug))
+		.first();
+
+	if (!property && snapshot) {
+		const propertyId = await ctx.db.insert('properties', {
+			slug,
+			status: 'active',
+			...snapshot
+		});
+		property = await ctx.db.get(propertyId);
+	}
+
+	if (!property) {
+		throw new Error('Property not found');
+	}
+
+	return property;
+}
+
+async function assertNoOverlap(
+	ctx: MutationCtx,
+	propertyId: Id<'properties'>,
+	checkIn: string,
+	checkOut: string
+): Promise<void> {
+	const candidates = await ctx.db
+		.query('bookings')
+		.withIndex('by_property_checkIn', (q) =>
+			q.eq('propertyId', propertyId).lt('checkIn', checkOut)
+		)
+		.take(500);
+
+	const overlapping = candidates.filter(
+		(b) => b.status !== 'cancelled' && b.checkOut > checkIn
+	);
+
+	if (overlapping.length > 0) {
+		throw new Error('These dates are no longer available. Please choose different dates.');
+	}
+}
+
+async function assertNotBlocked(
+	ctx: MutationCtx,
+	propertyId: Id<'properties'>,
+	checkIn: string,
+	checkOut: string
+): Promise<void> {
+	const inRange = await ctx.db
+		.query('availability')
+		.withIndex('by_property_date', (q) =>
+			q.eq('propertyId', propertyId).gte('date', checkIn).lt('date', checkOut)
+		)
+		.take(366);
+
+	const blocked = inRange.filter((a) => a.status !== 'available');
+
+	if (blocked.length > 0) {
+		throw new Error('Some of these dates are blocked. Please choose different dates.');
+	}
+}
 
 export const create = mutation({
 	args: {
@@ -9,92 +120,43 @@ export const create = mutation({
 		guestPhone: v.string(),
 		checkIn: v.string(),
 		checkOut: v.string(),
-		guests: v.number()
+		guests: v.number(),
+		propertySnapshot: v.optional(propertySnapshotValidator)
 	},
 	handler: async (ctx, args) => {
-		const isIsoDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
-		const utcMidnightMs = (s: string) => {
-			const [y, m, d] = s.split('-').map((n) => Number(n));
-			return Date.UTC(y, m - 1, d);
-		};
+		assertValidIsoDate(args.checkIn, 'Check-in date');
+		assertValidIsoDate(args.checkOut, 'Check-out date');
+		assertPositiveInt(args.guests, 'Guest count');
+		assertValidEmail(args.guestEmail);
 
-		if (!isIsoDate(args.checkIn) || !isIsoDate(args.checkOut)) {
-			throw new Error('Dates must be in YYYY-MM-DD format');
-		}
-
-		if (!Number.isInteger(args.guests) || args.guests < 1) {
-			throw new Error('Guest count must be at least 1');
-		}
-
-		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.guestEmail.trim())) {
-			throw new Error('Please enter a valid email address');
-		}
-
-		const property = await ctx.db
-			.query('properties')
-			.withIndex('by_slug', (q) => q.eq('slug', args.propertySlug))
-			.first();
-		if (!property) {
-			throw new Error('Property not found');
-		}
+		const property = await loadOrCreateProperty(
+			ctx,
+			args.propertySlug,
+			args.propertySnapshot
+		);
 
 		if (args.guests > property.maxGuests) {
 			throw new Error(`Guest count exceeds max capacity (${property.maxGuests})`);
 		}
 
-		// Validate dates aren't in the past
-		const today = new Date().toISOString().split('T')[0];
-		if (args.checkIn < today) {
+		if (args.checkIn < todayIso()) {
 			throw new Error('Check-in date cannot be in the past');
 		}
 		if (args.checkOut <= args.checkIn) {
 			throw new Error('Check-out must be after check-in');
 		}
 
-		const nights = Math.floor((utcMidnightMs(args.checkOut) - utcMidnightMs(args.checkIn)) / 86400000);
+		const nights = nightsBetween(args.checkIn, args.checkOut);
 		if (!Number.isFinite(nights) || nights <= 0) {
 			throw new Error('Check-out must be after check-in');
 		}
 
-		const subtotal = property.pricePerNight * nights;
-		const discountAmount = Math.round(subtotal * (property.directDiscountPercent / 100));
-		const total = subtotal - discountAmount;
+		const quote = calculateDirectQuote(property, nights);
 
-		// Check availability (no overlapping bookings)
-		const existingBookings = await ctx.db
-			.query('bookings')
-			.withIndex('by_property', (q) => q.eq('propertyId', property._id))
-			.filter((q) =>
-				q.and(
-					q.neq(q.field('status'), 'cancelled'),
-					q.lt(q.field('checkIn'), args.checkOut),
-					q.gt(q.field('checkOut'), args.checkIn)
-				)
-			)
-			.collect();
+		await assertNoOverlap(ctx, property._id, args.checkIn, args.checkOut);
+		await assertNotBlocked(ctx, property._id, args.checkIn, args.checkOut);
 
-		if (existingBookings.length > 0) {
-			throw new Error('These dates are no longer available. Please choose different dates.');
-		}
-
-		// Check availability table for blocked dates from iCal sync
-		const blockedDates = await ctx.db
-			.query('availability')
-			.withIndex('by_property', (q) => q.eq('propertyId', property._id))
-			.filter((q) =>
-				q.and(
-					q.neq(q.field('status'), 'available'),
-					q.gte(q.field('date'), args.checkIn),
-					q.lt(q.field('date'), args.checkOut)
-				)
-			)
-			.collect();
-
-		if (blockedDates.length > 0) {
-			throw new Error('Some of these dates are blocked. Please choose different dates.');
-		}
-
-		const bookingId = await ctx.db.insert('bookings', {
+		return await ctx.db.insert('bookings', {
 			propertyId: property._id,
 			tenantId: property.tenantId,
 			guestName: args.guestName,
@@ -104,16 +166,14 @@ export const create = mutation({
 			checkOut: args.checkOut,
 			guests: args.guests,
 			nights,
-			subtotal,
-			discountAmount,
-			total,
-			currency: property.currency,
+			subtotal: quote.subtotal,
+			discountAmount: quote.discountAmount,
+			total: quote.directTotal,
+			currency: quote.currency,
 			paymentStatus: 'pending',
 			status: 'pending',
 			createdAt: Date.now()
 		});
-
-		return bookingId;
 	}
 });
 
@@ -125,34 +185,50 @@ export const updatePaymentStatus = mutation({
 			v.literal('paid'),
 			v.literal('failed'),
 			v.literal('refunded')
-		),
-		stripePaymentIntentId: v.optional(v.string()),
-		stripeSessionId: v.optional(v.string())
+		)
 	},
 	handler: async (ctx, args) => {
+		const booking = await ctx.db.get(args.bookingId);
+		if (!booking) {
+			throw new Error('Booking not found');
+		}
+
 		const update: Record<string, unknown> = {
 			paymentStatus: args.paymentStatus
 		};
-		if (args.stripePaymentIntentId) {
-			update.stripePaymentIntentId = args.stripePaymentIntentId;
-		}
-		if (args.stripeSessionId) {
-			update.stripeSessionId = args.stripeSessionId;
-		}
 		if (args.paymentStatus === 'paid') {
 			update.status = 'confirmed';
+			update.paidAt = Date.now();
 		}
 		await ctx.db.patch(args.bookingId, update);
+
+		if (args.paymentStatus === 'paid') {
+			await blockBookingDates(ctx, booking, args.bookingId);
+		}
 	}
 });
 
-export const getByStripeSession = query({
-	args: { stripeSessionId: v.string() },
+export const confirmDemoPayment = mutation({
+	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('bookings')
-			.withIndex('by_stripe_session', (q) => q.eq('stripeSessionId', args.stripeSessionId))
-			.first();
+		const booking = await ctx.db.get(args.bookingId);
+		if (!booking) {
+			throw new Error('Booking not found');
+		}
+
+		const bookingIdText = args.bookingId as string;
+		await ctx.db.patch(args.bookingId, {
+			paymentStatus: 'paid',
+			status: 'confirmed',
+			paidAt: booking.paidAt ?? Date.now(),
+			paymentMethod: booking.paymentMethod ?? 'demo_card',
+			confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
+			invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
+			receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
+		});
+
+		await blockBookingDates(ctx, booking, args.bookingId);
+		return await ctx.db.get(args.bookingId);
 	}
 });
 

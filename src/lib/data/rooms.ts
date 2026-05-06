@@ -45,7 +45,15 @@ export const rooms: Room[] = [
 		name: 'Dining Area',
 		imagePath: '/garden-dining360.jpg',
 		hotspots: [
-			{ id: 'gs-dining-to-lounge', position: [-250, 0, -300], targetRoomId: 'gs-lounge', label: 'Lounge' }
+			{ id: 'gs-dining-to-garden', position: [320, -20, 120], targetRoomId: 'gs-garden', label: 'Garden View' }
+		]
+	},
+	{
+		id: 'gs-garden',
+		name: 'Garden View',
+		imagePath: '/garden-villa-360-new.webp',
+		hotspots: [
+			{ id: 'gs-garden-to-dining', position: [-300, -10, -160], targetRoomId: 'gs-dining', label: 'Dining Area' }
 		]
 	},
 

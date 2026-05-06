@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { getPropertyById } from '$lib/data/properties';
 	import { getSocialProofByPropertyId } from '$lib/data/social-proof';
 	import { resort } from '$lib/data/resort-config';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import Explore360Button from '$lib/components/Explore360Button.svelte';
 	import StarRating from '$lib/components/social/StarRating.svelte';
 	import ReviewCarousel from '$lib/components/social/ReviewCarousel.svelte';
 	import PriceComparison from '$lib/components/pricing/PriceComparison.svelte';
@@ -17,6 +19,7 @@
 
 	const property = $derived(getPropertyById(page.params.id ?? ''));
 	const socialProof = $derived(getSocialProofByPropertyId(property?.id ?? ''));
+	const tourRequested = $derived(page.url.searchParams.get('tour') === '1');
 	let showTour = $state(false);
 
 	// Set page context for chat widget
@@ -25,14 +28,23 @@
 			pageContext.setProperty(property.id, property.name);
 		}
 	});
+	$effect(() => {
+		if (property && tourRequested) showTour = true;
+	});
 	onDestroy(() => pageContext.clear());
 
 	function openTour() {
 		showTour = true;
+		const url = new URL(page.url);
+		url.searchParams.set('tour', '1');
+		goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	function closeTour() {
 		showTour = false;
+		if (tourRequested) {
+			goto(page.url.pathname, { replaceState: true, noScroll: true, keepFocus: true });
+		}
 	}
 </script>
 
@@ -61,15 +73,12 @@
 						onopen360={openTour}
 					/>
 
-					<button
-						onclick={openTour}
-						class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-muted md:mt-4"
-					>
-						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-						</svg>
-						Explore in 360&deg;
-					</button>
+					<Explore360Button
+						label="Explore in 360"
+						variant="outline"
+						class="mt-3 w-full bg-card py-3 md:mt-4"
+						onactivate={openTour}
+					/>
 
 					<FadeIn>
 					<div class="mt-5 md:mt-8">

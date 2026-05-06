@@ -19,7 +19,11 @@ class TourState {
 		this.currentRoom.hotspots.filter((h) => this.activeRoomIds.includes(h.targetRoomId))
 	);
 
-	activeRooms = $derived(rooms.filter((r) => this.activeRoomIds.includes(r.id)));
+	activeRooms = $derived(
+		this.activeRoomIds
+			.map((roomId) => rooms.find((room) => room.id === roomId))
+			.filter((room): room is Room => Boolean(room))
+	);
 
 	init(roomIds: string[]) {
 		this.activeRoomIds = roomIds;

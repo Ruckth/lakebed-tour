@@ -13,6 +13,12 @@ export interface Property {
 	tourRoomIds: string[];
 }
 
+export const defaultTourPropertyId = 'garden-suite';
+
+export function getTourHref(propertyId = defaultTourPropertyId): string {
+	return `/rooms/${propertyId}?tour=1`;
+}
+
 export const properties: Property[] = [
 	{
 		id: 'pool-villa',
@@ -27,7 +33,10 @@ export const properties: Property[] = [
 		area: 145,
 		images: [
 			'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1200&h=800&fit=crop',
-			'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=1200&h=800&fit=crop'
+			'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=1200&h=800&fit=crop',
+			'/pool-villa-bedroom-view.png',
+			'/pool-villa-spa-bathroom.png',
+			'/pool-villa-veranda-view.png'
 		],
 		amenities: ['Private Pool', 'WiFi', 'Air Conditioning', 'Kitchen', 'Garden View', 'King Bed'],
 		tourRoomIds: ['pv-living', 'pv-pool']
@@ -48,7 +57,7 @@ export const properties: Property[] = [
 			'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&h=800&fit=crop'
 		],
 		amenities: ['WiFi', 'Air Conditioning', 'Garden Terrace', 'Rain Shower', 'Queen Bed'],
-		tourRoomIds: ['gs-lounge', 'gs-dining']
+		tourRoomIds: ['gs-garden', 'gs-dining']
 	},
 	{
 		id: 'penthouse',

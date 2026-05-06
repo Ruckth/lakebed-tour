@@ -7,7 +7,7 @@ export default defineSchema({
 		tokenIdentifier: v.string(),
 		email: v.string(),
 		name: v.optional(v.string()),
-		imageUrl: v.optional(v.string()),
+		imageUrl: v.optional(v.string())
 	})
 		.index('by_token', ['tokenIdentifier'])
 		.index('by_clerk_id', ['clerkId']),
@@ -15,7 +15,6 @@ export default defineSchema({
 	tenants: defineTable({
 		name: v.string(),
 		email: v.string(),
-		stripeAccountId: v.optional(v.string()),
 		whatsappNumber: v.optional(v.string()),
 		lineId: v.optional(v.string()),
 		createdAt: v.number()
@@ -74,8 +73,11 @@ export default defineSchema({
 		discountAmount: v.number(),
 		total: v.number(),
 		currency: v.string(),
-		stripePaymentIntentId: v.optional(v.string()),
-		stripeSessionId: v.optional(v.string()),
+		paidAt: v.optional(v.number()),
+		paymentMethod: v.optional(v.string()),
+		confirmationCode: v.optional(v.string()),
+		invoiceNumber: v.optional(v.string()),
+		receiptNumber: v.optional(v.string()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -91,9 +93,9 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_property', ['propertyId'])
+		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_tenant', ['tenantId'])
-		.index('by_status', ['status'])
-		.index('by_stripe_session', ['stripeSessionId']),
+		.index('by_status', ['status']),
 
 	reviews: defineTable({
 		propertyId: v.id('properties'),
@@ -205,16 +207,28 @@ export default defineSchema({
 	// Phase 3: AI Chat
 	chatSessions: defineTable({
 		propertyId: v.optional(v.id('properties')),
+		propertySlug: v.optional(v.string()),
 		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line')),
-		messages: v.array(
-			v.object({
-				role: v.union(v.literal('user'), v.literal('assistant')),
-				content: v.string(),
-				timestamp: v.number()
-			})
+		// Legacy embedded messages — kept optional for migration compatibility.
+		// New sessions write to the chatMessages table instead.
+		messages: v.optional(
+			v.array(
+				v.object({
+					role: v.union(v.literal('user'), v.literal('assistant')),
+					content: v.string(),
+					timestamp: v.number()
+				})
+			)
 		),
 		createdAt: v.number()
 	}).index('by_property', ['propertyId']),
+
+	chatMessages: defineTable({
+		sessionId: v.id('chatSessions'),
+		role: v.union(v.literal('user'), v.literal('assistant')),
+		content: v.string(),
+		timestamp: v.number()
+	}).index('by_session', ['sessionId', 'timestamp']),
 
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),
