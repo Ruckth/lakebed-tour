@@ -38,9 +38,8 @@
     "src/app/**/*.tsx",
     "src/components/**/*.ts",
     "src/components/**/*.tsx",
-    "src/lib/data/**/*.ts",
-    "src/lib/react/**/*.ts",
-    "src/lib/react/**/*.tsx",
+    "src/lib/**/*.ts",
+    "src/lib/**/*.tsx",
     "src/lib/utils.ts",
     ".next/types/**/*.ts",
     "convex/**/*.ts",
@@ -49,6 +48,6 @@
   "exclude": [
     "node_modules",
     "opensrc",
-    "src/**/*.svelte"
+    "archive"
   ]
 }
