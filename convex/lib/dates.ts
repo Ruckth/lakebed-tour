@@ -1,5 +1,12 @@
 export function isIsoDate(s: string): boolean {
-	return /^\d{4}-\d{2}-\d{2}$/.test(s);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+	const [y, m, d] = s.split('-').map((n) => Number(n));
+	const date = new Date(Date.UTC(y, m - 1, d));
+	return (
+		date.getUTCFullYear() === y &&
+		date.getUTCMonth() === m - 1 &&
+		date.getUTCDate() === d
+	);
 }
 
 export function utcMidnightMs(s: string): number {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function MobileStickyBar({
   propertyId,
@@ -21,14 +22,16 @@ export function MobileStickyBar({
         >
           Book
         </Link>
-        <button
+        <Button
           type="button"
           onClick={openChat}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-muted"
+          variant="outline"
+          size="icon"
+          className="h-12 w-12 shrink-0 rounded-full bg-card"
           aria-label="Open concierge chat"
         >
           <MessageCircle className="h-5 w-5" />
-        </button>
+        </Button>
       </div>
     </div>
   );

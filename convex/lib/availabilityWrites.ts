@@ -16,6 +16,16 @@ export async function blockBookingDates(
 			.first();
 
 		if (existing) {
+			if (
+				existing.status !== 'available' &&
+				existing.bookingId !== undefined &&
+				existing.bookingId !== bookingId
+			) {
+				throw new Error('These dates are no longer available. Please choose different dates.');
+			}
+			if (existing.status !== 'available' && existing.bookingId === undefined) {
+				throw new Error('Some of these dates are blocked. Please choose different dates.');
+			}
 			await ctx.db.patch(existing._id, {
 				status: 'booked',
 				source: 'direct',

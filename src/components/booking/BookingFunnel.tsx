@@ -1,186 +1,330 @@
 "use client";
 
-import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, CreditCard, Mail, Phone, Shield, User } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, CreditCard } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "convex/_generated/api";
-import { Button } from "@/components/ui/Button";
-import { useOptionalConvex } from "@/lib/react/convex";
-import { properties as demoProperties, type Property } from "@/lib/data/properties";
+import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
+import { BookingPriceSummary } from "@/components/booking/BookingPriceSummary";
+import {
+  DateStatus,
+  GuestDetailsPanel,
+  GuestCountsPanel,
+  ReviewPanel,
+} from "@/components/booking/BookingPanels";
+import { BookingStepNav } from "@/components/booking/BookingStepNav";
+import { VillaSelector } from "@/components/booking/VillaSelector";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  bookingSteps,
+  getHighestAllowedStepIndex,
+  isValidGuestInfo,
+  type BookingMode,
+  type BookingProperty,
+  type BookingStep,
+} from "@/lib/booking/booking";
+import {
+  addDaysIso,
+  dateToIso,
+  isDateInIsoList,
+  nightsBetweenIso,
+  rangeIntersectsDates,
+  todayIsoLocal,
+} from "@/lib/booking/dates";
+import { calculateBookingQuote } from "@/lib/booking/quote";
+import { properties as demoProperties } from "@/lib/data/properties";
 import { resort } from "@/lib/data/resort-config";
-import { cn } from "@/lib/utils";
-
-type Step = "select" | "guests" | "info" | "review";
-type BookingProperty = Property & {
-  _id?: string;
-  slug: string;
-  currency: string;
-  directDiscountPercent: number;
-  source: "live" | "demo";
-};
-
-const steps: { key: Step; label: string }[] = [
-  { key: "select", label: "Villa & Dates" },
-  { key: "guests", label: "Guests" },
-  { key: "info", label: "Details" },
-  { key: "review", label: "Pay" },
-];
+import {
+  createBooking,
+  getBlockedDatesByProperty,
+  isPropertyAvailable,
+  listLiveProperties,
+} from "@/lib/react/convex-api";
+import { useOptionalConvex } from "@/lib/react/convex";
 
 const demoInventory: BookingProperty[] = demoProperties.map((property) => ({
   ...property,
+  _id: `demo-${property.id}`,
   slug: property.id,
   currency: resort.currency,
   directDiscountPercent: 15,
   source: "demo",
 }));
 
-function nightsBetween(checkIn: string, checkOut: string) {
-  if (!checkIn || !checkOut) return 0;
-  return Math.max(
-    0,
-    Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000),
-  );
-}
-
-export function BookingFunnel() {
+export function BookingFunnel({
+  initialCheckIn = "",
+  initialCheckOut = "",
+  initialNights = "",
+  initialGuests = "1",
+  initialAdults = "",
+  initialChildren = "",
+  initialProperty = "garden-suite",
+}: {
+  initialCheckIn?: string;
+  initialCheckOut?: string;
+  initialNights?: string;
+  initialGuests?: string;
+  initialAdults?: string;
+  initialChildren?: string;
+  initialProperty?: string;
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const convex = useOptionalConvex();
-  const [step, setStep] = useState<Step>("select");
+  const todayIso = todayIsoLocal();
+  const parsedInitialGuests = Number(initialGuests);
+  const parsedInitialNights = Number(initialNights);
+  const parsedInitialAdults = Number(initialAdults);
+  const parsedInitialChildren = Number(initialChildren);
+  const derivedInitialNights = nightsBetweenIso(initialCheckIn, initialCheckOut);
+  const startingTotalGuests =
+    Number.isFinite(parsedInitialGuests) ? Math.max(1, Math.floor(parsedInitialGuests)) : 1;
+  const startingChildren =
+    Number.isFinite(parsedInitialChildren) ? Math.max(0, Math.floor(parsedInitialChildren)) : 0;
+  const startingAdults =
+    Number.isFinite(parsedInitialAdults)
+      ? Math.max(1, Math.floor(parsedInitialAdults))
+      : Math.max(1, startingTotalGuests - startingChildren);
+
+  const [step, setStep] = useState<BookingStep>("select");
+  const [bookingMode, setBookingMode] = useState<BookingMode>(convex ? "live" : "demo");
   const [propertyList, setPropertyList] = useState<BookingProperty[]>(demoInventory);
-  const [selectedId, setSelectedId] = useState(searchParams.get("unit") ?? searchParams.get("property") ?? "garden-suite");
-  const [checkIn, setCheckIn] = useState(searchParams.get("checkin") ?? "");
-  const [checkOut, setCheckOut] = useState(searchParams.get("checkout") ?? "");
-  const [guests, setGuests] = useState(Number(searchParams.get("guests") ?? "1"));
+  const [selectedId, setSelectedId] = useState(initialProperty);
+  const [checkIn, setCheckIn] = useState(initialCheckIn);
+  const [nights, setNights] = useState(
+    Number.isFinite(parsedInitialNights) && parsedInitialNights > 0
+      ? Math.floor(parsedInitialNights)
+      : Math.max(derivedInitialNights, 1),
+  );
+  const [adults, setAdults] = useState(startingAdults);
+  const [children, setChildren] = useState(startingChildren);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
-  const [notice, setNotice] = useState("Live availability is not connected yet, so demo inventory is ready.");
+  const [notice, setNotice] = useState(
+    convex
+      ? "Checking live inventory and availability..."
+      : "Demo booking mode is ready. Connect Convex to check live availability.",
+  );
   const [blockedByProperty, setBlockedByProperty] = useState<Record<string, string[]>>({});
+  const [loadingInventory, setLoadingInventory] = useState(Boolean(convex));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [dateWarning, setDateWarning] = useState("");
 
   useEffect(() => {
-    if (!convex) return;
+    if (!convex) {
+      setBookingMode("demo");
+      setLoadingInventory(false);
+      return;
+    }
     const client = convex;
     let active = true;
+
     async function load() {
+      setLoadingInventory(true);
       try {
-        const rows = (await client.query(api.properties.list, {} as never)) as Array<
-          Omit<BookingProperty, "id" | "source"> & { _id: string; slug: string }
-        >;
+        const [rows, blocked] = await Promise.all([
+          listLiveProperties(client),
+          getBlockedDatesByProperty(client, {
+            startDate: todayIso,
+            endDate: addDaysIso(todayIso, 365),
+          }),
+        ]);
         if (!active) return;
-        if (rows.length) {
-          setPropertyList(
-            rows.map((row) => ({
-              id: row.slug,
-              slug: row.slug,
-              _id: row._id,
-              name: row.name,
-              tagline: row.tagline,
-              description: row.description,
-              pricePerNight: row.pricePerNight,
-              maxGuests: row.maxGuests,
-              bedrooms: row.bedrooms,
-              bathrooms: row.bathrooms,
-              area: row.area,
-              images: row.images,
-              amenities: row.amenities,
-              tourRoomIds: row.tourRoomIds,
-              currency: row.currency,
-              directDiscountPercent: row.directDiscountPercent,
-              source: "live",
-            })),
-          );
+
+        const liveRows = rows;
+        if (liveRows.length > 0) {
+          const liveInventory = liveRows.map((row) => ({
+            id: row.slug,
+            slug: row.slug,
+            _id: row._id,
+            name: row.name,
+            tagline: row.tagline,
+            description: row.description,
+            pricePerNight: row.pricePerNight,
+            maxGuests: row.maxGuests,
+            bedrooms: row.bedrooms,
+            bathrooms: row.bathrooms,
+            area: row.area,
+            images: row.images,
+            amenities: row.amenities,
+            tourRoomIds: row.tourRoomIds,
+            currency: row.currency,
+            directDiscountPercent: row.directDiscountPercent,
+            source: "live" as const,
+          }));
+          setPropertyList(liveInventory);
+          setSelectedId((current) => liveInventory.some((item) => item.slug === current) ? current : liveInventory[0].slug);
+          setBookingMode("live");
           setNotice("");
+        } else {
+          setPropertyList(demoInventory);
+          setBookingMode("demo");
+          setNotice("Live inventory is not seeded yet, so demo booking mode is active.");
         }
-        const blocked = (await client.query(api.availability.getBlockedDatesByProperty, {} as never)) as Record<string, string[]>;
-        if (active) setBlockedByProperty(blocked ?? {});
+        setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
-        if (active) setNotice("Live inventory is temporarily unavailable, so this page is using demo pricing.");
+        if (!active) return;
+        setPropertyList(demoInventory);
+        setBlockedByProperty({});
+        setBookingMode("demo");
+        setNotice("Live availability is temporarily unavailable, so demo booking mode is active.");
+      } finally {
+        if (active) setLoadingInventory(false);
       }
     }
+
     load();
     return () => {
       active = false;
     };
-  }, [convex]);
+  }, [convex, todayIso]);
 
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
-  const nights = nightsBetween(checkIn, checkOut);
-  const subtotal = property.pricePerNight * nights;
-  const discount = Math.round(subtotal * (property.directDiscountPercent / 100));
-  const total = subtotal - discount;
-  const blockedDates = property._id ? blockedByProperty[property._id] ?? [] : [];
-  const conflicts = useMemo(
-    () => Boolean(checkIn && checkOut && blockedDates.some((date) => date >= checkIn && date < checkOut)),
-    [blockedDates, checkIn, checkOut],
+  const propertyId = property._id;
+  const propertyBlockedDates = useMemo(
+    () => (propertyId ? blockedByProperty[propertyId] ?? [] : []),
+    [blockedByProperty, propertyId],
   );
-  const infoValid =
-    guestName.trim().length >= 2 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail) &&
-    guestPhone.trim().length >= 6;
+  const blockedDateSet = useMemo(() => new Set(propertyBlockedDates), [propertyBlockedDates]);
+  const checkOut = checkIn && nights > 0 ? addDaysIso(checkIn, nights) : "";
+  const guests = adults + children;
+  const quote = calculateBookingQuote({
+    pricePerNight: property.pricePerNight,
+    nights,
+    discountPercent: property.directDiscountPercent,
+    currency: property.currency,
+  });
+  const conflicts = rangeIntersectsDates(propertyBlockedDates, checkIn, checkOut);
+  const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhone);
+  const invalidRange = Boolean(checkIn && nights <= 0);
+  const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
+  const selectValid = Boolean(property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !loadingInventory);
+  const guestsValid = adults >= 1 && children >= 0 && guests >= 1 && guests <= property.maxGuests;
+  const highestAllowedStepIndex = getHighestAllowedStepIndex({
+    selectValid,
+    guestsValid,
+    infoValid,
+  });
+  const nightHelperText =
+    nights > 0
+      ? `${nights} night${nights > 1 ? "s" : ""} selected.`
+      : "Select an arrival date and number of nights.";
 
-  async function submitBooking() {
-    setError("");
-    if (!property || !checkIn || !checkOut || !nights || conflicts || !infoValid) {
-      setError("Please complete valid dates and guest details before payment.");
-      return;
+  useEffect(() => {
+    if (selectedStepIndex > highestAllowedStepIndex) {
+      setStep(bookingSteps[highestAllowedStepIndex].key);
     }
-    setSubmitting(true);
-    try {
-      let bookingId = "demo";
-      if (convex) {
-        const snapshot = {
-          name: property.name,
-          tagline: property.tagline,
-          description: property.description,
-          pricePerNight: property.pricePerNight,
-          currency: property.currency,
-          maxGuests: property.maxGuests,
-          bedrooms: property.bedrooms,
-          bathrooms: property.bathrooms,
-          area: property.area,
-          images: property.images,
-          amenities: property.amenities,
-          tourRoomIds: property.tourRoomIds,
-          directDiscountPercent: property.directDiscountPercent,
-        };
-        bookingId = (await convex.mutation(api.bookings.create, {
-          propertySlug: property.slug,
-          guestName,
-          guestEmail,
-          guestPhone,
-          checkIn,
-          checkOut,
-          guests,
-          propertySnapshot: snapshot,
-        } as never)) as string;
+  }, [highestAllowedStepIndex, selectedStepIndex]);
+
+  const availablePropertyIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of propertyList) {
+      const blocked = item._id ? blockedByProperty[item._id] ?? [] : [];
+      if (!checkIn || !checkOut || !rangeIntersectsDates(blocked, checkIn, checkOut)) {
+        ids.add(item.slug);
       }
-      router.push(`/booking/pay?bookingId=${bookingId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create booking.");
-    } finally {
-      setSubmitting(false);
     }
+    return ids;
+  }, [blockedByProperty, checkIn, checkOut, propertyList]);
+
+  function isCheckInDisabled(date: Date) {
+    const iso = dateToIso(date);
+    return iso < todayIso || isDateInIsoList(date, blockedDateSet);
   }
 
-  function canContinue() {
-    if (step === "select") return Boolean(property && checkIn && checkOut && nights > 0 && !conflicts);
-    if (step === "guests") return guests >= 1 && guests <= property.maxGuests;
+  function selectProperty(item: BookingProperty) {
+    setError("");
+    if (!availablePropertyIds.has(item.slug)) {
+      setDateWarning(`${item.name} is not available for those dates. Pick another villa or change dates.`);
+      return;
+    }
+    setSelectedId(item.slug);
+    const nextTotal = Math.min(Math.max(1, guests), item.maxGuests);
+    const nextChildren = Math.min(children, Math.max(0, nextTotal - 1));
+    setChildren(nextChildren);
+    setAdults(Math.max(1, nextTotal - nextChildren));
+    setDateWarning("");
+  }
+
+  function updateCheckIn(value: string) {
+    setError("");
+    setCheckIn(value);
+    setDateWarning("");
+  }
+
+  function updateNights(value: number) {
+    setError("");
+    setNights(Math.max(1, Math.min(60, Math.floor(value) || 1)));
+    setDateWarning("");
+  }
+
+  function currentStepValid() {
+    if (step === "select") return selectValid;
+    if (step === "guests") return guestsValid;
     if (step === "info") return infoValid;
-    return true;
+    return selectValid && guestsValid && infoValid;
   }
 
   function next() {
-    const index = steps.findIndex((item) => item.key === step);
-    setStep(steps[Math.min(steps.length - 1, index + 1)].key);
+    if (!currentStepValid()) return;
+    setError("");
+    setStep(bookingSteps[Math.min(bookingSteps.length - 1, selectedStepIndex + 1)].key);
   }
 
   function previous() {
-    const index = steps.findIndex((item) => item.key === step);
-    setStep(steps[Math.max(0, index - 1)].key);
+    setError("");
+    setStep(bookingSteps[Math.max(0, selectedStepIndex - 1)].key);
+  }
+
+  async function submitBooking() {
+    setError("");
+    if (!selectValid || !guestsValid || !infoValid) {
+      setError("Please complete valid dates and guest details before payment.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (bookingMode !== "live" || !convex) {
+        router.push("/booking/pay?bookingId=demo");
+        return;
+      }
+
+      if (!property._id || property.source !== "live") {
+        throw new Error("Live booking is not available for this villa. Please refresh and try again.");
+      }
+
+      const available = await isPropertyAvailable(convex, {
+        propertyId: property._id,
+        checkIn,
+        checkOut,
+      });
+      if (!available) {
+        throw new Error("These dates are no longer available. Please choose different dates.");
+      }
+
+      const result = await createBooking(convex, {
+        propertySlug: property.slug,
+        guestName: guestName.trim(),
+        guestEmail: guestEmail.trim(),
+        guestPhone: guestPhone.trim(),
+        checkIn,
+        checkOut,
+        guests,
+      });
+
+      router.push(
+        `/booking/pay?bookingId=${encodeURIComponent(result.bookingId)}&token=${encodeURIComponent(result.accessToken)}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create booking. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -192,147 +336,107 @@ export function BookingFunnel() {
         <h1 className="mt-3 font-serif text-4xl font-semibold text-foreground">
           Reserve your villa
         </h1>
-        {notice ? <p className="mt-3 text-sm text-muted-foreground">{notice}</p> : null}
+        {notice ? (
+          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{notice}</p>
+        ) : null}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-2xl border border-border bg-card p-5 md:p-7">
-          <div className="mb-6 grid grid-cols-4 gap-2">
-            {steps.map((item, index) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setStep(item.key)}
-                className={cn(
-                  "rounded-lg px-2 py-2 text-xs font-semibold transition",
-                  steps.findIndex((candidate) => candidate.key === step) >= index
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+        <Card className="p-5 md:p-7">
+          <BookingStepNav
+            currentStep={step}
+            highestAllowedStepIndex={highestAllowedStepIndex}
+            onSelectStep={setStep}
+          />
 
           {step === "select" ? (
             <div className="space-y-5">
-              <div className="grid gap-3 md:grid-cols-3">
-                {propertyList.map((item) => (
-                  <button
-                    key={item.slug}
-                    type="button"
-                    onClick={() => setSelectedId(item.slug)}
-                    className={cn(
-                      "overflow-hidden rounded-xl border text-left transition",
-                      selectedId === item.slug ? "border-gold ring-2 ring-gold/30" : "border-border hover:border-gold/50",
-                    )}
-                  >
-                    <div className="relative aspect-[4/3]">
-                      <Image src={item.images[0]} alt={item.name} fill className="object-cover" />
-                    </div>
-                    <div className="p-3">
-                      <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {resort.currencySymbol}
-                        {item.pricePerNight.toLocaleString()}/night
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium text-foreground">
-                  Check-in
-                  <input
-                    type="date"
-                    value={checkIn}
-                    min={new Date().toISOString().slice(0, 10)}
-                    onChange={(event) => setCheckIn(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2"
-                  />
-                </label>
-                <label className="text-sm font-medium text-foreground">
-                  Check-out
-                  <input
-                    type="date"
-                    value={checkOut}
-                    min={checkIn || new Date().toISOString().slice(0, 10)}
-                    onChange={(event) => setCheckOut(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2"
-                  />
-                </label>
-              </div>
-              {conflicts ? (
-                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  Some selected dates are blocked. Please choose another range.
-                </p>
+              {loadingInventory ? (
+                <Alert>
+                  <AlertTitle>Checking availability</AlertTitle>
+                  <AlertDescription>Loading villas and blocked dates...</AlertDescription>
+                </Alert>
               ) : null}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <BookingDatePicker
+                  label="Select date"
+                  value={checkIn}
+                  onChange={updateCheckIn}
+                  isDateDisabled={isCheckInDisabled}
+                  placeholder="Choose arrival date"
+                />
+                <div className="space-y-2">
+                  <Label htmlFor="booking-nights">Nights</Label>
+                  <Input
+                    id="booking-nights"
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={nights}
+                    onChange={(event) => updateNights(Number(event.target.value))}
+                    className="h-12 font-medium"
+                  />
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {invalidRange ? "Enter at least 1 night." : nightHelperText}
+                  </p>
+                </div>
+              </div>
+
+              <VillaSelector
+                properties={propertyList}
+                selectedId={selectedId}
+                availablePropertyIds={availablePropertyIds}
+                onSelect={selectProperty}
+              />
+
+              <DateStatus
+                dateWarning={dateWarning}
+                conflicts={conflicts}
+                propertyName={property.name}
+                nights={nights}
+                discountPercent={property.directDiscountPercent}
+              />
             </div>
           ) : null}
 
           {step === "guests" ? (
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Guests</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {property.name} hosts up to {property.maxGuests} guests.
-              </p>
-              <div className="mt-6 flex items-center gap-4">
-                <Button variant="outline" onClick={() => setGuests(Math.max(1, guests - 1))}>
-                  -
-                </Button>
-                <span className="min-w-24 text-center text-lg font-semibold">
-                  {guests} guest{guests > 1 ? "s" : ""}
-                </span>
-                <Button variant="outline" onClick={() => setGuests(Math.min(property.maxGuests, guests + 1))}>
-                  +
-                </Button>
-              </div>
-            </div>
+            <GuestCountsPanel
+              property={property}
+              adults={adults}
+              childCount={children}
+              onChangeAdults={setAdults}
+              onChangeChildren={setChildren}
+            />
           ) : null}
 
           {step === "info" ? (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground">Guest details</h2>
-              {[
-                { icon: User, label: "Full name", value: guestName, set: setGuestName, type: "text" },
-                { icon: Mail, label: "Email", value: guestEmail, set: setGuestEmail, type: "email" },
-                { icon: Phone, label: "Phone", value: guestPhone, set: setGuestPhone, type: "tel" },
-              ].map((field) => {
-                const Icon = field.icon;
-                return (
-                  <label key={field.label} className="block text-sm font-medium text-foreground">
-                    {field.label}
-                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <input
-                        type={field.type}
-                        value={field.value}
-                        onChange={(event) => field.set(event.target.value)}
-                        className="min-w-0 flex-1 bg-transparent outline-none"
-                      />
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+            <GuestDetailsPanel
+              guestName={guestName}
+              guestEmail={guestEmail}
+              guestPhone={guestPhone}
+              onGuestNameChange={setGuestName}
+              onGuestEmailChange={setGuestEmail}
+              onGuestPhoneChange={setGuestPhone}
+            />
           ) : null}
 
           {step === "review" ? (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground">Review and pay</h2>
-              <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-                {property.name}, {guests} guest{guests > 1 ? "s" : ""}, {nights} night
-                {nights > 1 ? "s" : ""}, {checkIn} to {checkOut}.
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Shield className="h-4 w-4 text-gold" />
-                Demo payment creates a pending booking and then confirms it on the next screen.
-              </div>
-            </div>
+            <ReviewPanel
+              property={property}
+              guests={guests}
+              nights={nights}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              bookingMode={bookingMode}
+            />
           ) : null}
 
-          {error ? <p className="mt-5 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <Alert variant="destructive" className="mt-5">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
           <div className="mt-8 flex justify-between gap-3">
             <Button variant="outline" onClick={previous} disabled={step === "select"}>
@@ -340,40 +444,25 @@ export function BookingFunnel() {
               Back
             </Button>
             {step === "review" ? (
-              <Button onClick={submitBooking} disabled={submitting}>
+              <Button onClick={submitBooking} disabled={submitting || highestAllowedStepIndex < 3}>
                 <CreditCard className="h-4 w-4" />
-                {submitting ? "Creating..." : "Continue to Pay"}
+                {submitting ? "Checking..." : "Continue to Pay"}
               </Button>
             ) : (
-              <Button onClick={next} disabled={!canContinue()}>
+              <Button onClick={next} disabled={!currentStepValid()}>
                 Continue
               </Button>
             )}
           </div>
-        </section>
+        </Card>
 
-        <aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg">
-          <div className="relative aspect-[4/3] overflow-hidden rounded-xl">
-            <Image src={property.images[0]} alt={property.name} fill className="object-cover" />
-          </div>
-          <h2 className="mt-4 font-serif text-2xl font-semibold text-foreground">
-            {property.name}
-          </h2>
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            <div className="flex justify-between">
-              <span>{resort.currencySymbol}{property.pricePerNight.toLocaleString()} x {nights || 0}</span>
-              <span>{resort.currencySymbol}{subtotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-gold">
-              <span>Direct discount</span>
-              <span>-{resort.currencySymbol}{discount.toLocaleString()}</span>
-            </div>
-            <div className="border-t border-border pt-3 flex justify-between text-base font-semibold text-foreground">
-              <span>Total</span>
-              <span>{resort.currencySymbol}{total.toLocaleString()}</span>
-            </div>
-          </div>
-        </aside>
+        <BookingPriceSummary
+          property={property}
+          nights={nights}
+          subtotal={quote.subtotal}
+          discount={quote.discountAmount}
+          total={quote.directTotal}
+        />
       </div>
     </div>
   );
