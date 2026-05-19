@@ -1,15 +1,30 @@
 "use client";
 
-import { ArrowRight, MessageCircle, Send, Sparkles, X } from "lucide-react";
+import { MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { api } from "convex/_generated/api";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useOptionalConvex } from "@/lib/react/convex";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useChatPageContext } from "@/components/chat/ChatContext";
 import { MessagingButtons } from "@/components/chat/MessagingButtons";
+import {
+  addChatMessage,
+  askConcierge,
+  closeChatSession,
+  createChatSession,
+  identifyChatVisitor,
+  touchChatSession,
+} from "@/lib/react/convex-api";
+import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
+type ContactForm = { name: string; email: string; phone: string };
+
+const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
+const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
+const HEARTBEAT_MS = 30_000;
 
 const suggestions = [
   {
@@ -29,6 +44,50 @@ const suggestions = [
   },
 ];
 
+function renderMessage(content: string) {
+  return content.split("\n").map((line, lineIndex) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g);
+    return (
+      <span key={`${line}-${lineIndex}`}>
+        {parts.map((part, partIndex) =>
+          part.startsWith("**") && part.endsWith("**") ? (
+            <strong key={`${part}-${partIndex}`} className="font-semibold">
+              {part.slice(2, -2)}
+            </strong>
+          ) : (
+            <span key={`${part}-${partIndex}`}>{part}</span>
+          ),
+        )}
+        {lineIndex < content.split("\n").length - 1 ? <br /> : null}
+      </span>
+    );
+  });
+}
+
+function getOrCreateVisitorId() {
+  if (typeof window === "undefined") return undefined;
+
+  const existing = window.localStorage.getItem(VISITOR_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const id =
+    typeof window.crypto?.randomUUID === "function"
+      ? window.crypto.randomUUID()
+      : `visitor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(VISITOR_ID_STORAGE_KEY, id);
+  return id;
+}
+
+function getBrowserChatMetadata() {
+  if (typeof window === "undefined") return {};
+
+  return {
+    currentPath: `${window.location.pathname}${window.location.search}`,
+    referrer: document.referrer || undefined,
+    userAgent: navigator.userAgent || undefined,
+  };
+}
+
 export function AIChatWidget({
   propertySlug,
   propertyName,
@@ -41,35 +100,156 @@ export function AIChatWidget({
   lineId?: string;
 }) {
   const convex = useOptionalConvex();
+  const pageContext = useChatPageContext();
+  const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
+  const activePropertyName = propertyName ?? pageContext?.context.propertyName;
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [contactForm, setContactForm] = useState<ContactForm>({
+    name: "",
+    email: "",
+    phone: "",
+  });
+  const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const inputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
 
-  const title = propertyName ? `${propertyName} concierge` : "Seaview concierge";
+  const title = activePropertyName ? `${activePropertyName} concierge` : "Seaview concierge";
   const visibleSuggestions = useMemo(() => suggestions.slice(0, 2), []);
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
+  const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
+  useBodyScrollLock(shouldLockScroll);
+
+  function openChat() {
+    setMounted(true);
+    void ensureSession(true);
+    window.requestAnimationFrame(() => setOpen(true));
+  }
+
+  function closeChat() {
+    setOpen(false);
+    if (convex && sessionId) {
+      void closeChatSession(convex, { sessionId }).catch(() => undefined);
+    }
+  }
 
   useEffect(() => {
     function openFromStickyBar() {
-      setOpen(true);
+      openChat();
     }
 
     window.addEventListener("open-concierge-chat", openFromStickyBar);
     return () => window.removeEventListener("open-concierge-chat", openFromStickyBar);
   }, []);
 
-  async function ensureSession() {
-    if (sessionId) return sessionId;
+  useEffect(() => {
+    if (open) return;
+    const timeout = window.setTimeout(() => setMounted(false), 220);
+    return () => window.clearTimeout(timeout);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const timeout = window.setTimeout(() => inputRef.current?.focus(), 260);
+    return () => window.clearTimeout(timeout);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && window.matchMedia("(min-width: 768px)").matches) {
+        closeChat();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  async function ensureSession(markOpen = false) {
     if (!convex) return null;
-    const id = await convex.mutation(api.chat.createSession, {
-      propertySlug: propertySlug || undefined,
+    if (sessionId) {
+      if (markOpen) {
+        await touchChatSession(convex, {
+          sessionId,
+          propertySlug: activePropertySlug || undefined,
+          ...getBrowserChatMetadata(),
+          isOpen: true,
+        });
+      }
+      return sessionId;
+    }
+
+    const storedId =
+      typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_ID_STORAGE_KEY) : null;
+    if (storedId) {
+      try {
+        await touchChatSession(convex, {
+          sessionId: storedId,
+          propertySlug: activePropertySlug || undefined,
+          ...getBrowserChatMetadata(),
+          isOpen: markOpen,
+        });
+        setSessionId(storedId);
+        return storedId;
+      } catch {
+        window.sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
+      }
+    }
+
+    const id = await createChatSession(convex, {
+      propertySlug: activePropertySlug || undefined,
       channel: "web",
-    } as never);
-    setSessionId(id as string);
-    return id as string;
+      visitorId: getOrCreateVisitorId(),
+      ...getBrowserChatMetadata(),
+    });
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(SESSION_ID_STORAGE_KEY, id);
+    }
+    setSessionId(id);
+    return id;
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    void ensureSession(true);
+  }, [activePropertySlug, convex, open, sessionId]);
+
+  useEffect(() => {
+    if (!open || !convex) return;
+    const interval = window.setInterval(() => {
+      void ensureSession(true);
+    }, HEARTBEAT_MS);
+    return () => window.clearInterval(interval);
+  }, [activePropertySlug, convex, open, sessionId]);
+
+  async function saveContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!contactForm.name.trim() && !contactForm.email.trim() && !contactForm.phone.trim()) return;
+    if (!convex) {
+      setContactStatus("error");
+      return;
+    }
+
+    setContactStatus("saving");
+    try {
+      const id = await ensureSession(true);
+      if (!id) throw new Error("No chat session");
+      await identifyChatVisitor(convex, {
+        sessionId: id,
+        name: contactForm.name || undefined,
+        email: contactForm.email || undefined,
+        phone: contactForm.phone || undefined,
+      });
+      setContactStatus("saved");
+    } catch {
+      setContactStatus("error");
+    }
   }
 
   async function sendMessage(text: string) {
@@ -81,6 +261,21 @@ export function AIChatWidget({
     const preset = suggestions.find((item) => item.text === clean);
     if (preset) {
       setMessages((items) => [...items, { role: "assistant", content: preset.answer }]);
+      if (convex) {
+        try {
+          const id = await ensureSession(true);
+          if (id) {
+            await addChatMessage(convex, { sessionId: id, role: "user", content: clean });
+            await addChatMessage(convex, {
+              sessionId: id,
+              role: "assistant",
+              content: preset.answer,
+            });
+          }
+        } catch {
+          // The visitor still sees the local answer if persistence is temporarily unavailable.
+        }
+      }
       return;
     }
 
@@ -98,13 +293,13 @@ export function AIChatWidget({
 
     setIsTyping(true);
     try {
-      const id = await ensureSession();
+      const id = await ensureSession(true);
       if (!id) throw new Error("No chat session");
-      const result = await convex.action(api.chatAi.respond, {
+      const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,
-        propertySlug: propertySlug || undefined,
-      } as never);
+        propertySlug: activePropertySlug || undefined,
+      });
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)
@@ -128,7 +323,7 @@ export function AIChatWidget({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openChat}
         className={cn(
           "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105",
           hideFloatingTriggerOnMobileRoom && "hidden md:flex",
@@ -139,29 +334,41 @@ export function AIChatWidget({
         <MessageCircle className="h-6 w-6" />
       </button>
 
-      {open ? (
-        <div className="fixed bottom-5 right-5 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2.5rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl md:w-96">
-          <div className="flex items-center justify-between border-b border-border bg-navy px-4 py-3 text-white">
+      {mounted ? (
+        <div
+          className={cn(
+            "fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none md:pointer-events-none md:bg-transparent md:backdrop-blur-0",
+            open ? "opacity-100" : "opacity-0",
+          )}
+        >
+          <div
+            className={cn(
+              "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[70vh] md:max-h-[720px] md:w-[480px] md:origin-bottom-right md:rounded-2xl md:border",
+              open
+                ? "translate-y-0 scale-100 opacity-100"
+                : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95",
+            )}
+          >
+          <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-gold" />
-              <div>
-                <p className="text-sm font-semibold">{title}</p>
-                <p className="text-xs text-white/55">Ask, compare, or book direct</p>
-              </div>
+              <Sparkles className="h-3.5 w-3.5 text-gold" />
+              <p className="text-sm font-semibold">{title}</p>
             </div>
-            <button
+            <Button
               type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+              variant="ghost"
+              size="icon"
+              onClick={closeChat}
+              className="h-8 w-8 rounded-full text-white/70 hover:bg-white/10 hover:text-white"
               aria-label="Close chat"
             >
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4">
             {messages.length === 0 ? (
-              <div className="rounded-xl bg-muted p-3 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-muted-foreground md:p-3 md:text-sm">
                 I can help pick the right villa, explain direct booking savings, or point you into the 360 tour.
               </div>
             ) : null}
@@ -175,7 +382,7 @@ export function AIChatWidget({
                     : "bg-muted text-foreground",
                 )}
               >
-                {message.content}
+                {renderMessage(message.content)}
               </div>
             ))}
             {isTyping ? (
@@ -185,21 +392,74 @@ export function AIChatWidget({
             ) : null}
           </div>
 
-          <div className="space-y-3 border-t border-border p-3">
-            <div className="grid gap-2">
+          <div className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-4 backdrop-blur md:px-3 md:py-3">
+            <div className="flex flex-wrap gap-2">
               {visibleSuggestions.map((item) => (
                 <button
                   key={item.text}
                   type="button"
                   onClick={() => sendMessage(item.text)}
-                  className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-left text-xs font-medium text-foreground transition hover:bg-secondary"
+                  className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-muted-foreground shadow-sm transition hover:border-gold/50 hover:bg-gold/10 hover:text-foreground"
                 >
                   {item.text}
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
               ))}
             </div>
             <MessagingButtons whatsappNumber={whatsappNumber} lineId={lineId} />
+            <details className="rounded-xl border border-border bg-background/70 px-3 py-2 text-sm">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Share contact details
+              </summary>
+              <form className="mt-3 grid gap-2" onSubmit={saveContact}>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Input
+                    value={contactForm.name}
+                    onChange={(event) =>
+                      setContactForm((current) => ({ ...current, name: event.target.value }))
+                    }
+                    className="h-9 rounded-lg text-sm"
+                    placeholder="Name"
+                    aria-label="Name"
+                  />
+                  <Input
+                    value={contactForm.email}
+                    onChange={(event) =>
+                      setContactForm((current) => ({ ...current, email: event.target.value }))
+                    }
+                    className="h-9 rounded-lg text-sm"
+                    placeholder="Email"
+                    type="email"
+                    aria-label="Email"
+                  />
+                  <Input
+                    value={contactForm.phone}
+                    onChange={(event) =>
+                      setContactForm((current) => ({ ...current, phone: event.target.value }))
+                    }
+                    className="h-9 rounded-lg text-sm"
+                    placeholder="Phone"
+                    aria-label="Phone"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {contactStatus === "saved"
+                      ? "Saved for the concierge."
+                      : contactStatus === "error"
+                        ? "Could not save right now."
+                        : "Optional, for follow-up."}
+                  </span>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={contactStatus === "saving"}
+                    className="h-8 rounded-lg px-3 text-xs"
+                  >
+                    {contactStatus === "saving" ? "Saving" : "Save"}
+                  </Button>
+                </div>
+              </form>
+            </details>
             <form
               className="flex gap-2"
               onSubmit={(event) => {
@@ -207,16 +467,18 @@ export function AIChatWidget({
                 sendMessage(input);
               }}
             >
-              <input
+              <Input
+                ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                className="h-12 min-w-0 flex-1 rounded-xl text-base md:h-10 md:rounded-lg md:text-sm"
                 placeholder="Ask a question"
               />
               <Button type="submit" size="icon" aria-label="Send message">
                 <Send className="h-4 w-4" />
               </Button>
             </form>
+          </div>
           </div>
         </div>
       ) : null}

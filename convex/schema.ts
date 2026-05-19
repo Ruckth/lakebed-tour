@@ -78,6 +78,7 @@ export default defineSchema({
 		confirmationCode: v.optional(v.string()),
 		invoiceNumber: v.optional(v.string()),
 		receiptNumber: v.optional(v.string()),
+		accessToken: v.optional(v.string()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -209,6 +210,16 @@ export default defineSchema({
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
 		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line')),
+		visitorId: v.optional(v.string()),
+		visitorName: v.optional(v.string()),
+		visitorEmail: v.optional(v.string()),
+		visitorPhone: v.optional(v.string()),
+		currentPath: v.optional(v.string()),
+		referrer: v.optional(v.string()),
+		userAgent: v.optional(v.string()),
+		lastSeenAt: v.optional(v.number()),
+		lastOpenedAt: v.optional(v.number()),
+		lastClosedAt: v.optional(v.number()),
 		// Legacy embedded messages — kept optional for migration compatibility.
 		// New sessions write to the chatMessages table instead.
 		messages: v.optional(
@@ -221,7 +232,11 @@ export default defineSchema({
 			)
 		),
 		createdAt: v.number()
-	}).index('by_property', ['propertyId']),
+	})
+		.index('by_property', ['propertyId'])
+		.index('by_last_seen', ['lastSeenAt'])
+		.index('by_property_last_seen', ['propertyId', 'lastSeenAt'])
+		.index('by_visitor', ['visitorId']),
 
 	chatMessages: defineTable({
 		sessionId: v.id('chatSessions'),

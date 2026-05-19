@@ -8,12 +8,14 @@
  * @module
  */
 
+import type * as adminChat from "../adminChat.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as chat from "../chat.js";
 import type * as chatAi from "../chatAi.js";
 import type * as emails from "../emails.js";
 import type * as leads from "../leads.js";
+import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
 import type * as lib_chatFallback from "../lib/chatFallback.js";
 import type * as lib_chatLlm from "../lib/chatLlm.js";
@@ -41,12 +43,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adminChat: typeof adminChat;
   availability: typeof availability;
   bookings: typeof bookings;
   chat: typeof chat;
   chatAi: typeof chatAi;
   emails: typeof emails;
   leads: typeof leads;
+  "lib/adminAuth": typeof lib_adminAuth;
   "lib/availabilityWrites": typeof lib_availabilityWrites;
   "lib/chatFallback": typeof lib_chatFallback;
   "lib/chatLlm": typeof lib_chatLlm;

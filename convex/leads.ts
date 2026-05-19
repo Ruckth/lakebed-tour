@@ -48,6 +48,10 @@ export const save = mutation({
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) {
+			throw new Error('Not authenticated');
+		}
 		return await ctx.db.query('leads').collect();
 	}
 });

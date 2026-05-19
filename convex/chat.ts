@@ -1,11 +1,28 @@
-import { internalQuery, mutation, query } from './_generated/server';
+import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import { assertValidEmail, normalizeEmail } from './lib/validation';
+
+async function resolvePropertyId(
+	ctx: MutationCtx,
+	propertySlug?: string
+) {
+	if (!propertySlug) return undefined;
+	const property = await ctx.db
+		.query('properties')
+		.withIndex('by_slug', (q) => q.eq('slug', propertySlug))
+		.unique();
+	return property?._id;
+}
 
 export const createSession = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
-		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line'))
+		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line')),
+		visitorId: v.optional(v.string()),
+		currentPath: v.optional(v.string()),
+		referrer: v.optional(v.string()),
+		userAgent: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		let propertyId = args.propertyId;
@@ -17,12 +34,104 @@ export const createSession = mutation({
 			propertyId = property?._id;
 		}
 
+		const now = Date.now();
 		return await ctx.db.insert('chatSessions', {
 			propertyId,
 			propertySlug: args.propertySlug,
 			channel: args.channel,
-			createdAt: Date.now()
+			visitorId: args.visitorId,
+			currentPath: args.currentPath,
+			referrer: args.referrer,
+			userAgent: args.userAgent,
+			lastSeenAt: now,
+			lastOpenedAt: now,
+			createdAt: now
 		});
+	}
+});
+
+export const touchSession = mutation({
+	args: {
+		sessionId: v.id('chatSessions'),
+		propertySlug: v.optional(v.string()),
+		currentPath: v.optional(v.string()),
+		referrer: v.optional(v.string()),
+		userAgent: v.optional(v.string()),
+		isOpen: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const now = Date.now();
+		const propertyId = args.propertySlug
+			? await resolvePropertyId(ctx, args.propertySlug)
+			: session.propertyId;
+
+		await ctx.db.patch(args.sessionId, {
+			propertyId,
+			propertySlug: args.propertySlug ?? session.propertySlug,
+			currentPath: args.currentPath ?? session.currentPath,
+			referrer: args.referrer ?? session.referrer,
+			userAgent: args.userAgent ?? session.userAgent,
+			lastSeenAt: now,
+			lastOpenedAt: args.isOpen ? now : session.lastOpenedAt
+		});
+	}
+});
+
+export const closeSession = mutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const now = Date.now();
+		await ctx.db.patch(args.sessionId, {
+			lastClosedAt: now,
+			lastSeenAt: now
+		});
+	}
+});
+
+export const identifyVisitor = mutation({
+	args: {
+		sessionId: v.id('chatSessions'),
+		name: v.optional(v.string()),
+		email: v.optional(v.string()),
+		phone: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const name = args.name?.trim() || undefined;
+		const phone = args.phone?.trim() || undefined;
+		const email = args.email?.trim() ? normalizeEmail(args.email) : undefined;
+		if (email) assertValidEmail(email);
+
+		await ctx.db.patch(args.sessionId, {
+			visitorName: name,
+			visitorEmail: email,
+			visitorPhone: phone,
+			lastSeenAt: Date.now()
+		});
+
+		if (email) {
+			const existingLead = await ctx.db
+				.query('leads')
+				.withIndex('by_email', (q) => q.eq('email', email))
+				.first();
+
+			if (!existingLead) {
+				await ctx.db.insert('leads', {
+					propertyId: session.propertyId,
+					email,
+					source: 'chat',
+					createdAt: Date.now()
+				});
+			}
+		}
 	}
 });
 

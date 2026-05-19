@@ -68,8 +68,6 @@ STYLE:
 			apiMessages.push({ role: msg.role, content: msg.content });
 		}
 
-		apiMessages.push({ role: 'user', content: args.userMessage });
-
 		const complexity = classifyComplexity(args.userMessage);
 
 		const apiKey = process.env.AI_API_KEY;
