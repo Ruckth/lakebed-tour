@@ -1,13 +1,15 @@
 "use client";
 
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
 import { TourOverlay } from "@/components/tour/TourOverlay";
+import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { rooms as allRooms } from "@/lib/data/rooms";
+import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
@@ -33,12 +35,13 @@ export function TourViewer({
   const [texturesLoaded, setTexturesLoaded] = useState(false);
   const [minimumReached, setMinimumReached] = useState(false);
   const [visited, setVisited] = useState<Set<string>>(new Set());
+  const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
+
+  useBodyScrollLock(true);
 
   useEffect(() => {
-    document.body.style.overflow = "hidden";
     const timer = window.setTimeout(() => setMinimumReached(true), 1100);
     return () => {
-      document.body.style.overflow = "";
       window.clearTimeout(timer);
     };
   }, []);
@@ -73,6 +76,7 @@ export function TourViewer({
   }, []);
 
   function navigateTo(roomId: string) {
+    if (!activeRoomIds.has(roomId)) return;
     if (transitioning || roomId === currentRoomId) return;
     setPreviousRoomId(currentRoomId);
     setCurrentRoomId(roomId);
@@ -81,6 +85,12 @@ export function TourViewer({
 
   const allRoomsVisited =
     activeRooms.length > 0 && activeRooms.every((room) => visited.has(room.id));
+  const currentRoomIndex = Math.max(
+    0,
+    activeRooms.findIndex((room) => room.id === currentRoomId),
+  );
+  const previousRoom = activeRooms[(currentRoomIndex - 1 + activeRooms.length) % activeRooms.length];
+  const nextRoom = activeRooms[(currentRoomIndex + 1) % activeRooms.length];
 
   if (!activeRooms.length) return null;
 
@@ -143,30 +153,37 @@ export function TourViewer({
             allRoomsVisited={allRoomsVisited}
             onFinish={() => setPhase("conclusion")}
           />
-          <div className="absolute right-4 top-16 z-30 rounded-full bg-black/35 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm md:right-6">
-            ฿{property.pricePerNight.toLocaleString()}/night
-          </div>
           {activeRooms.length > 1 ? (
-            <div
-              className="absolute inset-x-3 bottom-4 z-30 flex justify-center gap-1.5 overflow-x-auto md:bottom-6 md:gap-2"
-              style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
-            >
-              {activeRooms.map((room) => (
-                <button
-                  key={room.id}
+            <>
+              <div
+                className="absolute bottom-4 left-3 z-30 md:bottom-6 md:left-6"
+                style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+              >
+                <Button
                   type="button"
-                  className={cn(
-                    "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors md:px-4 md:py-2 md:text-sm",
-                    currentRoomId === room.id
-                      ? "bg-white text-black shadow-lg"
-                      : "bg-white/15 text-white backdrop-blur-sm hover:bg-white/25",
-                  )}
-                  onClick={() => navigateTo(room.id)}
+                  variant="glass"
+                  className="inline-flex max-w-[42vw] items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-black/20 backdrop-blur-md transition hover:bg-white/25 md:max-w-none md:px-4 md:text-sm"
+                  onClick={() => navigateTo(previousRoom.id)}
                 >
-                  {room.name}
-                </button>
-              ))}
-            </div>
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="truncate">{previousRoom.name}</span>
+                </Button>
+              </div>
+              <div
+                className="absolute bottom-4 right-3 z-30 md:bottom-6 md:right-6"
+                style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="inline-flex max-w-[42vw] items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-semibold text-black shadow-lg shadow-black/20 transition hover:bg-white/90 md:max-w-none md:px-4 md:text-sm"
+                  onClick={() => navigateTo(nextRoom.id)}
+                >
+                  <span className="truncate">{nextRoom.name}</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </>
           ) : null}
         </>
       ) : null}

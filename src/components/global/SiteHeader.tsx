@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ButtonLink } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/global/ThemeToggle";
 import { resort } from "@/lib/data/resort-config";
 import { cn } from "@/lib/utils";
@@ -76,18 +76,20 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2 md:hidden">
           <ThemeToggle solid={solid} />
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setMobileMenuOpen((value) => !value)}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full",
+              "h-9 w-9 rounded-full hover:bg-transparent",
               solid ? "text-foreground" : "text-white",
             )}
             aria-label="Toggle menu"
             aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          </Button>
         </div>
       </nav>
 

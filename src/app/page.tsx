@@ -3,7 +3,7 @@ import { Anchor, Bell, Car, Check, Heart, Sparkles, Sun, Utensils, Waves } from 
 import { HomeHero } from "@/components/home/HomeHero";
 import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
-import { ButtonLink } from "@/components/ui/Button";
+import { ButtonLink } from "@/components/ui/button";
 import { properties } from "@/lib/data/properties";
 import { resort } from "@/lib/data/resort-config";
 import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
@@ -25,6 +25,11 @@ export default function HomePage() {
     .flatMap((property) => getSocialProofByPropertyId(property.id)?.reviews ?? [])
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 6);
+  const villaItems = properties.map((property) => ({
+    property,
+    socialProof: getSocialProofByPropertyId(property.id),
+    storyTagline: getPropertyTagline(property.id),
+  }));
 
   return (
     <>
@@ -71,13 +76,13 @@ export default function HomePage() {
               Three distinct experiences, each with immersive 360° virtual tours.
             </p>
           </div>
-          <div className="grid gap-6 md:gap-8 lg:grid-cols-2 lg:gap-10 2xl:grid-cols-3">
-            {properties.map((property) => (
+          <div className="grid gap-6 md:grid-cols-2 md:gap-8 lg:gap-10 2xl:grid-cols-3">
+            {villaItems.map(({ property, socialProof, storyTagline }) => (
               <VillaCard
                 key={property.id}
                 property={property}
-                socialProof={getSocialProofByPropertyId(property.id)}
-                storyTagline={getPropertyTagline(property.id)}
+                socialProof={socialProof}
+                storyTagline={storyTagline}
               />
             ))}
           </div>

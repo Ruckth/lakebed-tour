@@ -1,12 +1,15 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Check, Minus, Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
+import { PropertyImage } from "@/components/property/PropertyImage";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getConclusionForProperty } from "@/lib/data/tourflow";
-import { resort } from "@/lib/data/resort-config";
+import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
 import type { Property } from "@/lib/data/properties";
 
 export function TourConclusion({
@@ -21,36 +24,61 @@ export function TourConclusion({
   const router = useRouter();
   const conclusion = getConclusionForProperty(property.id);
   const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [guests, setGuests] = useState(Math.min(2, property.maxGuests));
+  const [nights, setNights] = useState(1);
+  const [adults, setAdults] = useState(Math.min(2, property.maxGuests));
+  const [children, setChildren] = useState(0);
+  const totalGuests = adults + children;
   if (!conclusion) return null;
 
   function book() {
     const params = new URLSearchParams({ unit: property.id });
     if (checkIn) params.set("checkin", checkIn);
-    if (checkOut) params.set("checkout", checkOut);
-    if (guests > 1) params.set("guests", String(guests));
+    params.set("nights", String(nights));
+    params.set("adults", String(adults));
+    if (children > 0) params.set("children", String(children));
+    params.set("guests", String(totalGuests));
     router.push(`/booking?${params.toString()}`);
+  }
+
+  function isArrivalDisabled(date: Date) {
+    const iso = dateToIso(date);
+    return iso < todayIsoLocal();
+  }
+
+  function updateNights(value: number) {
+    setNights(Math.max(1, Math.min(60, Math.floor(value) || 1)));
+  }
+
+  function updateAdults(value: number) {
+    const nextAdults = Math.max(1, Math.min(property.maxGuests, value));
+    const maxChildren = Math.max(0, property.maxGuests - nextAdults);
+    setAdults(nextAdults);
+    if (children > maxChildren) setChildren(maxChildren);
+  }
+
+  function updateChildren(value: number) {
+    setChildren(Math.max(0, Math.min(property.maxGuests - adults, value)));
   }
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-black/60 px-5 py-10 backdrop-blur-sm">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         onClick={onClose}
-        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white md:right-6 md:top-6"
+        className="fixed right-4 top-4 z-40 h-11 w-11 rounded-full bg-white/15 text-white shadow-lg shadow-black/30 backdrop-blur-md hover:bg-white/25 hover:text-white md:right-6 md:top-6"
         aria-label="Back to tour"
       >
         <X className="h-5 w-5" />
-      </button>
+      </Button>
       <div className="mx-auto w-full max-w-lg">
         <div className="relative overflow-hidden rounded-2xl">
-          <Image
-            src={property.images[0]}
+          <PropertyImage
+            images={property.images}
             alt={property.name}
-            width={900}
-            height={560}
-            className="aspect-[16/10] w-full object-cover"
+            className="aspect-[16/10]"
+            sizes="(min-width: 768px) 560px, 100vw"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 px-6 pb-6">
@@ -73,56 +101,63 @@ export function TourConclusion({
             </li>
           ))}
         </ul>
-        <div className="mt-6 flex items-baseline gap-1.5">
-          <span className="text-2xl font-bold text-white md:text-3xl">
-            {resort.currencySymbol}
-            {property.pricePerNight.toLocaleString()}
-          </span>
-          <span className="text-sm text-white/50">/night</span>
-        </div>
         <div className="mt-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">
-              Check-in
-              <input
-                type="date"
+            <div className="[&_button]:border-white/15 [&_button]:bg-white/10 [&_button]:text-white [&_label]:text-xs [&_label]:font-medium [&_label]:uppercase [&_label]:tracking-wider [&_label]:text-white/50">
+              <BookingDatePicker
+                label="Select date"
                 value={checkIn}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(event) => setCheckIn(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white"
+                onChange={setCheckIn}
+                isDateDisabled={isArrivalDisabled}
+                placeholder="Arrival"
               />
-            </label>
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">
-              Check-out
-              <input
-                type="date"
-                value={checkOut}
-                min={checkIn || new Date().toISOString().slice(0, 10)}
-                onChange={(event) => setCheckOut(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white"
+            </div>
+            <Label className="text-xs font-medium uppercase tracking-wider text-white/50">
+              Nights
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                value={nights}
+                onChange={(event) => updateNights(Number(event.target.value))}
+                className="mt-1 border-white/15 bg-white/10 text-sm text-white [color-scheme:dark]"
               />
-            </label>
+            </Label>
           </div>
           <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wider text-white/50">Guests</p>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setGuests(Math.max(1, guests - 1))}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="min-w-[3rem] text-center text-sm font-medium text-white">
-                {guests} guest{guests > 1 ? "s" : ""}
-              </span>
-              <button
-                type="button"
-                onClick={() => setGuests(Math.min(property.maxGuests, guests + 1))}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/50">Guests</p>
+            <div className="space-y-2">
+              {[
+                { label: "Adults", value: adults, min: 1, update: updateAdults },
+                { label: "Children", value: children, min: 0, update: updateChildren },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2">
+                  <span className="text-sm font-medium text-white">{item.label}</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => item.update(item.value - 1)}
+                      disabled={item.value <= item.min}
+                      className="h-9 w-9 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/15"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="w-7 text-center text-sm font-semibold text-white">{item.value}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => item.update(item.value + 1)}
+                      disabled={totalGuests >= property.maxGuests}
+                      className="h-9 w-9 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/15"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

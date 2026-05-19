@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resort } from "@/lib/data/resort-config";
+import { isHorizontalSwipe, swipeDirection, type SwipePoint, wrapIndex } from "@/lib/interaction/swipe";
 import { cn } from "@/lib/utils";
 
 const desktopImages = {
@@ -35,7 +37,9 @@ export function HomeHero() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
   const [mobileSlide, setMobileSlide] = useState(0);
-  const [dragStart, setDragStart] = useState<number | null>(null);
+  const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
+  const [isMobileAutoPaused, setIsMobileAutoPaused] = useState(false);
+  const mobilePauseTimer = useRef<number | null>(null);
   const video0 = useRef<HTMLVideoElement>(null);
   const video1 = useRef<HTMLVideoElement>(null);
 
@@ -62,21 +66,44 @@ export function HomeHero() {
 
   useEffect(() => {
     if (isDesktop) return;
-    const timer = window.setInterval(
-      () => setMobileSlide((value) => (value + 1) % mobileSlides.length),
-      6000,
-    );
+    const timer = window.setInterval(() => {
+      if (isMobileAutoPaused) return;
+      setMobileSlide((value) => (value + 1) % mobileSlides.length);
+    }, 6000);
     return () => window.clearInterval(timer);
-  }, [isDesktop]);
+  }, [isDesktop, isMobileAutoPaused]);
 
-  function completeSwipe(clientX: number) {
-    if (dragStart === null) return;
-    const delta = clientX - dragStart;
-    if (Math.abs(delta) > 40) {
+  useEffect(() => {
+    return () => {
+      if (mobilePauseTimer.current !== null) {
+        window.clearTimeout(mobilePauseTimer.current);
+      }
+    };
+  }, []);
+
+  function pauseMobileAutoCycle() {
+    setIsMobileAutoPaused(true);
+    if (mobilePauseTimer.current !== null) {
+      window.clearTimeout(mobilePauseTimer.current);
+    }
+    mobilePauseTimer.current = window.setTimeout(() => {
+      setIsMobileAutoPaused(false);
+      mobilePauseTimer.current = null;
+    }, 10000);
+  }
+
+  function setManualMobileSlide(nextIndex: number) {
+    pauseMobileAutoCycle();
+    setMobileSlide(wrapIndex(nextIndex, mobileSlides.length));
+  }
+
+  function completeSwipe(clientX: number, clientY: number) {
+    if (!dragStart) return;
+    const end = { x: clientX, y: clientY };
+    if (isHorizontalSwipe(dragStart, end, 42)) {
+      pauseMobileAutoCycle();
       setMobileSlide((value) =>
-        delta > 0
-          ? (value - 1 + mobileSlides.length) % mobileSlides.length
-          : (value + 1) % mobileSlides.length,
+        wrapIndex(value + swipeDirection(dragStart, end), mobileSlides.length),
       );
     }
     setDragStart(null);
@@ -102,8 +129,24 @@ export function HomeHero() {
             </div>
             <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 1 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
               <div className="flex h-full w-full">
-                <img src={desktopImages.left} alt="" className={cn("h-full w-1/2 object-cover", desktopStep === 1 && "hero-ken-burns")} />
-                <img src={desktopImages.right} alt="" className={cn("h-full w-1/2 object-cover", desktopStep === 1 && "hero-ken-burns")} />
+                <div className="relative h-full w-1/2 overflow-hidden">
+                  <Image
+                    src={desktopImages.left}
+                    alt=""
+                    fill
+                    sizes="50vw"
+                    className={cn("object-cover", desktopStep === 1 && "hero-ken-burns")}
+                  />
+                </div>
+                <div className="relative h-full w-1/2 overflow-hidden">
+                  <Image
+                    src={desktopImages.right}
+                    alt=""
+                    fill
+                    sizes="50vw"
+                    className={cn("object-cover", desktopStep === 1 && "hero-ken-burns")}
+                  />
+                </div>
               </div>
             </div>
             <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 2 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
@@ -124,8 +167,8 @@ export function HomeHero() {
           <div
             className="absolute inset-0 flex select-none flex-col"
             style={{ touchAction: "pan-y" }}
-            onPointerDown={(event) => setDragStart(event.clientX)}
-            onPointerUp={(event) => completeSwipe(event.clientX)}
+            onPointerDown={(event) => setDragStart({ x: event.clientX, y: event.clientY })}
+            onPointerUp={(event) => completeSwipe(event.clientX, event.clientY)}
             onPointerCancel={() => setDragStart(null)}
           >
             {["top", "bottom"].map((slot) => (
@@ -138,10 +181,12 @@ export function HomeHero() {
                       mobileSlide === index ? "opacity-100" : "opacity-0",
                     )}
                   >
-                    <img
+                    <Image
                       src={slot === "top" ? slide.top : slide.bottom}
                       alt=""
-                      className="h-full w-full object-cover"
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
                     />
                   </div>
                 ))}
@@ -153,7 +198,8 @@ export function HomeHero() {
                 <button
                   key={index}
                   type="button"
-                  onClick={() => setMobileSlide(index)}
+                  onClick={() => setManualMobileSlide(index)}
+                  aria-current={mobileSlide === index ? "true" : undefined}
                   className={cn("h-2 rounded-full transition-all", mobileSlide === index ? "w-6 bg-white" : "w-2 bg-white/40")}
                   aria-label={`Go to slide ${index + 1}`}
                 />

@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+
 export function TourOverlay({
   visitedCount,
   totalRooms,
@@ -18,13 +20,14 @@ export function TourOverlay({
       </div>
       {allRoomsVisited ? (
         <div className="absolute inset-x-0 bottom-24 z-20 flex justify-center px-4 md:bottom-28">
-          <button
+          <Button
             type="button"
+            variant="gold"
             onClick={onFinish}
-            className="rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-navy shadow-lg shadow-black/30 transition hover:bg-gold-light"
+            className="rounded-full px-6 shadow-lg shadow-black/30"
           >
             Book
-          </button>
+          </Button>
         </div>
       ) : null}
     </>

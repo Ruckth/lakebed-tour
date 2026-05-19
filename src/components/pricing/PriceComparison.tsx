@@ -1,5 +1,5 @@
 import { Check, ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { getMaxSavingsForProperty, getPricingByPropertyId } from "@/lib/data/pricing";
 import { resort } from "@/lib/data/resort-config";
 

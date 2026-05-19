@@ -1,14 +1,15 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useState } from "react";
+import { PropertyImage } from "@/components/property/PropertyImage";
 import { StarRating } from "@/components/social/StarRating";
-import { ButtonLink } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/ui/button";
 import { resort } from "@/lib/data/resort-config";
 import type { Property } from "@/lib/data/properties";
 import type { PropertySocialProof } from "@/lib/data/reviews";
+import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
 import { cn } from "@/lib/utils";
 
 export function VillaCard({
@@ -21,27 +22,40 @@ export function VillaCard({
   storyTagline?: string;
 }) {
   const [index, setIndex] = useState(0);
+  const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
 
   function goTo(next: number) {
-    setIndex(Math.max(0, Math.min(images.length - 1, next)));
+    setIndex(clampIndex(next, images.length));
+  }
+
+  function completeSwipe(clientX: number, clientY: number) {
+    if (!dragStart || !hasMultiple) return;
+    const end = { x: clientX, y: clientY };
+    if (isHorizontalSwipe(dragStart, end, 36)) {
+      goTo(index + swipeDirection(dragStart, end));
+    }
+    setDragStart(null);
   }
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-500 hover:-translate-y-1 hover:shadow-xl">
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
         <div
-          className="flex h-full transition-transform duration-500 ease-out"
-          style={{ transform: `translateX(-${index * 100}%)` }}
+          className="flex h-full select-none transition-transform duration-500 ease-out"
+          style={{ transform: `translateX(-${index * 100}%)`, touchAction: "pan-y" }}
+          onPointerDown={(event) => setDragStart({ x: event.clientX, y: event.clientY })}
+          onPointerUp={(event) => completeSwipe(event.clientX, event.clientY)}
+          onPointerCancel={() => setDragStart(null)}
         >
           {images.map((src, imageIndex) => (
             <div key={src} className="relative h-full w-full flex-shrink-0">
-              <Image
+              <PropertyImage
                 src={src}
+                fallbackImages={images}
                 alt={`${property.name} photo ${imageIndex + 1}`}
-                fill
-                className="object-cover transition-transform duration-700 group-hover:scale-105"
+                imgClassName="transition-transform duration-700 group-hover:scale-105"
                 sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
               />
             </div>
@@ -64,6 +78,7 @@ export function VillaCard({
                   key={`${src}-${dotIndex}`}
                   type="button"
                   onClick={() => goTo(dotIndex)}
+                  aria-current={index === dotIndex ? "true" : undefined}
                   className={cn(
                     "h-2 rounded-full transition-all",
                     index === dotIndex ? "w-6 bg-white" : "w-2 bg-white/45 hover:bg-white/70",
@@ -114,19 +129,19 @@ export function VillaCard({
         ) : null}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-xs font-medium text-white">
+          <Badge variant="gold">
             <Users className="h-4 w-4" />
             {property.maxGuests} guests
-          </span>
-          <span className="rounded-lg bg-navy px-3 py-1.5 text-xs font-medium text-white">
+          </Badge>
+          <Badge variant="gold">
             {property.bedrooms} bed{property.bedrooms > 1 ? "s" : ""}
-          </span>
-          <span className="rounded-lg bg-navy px-3 py-1.5 text-xs font-medium text-white">
+          </Badge>
+          <Badge variant="gold">
             {property.bathrooms} bath{property.bathrooms > 1 ? "s" : ""}
-          </span>
-          <span className="rounded-lg bg-navy px-3 py-1.5 text-xs font-medium text-white">
+          </Badge>
+          <Badge variant="gold">
             {property.area} m²
-          </span>
+          </Badge>
         </div>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -134,12 +149,13 @@ export function VillaCard({
             <Globe2 className="h-4 w-4" />
             Explore 360
           </ButtonLink>
-          <Link
+          <ButtonLink
             href={`/rooms/${property.id}`}
-            className="inline-flex w-full items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted sm:flex-1"
+            variant="outline"
+            className="w-full sm:flex-1"
           >
             View Details
-          </Link>
+          </ButtonLink>
         </div>
       </div>
     </article>

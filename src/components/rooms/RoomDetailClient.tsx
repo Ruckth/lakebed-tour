@@ -1,18 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MobileStickyBar } from "@/components/booking/MobileStickyBar";
+import { useChatPageContext } from "@/components/chat/ChatContext";
+import { PropertyImage } from "@/components/property/PropertyImage";
 import { DirectBookingBenefits } from "@/components/pricing/DirectBookingBenefits";
 import { PriceComparison } from "@/components/pricing/PriceComparison";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { StarRating } from "@/components/social/StarRating";
 import { TrustBadges } from "@/components/trust/TrustBadges";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
 import { resort } from "@/lib/data/resort-config";
 import type { Property } from "@/lib/data/properties";
@@ -27,12 +28,23 @@ export function RoomDetailClient({ property }: { property: Property }) {
   const searchParams = useSearchParams();
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showTour, setShowTour] = useState(false);
+  const chatContext = useChatPageContext();
+  const setChatContext = chatContext?.setContext;
+  const clearChatContext = chatContext?.clearContext;
   const socialProof = getSocialProofByPropertyId(property.id);
   const images = property.images.length ? property.images : [resort.heroImage];
 
   useEffect(() => {
     setShowTour(searchParams.get("tour") === "1");
   }, [searchParams]);
+
+  useEffect(() => {
+    setChatContext?.({
+      propertySlug: property.id,
+      propertyName: property.name,
+    });
+    return () => clearChatContext?.();
+  }, [clearChatContext, property.id, property.name, setChatContext]);
 
   function openTour() {
     setShowTour(true);
@@ -68,12 +80,12 @@ export function RoomDetailClient({ property }: { property: Property }) {
         <div className="grid gap-6 md:gap-10 lg:grid-cols-[1fr_380px]">
           <div className="min-w-0">
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-muted">
-              <Image
+              <PropertyImage
                 src={images[galleryIndex]}
+                fallbackImages={images}
                 alt={`${property.name} photo ${galleryIndex + 1}`}
-                fill
                 priority
-                className="object-cover"
+                sizes="(min-width: 1024px) 760px, 100vw"
               />
               <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/65 to-transparent" />
               <button
