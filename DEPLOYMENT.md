@@ -49,6 +49,8 @@ Set these in Vercel:
 
 Convex environment variables are managed in the Convex dashboard or with `npx convex env set NAME value`.
 
+If Vercel fails with `Vercel build environment detected but no Convex deployment configuration found`, add `CONVEX_DEPLOY_KEY` to the Vercel project for the environment being deployed, then redeploy. The build-script warnings from pnpm are not the cause of that failure.
+
 ## Seeding Data
 
 After the first production deployment, seed the production Convex deployment once:

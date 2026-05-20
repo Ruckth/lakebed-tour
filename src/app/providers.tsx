@@ -1,32 +1,20 @@
 "use client";
 
-import { ClerkProvider } from "@clerk/nextjs";
 import { OptionalConvexProvider } from "@/lib/react/convex";
 import type { ReactNode } from "react";
 
 export function Providers({
   children,
-  clerkPublishableKey,
+  clerkEnabled = false,
   convexUrl,
 }: {
   children: ReactNode;
-  clerkPublishableKey?: string;
+  clerkEnabled?: boolean;
   convexUrl?: string;
 }) {
-  const clerkEnabled =
-    Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
-
-  const app = (
+  return (
     <OptionalConvexProvider convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
       {children}
     </OptionalConvexProvider>
-  );
-
-  if (!clerkEnabled) return app;
-
-  return (
-    <ClerkProvider publishableKey={clerkPublishableKey}>
-      {app}
-    </ClerkProvider>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
@@ -46,13 +47,22 @@ export default function RootLayout({
   const clerkPublishableKey =
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??
     process.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const clerkEnabled =
+    Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
+  const app = (
+    <Providers convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
+      <SiteShell clerkEnabled={clerkEnabled}>{children}</SiteShell>
+    </Providers>
+  );
 
   return (
     <html lang="en" suppressHydrationWarning className={`${serif.variable} ${sans.variable}`}>
       <body>
-        <Providers convexUrl={convexUrl} clerkPublishableKey={clerkPublishableKey}>
-          <SiteShell>{children}</SiteShell>
-        </Providers>
+        {clerkEnabled ? (
+          <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
+        ) : (
+          app
+        )}
       </body>
     </html>
   );

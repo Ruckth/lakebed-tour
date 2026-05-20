@@ -1,5 +1,6 @@
 "use client";
 
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -16,7 +17,7 @@ const navLinks = [
   { href: "/#contact", label: "Contact" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -71,6 +72,25 @@ export function SiteHeader() {
           <ButtonLink href="/booking" size="nav" variant={solid ? "primary" : "glass"}>
             Book
           </ButtonLink>
+          {clerkEnabled ? (
+            <div className="flex items-center gap-2">
+              <Show when="signed-out">
+                <SignInButton mode="modal">
+                  <Button type="button" variant={solid ? "ghost" : "glass"} size="nav">
+                    Sign in
+                  </Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button type="button" variant={solid ? "outline" : "glass"} size="nav">
+                    Sign up
+                  </Button>
+                </SignUpButton>
+              </Show>
+              <Show when="signed-in">
+                <UserButton />
+              </Show>
+            </div>
+          ) : null}
           <ThemeToggle solid={solid} />
         </div>
 
@@ -114,6 +134,38 @@ export function SiteHeader() {
             >
               Book
             </ButtonLink>
+            {clerkEnabled ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Show when="signed-out">
+                  <SignInButton mode="modal">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="nav"
+                      className="w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Sign in
+                    </Button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <Button
+                      type="button"
+                      size="nav"
+                      className="w-full"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Sign up
+                    </Button>
+                  </SignUpButton>
+                </Show>
+                <Show when="signed-in">
+                  <div className="col-span-2 flex justify-center rounded-lg border border-border py-2">
+                    <UserButton />
+                  </div>
+                </Show>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
