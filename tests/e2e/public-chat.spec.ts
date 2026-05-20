@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const localizedSmoke = [
   { path: "/th", nav: "จอง", chat: "เปิดแชตคอนเซียจ", close: "ปิดแชต", placeholder: "พิมพ์คำถาม" },
@@ -12,6 +12,11 @@ const localizedSmoke = [
   { path: "/it", nav: "Prenota", chat: "Apri chat concierge", close: "Chiudi chat", placeholder: "Fai una domanda" },
   { path: "/hi", nav: "बुक करें", chat: "कंसीयर्ज चैट खोलें", close: "चैट बंद करें", placeholder: "प्रश्न पूछें" },
 ];
+
+async function chooseLanguage(page: Page, optionName: string) {
+  await page.getByLabel("Language").first().click();
+  await page.getByRole("option", { name: optionName }).click();
+}
 
 test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
   await page.goto("/");
@@ -66,7 +71,7 @@ test("all visible translated locales render localized nav and chat UI", async ({
 test("language switcher preserves equivalent public routes", async ({ page }) => {
   await page.goto("/rooms/garden-suite");
 
-  await page.getByLabel("Language").first().selectOption("th");
+  await chooseLanguage(page, "ไทย TH");
   await expect(page).toHaveURL(/\/th\/rooms\/garden-suite/);
   await expect(page.getByRole("link", { name: "วิลล่าของเรา" })).toBeVisible();
 });
@@ -74,8 +79,21 @@ test("language switcher preserves equivalent public routes", async ({ page }) =>
 test("language switcher preserves query strings and hash anchors", async ({ page }) => {
   await page.goto("/th/booking?unit=garden-suite&nights=2#villas");
 
-  await page.getByLabel("Language").first().selectOption("en");
+  await chooseLanguage(page, "English EN");
   await expect(page).toHaveURL(/\/booking\?unit=garden-suite&nights=2#villas$/);
+});
+
+test("mobile language switcher stays compact while opening full options", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 360 });
+  await page.goto("/th");
+
+  const language = page.getByRole("combobox", { name: "Language" });
+  await expect(language).toHaveText("TH");
+  const box = await language.boundingBox();
+  expect(box?.width).toBeLessThan(90);
+
+  await language.click();
+  await expect(page.getByRole("option", { name: "ไทย TH" })).toBeVisible();
 });
 
 test("locale routing handles canonical English, removed Arabic, and sampled deep links", async ({ page }) => {
@@ -84,7 +102,8 @@ test("locale routing handles canonical English, removed Arabic, and sampled deep
 
   await page.goto("/ar");
   await expect(page.getByText("This page could not be found")).toBeVisible();
-  await expect(page.getByLabel("Language").first()).not.toContainText("العربية");
+  await page.getByLabel("Language").first().click();
+  await expect(page.getByRole("option", { name: "العربية AR" })).toHaveCount(0);
 
   await page.goto("/zh-CN/booking");
   await expect(page.getByRole("heading", { name: "预订您的别墅" })).toBeVisible();

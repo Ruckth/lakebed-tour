@@ -86,7 +86,7 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-2 md:hidden">
-          <LanguageSwitcher solid={solid} className="h-9 max-w-[7.5rem]" />
+          <LanguageSwitcher solid={solid} compact />
           <ThemeToggle solid={solid} />
           <Button
             type="button"

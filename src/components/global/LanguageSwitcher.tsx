@@ -4,6 +4,14 @@ import { Globe2 } from "lucide-react";
 import { useLocale } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   defaultLocale,
   isLocale,
   localeLabels,
@@ -13,11 +21,27 @@ import {
 } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 
+const compactLocaleLabels: Record<Locale, string> = {
+  en: "EN",
+  th: "TH",
+  "zh-CN": "ZH",
+  ja: "JA",
+  ko: "KO",
+  fr: "FR",
+  de: "DE",
+  es: "ES",
+  ru: "RU",
+  it: "IT",
+  hi: "HI",
+};
+
 export function LanguageSwitcher({
   solid = true,
+  compact = false,
   className,
 }: {
   solid?: boolean;
+  compact?: boolean;
   className?: string;
 }) {
   const locale = useLocale();
@@ -37,31 +61,39 @@ export function LanguageSwitcher({
   }
 
   return (
-    <label
-      className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold",
-        solid
-          ? "border-border bg-background text-foreground"
-          : "border-white/15 bg-white/10 text-white backdrop-blur-md",
-        className,
-      )}
-    >
-      <Globe2 className="h-3.5 w-3.5" />
-      <select
-        value={currentLocale}
+    <Select value={currentLocale} onValueChange={(value) => changeLocale(value as Locale)}>
+      <SelectTrigger
         aria-label="Language"
-        onChange={(event) => changeLocale(event.target.value as Locale)}
         className={cn(
-          "max-w-[7.5rem] bg-transparent outline-none",
-          solid ? "text-foreground" : "text-white",
+          "h-9 rounded-full text-xs",
+          compact ? "w-[4.5rem] px-2.5" : "w-[9rem] px-3",
+          solid
+            ? "border-border bg-background/90 text-foreground"
+            : "border-white/20 bg-white/10 text-white shadow-white/5 backdrop-blur-md hover:bg-white/15",
+          className,
         )}
       >
-        {locales.map((item) => (
-          <option key={item} value={item} className="text-foreground">
-            {localeLabels[item]}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Globe2 className="h-3.5 w-3.5 shrink-0" />
+          <SelectValue>
+            {compact ? compactLocaleLabels[currentLocale] : localeLabels[currentLocale]}
+          </SelectValue>
+        </span>
+      </SelectTrigger>
+      <SelectContent align="end" className="min-w-[11rem]">
+        <SelectGroup>
+          {locales.map((item) => (
+            <SelectItem key={item} value={item}>
+              <span className="flex w-full items-center justify-between gap-4">
+                <span>{localeLabels[item]}</span>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {compactLocaleLabels[item]}
+                </span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }

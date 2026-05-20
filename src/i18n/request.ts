@@ -1,11 +1,14 @@
 import { getRequestConfig } from "next-intl/server";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { defaultLocale, isLocale } from "@/i18n/routing";
 
 async function loadMessages(locale: string) {
+  const messagesDirectory = path.join(process.cwd(), "messages");
   try {
-    return (await import(`../../messages/${locale}.json`)).default;
+    return JSON.parse(await readFile(path.join(messagesDirectory, `${locale}.json`), "utf8"));
   } catch {
-    return (await import(`../../messages/${defaultLocale}.json`)).default;
+    return JSON.parse(await readFile(path.join(messagesDirectory, `${defaultLocale}.json`), "utf8"));
   }
 }
 
