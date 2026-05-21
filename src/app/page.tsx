@@ -43,7 +43,7 @@ export default async function HomePage() {
       <HomeHero />
       <HomeQuickBooking />
 
-      <section id="about" className="py-20 md:py-28">
+      <section id="about" className="pb-20 pt-8 md:py-28">
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">

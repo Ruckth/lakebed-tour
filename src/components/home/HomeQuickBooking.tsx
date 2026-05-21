@@ -39,10 +39,10 @@ export function HomeQuickBooking() {
   }
 
   return (
-    <section className="relative z-20 bg-background px-5 pb-8 pt-4 md:px-8 md:py-8">
+    <section className="relative z-20 px-5 pb-0 pt-4 md:px-8 md:py-8">
       <form
         onSubmit={submitQuickBooking}
-        className="mx-auto grid max-w-5xl gap-3 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-black/10 md:grid-cols-[1fr_1fr_auto] md:items-end md:rounded-xl md:p-5"
+        className="mx-auto grid max-w-5xl gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end"
         aria-label={bookingT("directBooking")}
       >
         <div className="space-y-2">
