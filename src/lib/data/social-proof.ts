@@ -372,7 +372,7 @@ export const socialProofData: PropertySocialProof[] = [
 		tourSnippets: [
 			{
 				id: 'ph-ts1',
-				roomId: 'ph-window-bedroom',
+				roomId: 'ph-bedroom',
 				position: [220, 80, -180],
 				quote: 'The morning light through the tall windows is beautiful.',
 				authorName: 'Charlotte W.',

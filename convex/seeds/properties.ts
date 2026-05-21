@@ -66,11 +66,11 @@ const PROPERTIES = [
 		bathrooms: 2,
 		area: 200,
 		images: [
-			'/canopy-loft-window-bedroom-360.jpg',
-			'/canopy-loft-lounge-360.jpg',
-			'/canopy-loft-kitchenette-360.jpg',
-			'/canopy-loft-sleeping-nook-360.jpg',
-			'/canopy-loft-entry-wardrobe-360.jpg'
+			'/canopy-loft-bedroom-photo.jpg',
+			'/canopy-loft-lounge-photo.jpg',
+			'/canopy-loft-kitchenette-photo.jpg',
+			'/canopy-loft-window-view-photo.jpg',
+			'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=1200&h=800&fit=crop'
 		],
 		amenities: [
 			'WiFi',
@@ -81,7 +81,7 @@ const PROPERTIES = [
 			'King Bed',
 			'Designer Lighting'
 		],
-		tourRoomIds: ['ph-window-bedroom', 'ph-lounge', 'ph-kitchenette', 'ph-sleeping-nook', 'ph-entry-wardrobe'],
+		tourRoomIds: ['ph-bedroom'],
 		directDiscountPercent: 15,
 		status: 'active' as const
 	}

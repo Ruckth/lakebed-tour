@@ -31,7 +31,7 @@ const TOUR_SNIPPETS = [
 	},
 	{
 		propertyKey: 'penthouse' as const,
-		roomSlug: 'ph-window-bedroom',
+		roomSlug: 'ph-bedroom',
 		position: [220, 80, -180],
 		quote: 'The morning light through the tall windows is beautiful.',
 		authorName: 'Charlotte W.',
