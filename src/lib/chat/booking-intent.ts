@@ -9,6 +9,8 @@ export type ChatBookingContext = {
   guests?: number;
 };
 
+export type ChatBookingMissingField = "villa" | "checkIn" | "checkOut";
+
 export type ChatBookingContextInput = {
   latestUserMessage?: string;
   latestAssistantMessage?: string;
@@ -339,4 +341,28 @@ export function extractChatBookingContext({
     propertySlug: inferChatPropertySlug(combined, activePropertySlug),
     guests: inferChatGuestCount(combined),
   };
+}
+
+export function getMissingChatBookingFields(
+  context: Pick<ChatBookingContext, "checkIn" | "checkOut" | "propertySlug">,
+): ChatBookingMissingField[] {
+  const missing: ChatBookingMissingField[] = [];
+  if (!context.propertySlug) missing.push("villa");
+  if (!context.checkIn) missing.push("checkIn");
+  if (!context.checkOut) missing.push("checkOut");
+  return missing;
+}
+
+export function getBookingPromptKey(
+  context: Pick<ChatBookingContext, "checkIn" | "checkOut" | "propertySlug">,
+) {
+  const missing = getMissingChatBookingFields(context);
+  const missingDates = missing.includes("checkIn") || missing.includes("checkOut");
+
+  if (!missing.length) return "bookingPromptReady";
+  if (missing.includes("villa") && missingDates) return "bookingPromptMissingVillaAndDates";
+  if (missing.includes("villa")) return "bookingPromptMissingVilla";
+  if (missing.includes("checkIn") && missing.includes("checkOut")) return "bookingPromptMissingDates";
+  if (missing.includes("checkIn")) return "bookingPromptMissingCheckIn";
+  return "bookingPromptMissingCheckOut";
 }

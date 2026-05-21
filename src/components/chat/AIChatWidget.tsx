@@ -27,7 +27,7 @@ import {
   type ChatSuggestionCandidate,
   type ChatSuggestionId,
 } from "@/lib/chat/suggestions";
-import { extractChatBookingContext } from "@/lib/chat/booking-intent";
+import { extractChatBookingContext, getBookingPromptKey, type ChatBookingContext } from "@/lib/chat/booking-intent";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
@@ -148,6 +148,10 @@ function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
   }
 
   return null;
+}
+
+function localBookingReplyKey(context: ChatBookingContext) {
+  return getBookingPromptKey(context);
 }
 
 function SuggestionChips({
@@ -620,7 +624,14 @@ export function AIChatWidget({
     }
 
     if (!convex) {
-      const assistantMessage = t("noConvex");
+      const bookingContext = extractChatBookingContext({
+        latestUserMessage: clean,
+        latestAssistantMessage: "",
+        activePropertySlug: activePropertySlug || undefined,
+      });
+      const assistantMessage = bookingContext.hasBookingIntent
+        ? t(localBookingReplyKey(bookingContext))
+        : t("noConvex");
       setMessages((items) => [
         ...items,
         {

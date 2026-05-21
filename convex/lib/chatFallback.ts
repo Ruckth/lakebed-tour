@@ -20,7 +20,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`We have 3 luxury properties:\n- **Pool Villa**: ฿8,500/night (฿7,225 direct)\n- **Garden Suite**: ฿4,500/night (฿3,825 direct)\n- **Canopy Loft Penthouse**: ฿12,000/night (฿10,200 direct)\n\nAll prices include a **15% direct booking discount**. Which property interests you?`,
 		booking:
-			`You can check availability and book directly using the date picker on the property page. Direct booking gives you **15% off** plus free airport pickup, welcome basket, and late checkout! If you need help with specific dates, feel free to message us on WhatsApp.`,
+			`Use the booking card below to choose a villa and dates, then continue to secure direct booking. Direct booking gives you **15% off** plus free airport pickup, welcome basket, and late checkout.`,
 		details: (property) =>
 			`**${property.name}** includes: ${property.amenities.join(', ')}. It's ${property.area}m² with ${property.bedrooms} bedroom(s) and ${property.bathrooms} bathroom(s), perfect for up to ${property.maxGuests} guests. Take the **360° virtual tour** to explore every room!`,
 		generic:
@@ -33,7 +33,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`เรามีที่พักหรู 3 แบบ:\n- **Pool Villa**: ฿8,500/คืน (จองตรง ฿7,225)\n- **Garden Suite**: ฿4,500/คืน (จองตรง ฿3,825)\n- **Canopy Loft Penthouse**: ฿12,000/คืน (จองตรง ฿10,200)\n\nราคาทั้งหมดรวม **ส่วนลดจองตรง 15%** แล้ว สนใจที่พักแบบไหนเป็นพิเศษไหม?`,
 		booking:
-			`คุณสามารถตรวจสอบห้องว่างและจองตรงได้จากตัวเลือกวันที่บนหน้าที่พัก จองตรงรับ **ส่วนลด 15%** พร้อมบริการรับสนามบิน ของต้อนรับ และเช็กเอาต์สาย หากต้องการความช่วยเหลือเรื่องวันที่เฉพาะเจาะจง สามารถทัก WhatsApp ได้เลย`,
+			`ใช้การ์ดจองด้านล่างเลือกวิลล่าและวันที่ แล้วไปจองตรงอย่างปลอดภัยได้เลย จองตรงรับ **ส่วนลด 15%** พร้อมบริการรับสนามบิน ของต้อนรับ และเช็กเอาต์สาย`,
 		details: (property) =>
 			`**${property.name}** มีสิ่งอำนวยความสะดวก: ${property.amenities.join(', ')} พื้นที่ ${property.area}m² มี ${property.bedrooms} ห้องนอน และ ${property.bathrooms} ห้องน้ำ รองรับผู้เข้าพักสูงสุด ${property.maxGuests} คน ลองชม **ทัวร์เสมือนจริง 360°** เพื่อดูทุกห้องได้เลย`,
 		generic:
@@ -46,7 +46,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`我们有 3 间豪华房源：\n- **Pool Villa**: ฿8,500/晚（直接预订 ฿7,225）\n- **Garden Suite**: ฿4,500/晚（直接预订 ฿3,825）\n- **Canopy Loft Penthouse**: ฿12,000/晚（直接预订 ฿10,200）\n\n所有价格均包含 **15% 直接预订折扣**。您对哪间房源感兴趣？`,
 		booking:
-			`您可以在房源页面使用日期选择器查看可订情况并直接预订。直接预订可享 **15% 折扣**，并包含免费机场接送、欢迎礼遇和延迟退房。如需具体日期帮助，请通过 WhatsApp 联系我们。`,
+			`请使用下方预订卡选择别墅和日期，然后继续安全的直接预订。直接预订可享 **15% 折扣**，并包含免费机场接送、欢迎礼遇和延迟退房。`,
 		details: (property) =>
 			`**${property.name}** 包含：${property.amenities.join(', ')}。面积 ${property.area}m²，设有 ${property.bedrooms} 间卧室和 ${property.bathrooms} 间浴室，最多适合 ${property.maxGuests} 位住客。您可以通过 **360° 虚拟导览** 查看每个房间！`,
 		generic:
@@ -59,7 +59,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`3つのラグジュアリー宿泊施設があります：\n- **Pool Villa**: ฿8,500/泊（直接予約 ฿7,225）\n- **Garden Suite**: ฿4,500/泊（直接予約 ฿3,825）\n- **Canopy Loft Penthouse**: ฿12,000/泊（直接予約 ฿10,200）\n\nすべて **15% の直接予約割引**込みです。どの施設に興味がありますか？`,
 		booking:
-			`空室確認と直接予約は、宿泊施設ページの日付ピッカーから行えます。直接予約では **15% オフ**に加え、無料空港送迎、ウェルカムバスケット、レイトチェックアウトが含まれます。具体的な日程の相談は WhatsApp でどうぞ。`,
+			`下の予約カードでヴィラと日付を選び、安全な直接予約へ進んでください。直接予約では **15% オフ**に加え、無料空港送迎、ウェルカムバスケット、レイトチェックアウトが含まれます。`,
 		details: (property) =>
 			`**${property.name}** には ${property.amenities.join(', ')} が含まれます。広さは ${property.area}m²、${property.bedrooms} ベッドルーム、${property.bathrooms} バスルームで、最大 ${property.maxGuests} 名に最適です。**360° バーチャルツアー**で全室をご覧ください！`,
 		generic:
@@ -72,7 +72,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`고급 숙소 3곳이 있습니다:\n- **Pool Villa**: ฿8,500/박 (직접 예약 ฿7,225)\n- **Garden Suite**: ฿4,500/박 (직접 예약 ฿3,825)\n- **Canopy Loft Penthouse**: ฿12,000/박 (직접 예약 ฿10,200)\n\n모든 가격에는 **15% 직접 예약 할인**이 포함됩니다. 어떤 숙소가 궁금하신가요?`,
 		booking:
-			`숙소 페이지의 날짜 선택기로 가능 여부를 확인하고 직접 예약할 수 있습니다. 직접 예약 시 **15% 할인**과 무료 공항 픽업, 웰컴 바스켓, 레이트 체크아웃이 제공됩니다. 특정 날짜 도움이 필요하면 WhatsApp 으로 문의하세요.`,
+			`아래 예약 카드에서 빌라와 날짜를 선택한 뒤 안전한 직접 예약으로 진행하세요. 직접 예약 시 **15% 할인**과 무료 공항 픽업, 웰컴 바스켓, 레이트 체크아웃이 제공됩니다.`,
 		details: (property) =>
 			`**${property.name}** 포함 사항: ${property.amenities.join(', ')}. ${property.area}m², 침실 ${property.bedrooms}개, 욕실 ${property.bathrooms}개이며 최대 ${property.maxGuests}명에게 적합합니다. **360° 가상 투어**로 모든 방을 둘러보세요!`,
 		generic:
@@ -85,7 +85,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`Nous avons 3 hébergements de luxe :\n- **Pool Villa** : ฿8,500/nuit (฿7,225 en direct)\n- **Garden Suite** : ฿4,500/nuit (฿3,825 en direct)\n- **Canopy Loft Penthouse** : ฿12,000/nuit (฿10,200 en direct)\n\nTous les prix incluent une **remise directe de 15%**. Quel hébergement vous intéresse ?`,
 		booking:
-			`Vous pouvez vérifier les disponibilités et réserver directement avec le sélecteur de dates sur la page de l’hébergement. La réservation directe offre **15% de réduction**, plus le transfert aéroport gratuit, un panier de bienvenue et le départ tardif. Pour des dates précises, contactez-nous sur WhatsApp.`,
+			`Utilisez la carte de réservation ci-dessous pour choisir la villa et les dates, puis continuez vers la réservation directe sécurisée. La réservation directe offre **15% de réduction**, le transfert aéroport gratuit, un panier de bienvenue et le départ tardif.`,
 		details: (property) =>
 			`**${property.name}** inclut : ${property.amenities.join(', ')}. C’est un espace de ${property.area}m² avec ${property.bedrooms} chambre(s) et ${property.bathrooms} salle(s) de bain, parfait pour jusqu’à ${property.maxGuests} hôtes. Lancez la **visite virtuelle 360°** pour tout explorer !`,
 		generic:
@@ -98,7 +98,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`Wir haben 3 Luxusunterkünfte:\n- **Pool Villa**: ฿8,500/Nacht (฿7,225 direkt)\n- **Garden Suite**: ฿4,500/Nacht (฿3,825 direkt)\n- **Canopy Loft Penthouse**: ฿12,000/Nacht (฿10,200 direkt)\n\nAlle Preise enthalten **15% Direktbuchungsrabatt**. Welche Unterkunft interessiert Sie?`,
 		booking:
-			`Sie können Verfügbarkeit prüfen und direkt über den Datumswähler auf der Unterkunftsseite buchen. Direktbuchung bietet **15% Rabatt** plus kostenlosen Flughafentransfer, Willkommenskorb und späten Checkout. Bei konkreten Daten schreiben Sie uns gern auf WhatsApp.`,
+			`Wählen Sie Villa und Daten in der Buchungskarte unten und fahren Sie mit der sicheren Direktbuchung fort. Direktbuchung bietet **15% Rabatt** plus kostenlosen Flughafentransfer, Willkommenskorb und späten Checkout.`,
 		details: (property) =>
 			`**${property.name}** umfasst: ${property.amenities.join(', ')}. Sie hat ${property.area}m², ${property.bedrooms} Schlafzimmer und ${property.bathrooms} Badezimmer, ideal für bis zu ${property.maxGuests} Gäste. Erkunden Sie alles in der **360°-Tour**!`,
 		generic:
@@ -111,7 +111,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`Tenemos 3 propiedades de lujo:\n- **Pool Villa**: ฿8,500/noche (฿7,225 directo)\n- **Garden Suite**: ฿4,500/noche (฿3,825 directo)\n- **Canopy Loft Penthouse**: ฿12,000/noche (฿10,200 directo)\n\nTodos los precios incluyen **15% de descuento directo**. ¿Qué propiedad le interesa?`,
 		booking:
-			`Puede comprobar disponibilidad y reservar directamente con el selector de fechas en la página de la propiedad. La reserva directa ofrece **15% de descuento**, traslado gratuito desde el aeropuerto, cesta de bienvenida y salida tardía. Para fechas específicas, escríbanos por WhatsApp.`,
+			`Use la tarjeta de reserva de abajo para elegir villa y fechas, y continúe con la reserva directa segura. La reserva directa ofrece **15% de descuento**, traslado gratuito desde el aeropuerto, cesta de bienvenida y salida tardía.`,
 		details: (property) =>
 			`**${property.name}** incluye: ${property.amenities.join(', ')}. Tiene ${property.area}m², ${property.bedrooms} dormitorio(s) y ${property.bathrooms} baño(s), perfecto para hasta ${property.maxGuests} huéspedes. ¡Explore cada habitación con el **tour virtual 360°**!`,
 		generic:
@@ -124,7 +124,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`У нас есть 3 роскошных объекта:\n- **Pool Villa**: ฿8,500/ночь (฿7,225 напрямую)\n- **Garden Suite**: ฿4,500/ночь (฿3,825 напрямую)\n- **Canopy Loft Penthouse**: ฿12,000/ночь (฿10,200 напрямую)\n\nВсе цены включают **15% скидку за прямое бронирование**. Какой объект вас интересует?`,
 		booking:
-			`Вы можете проверить доступность и забронировать напрямую с помощью выбора дат на странице объекта. Прямое бронирование дает **скидку 15%**, бесплатный трансфер из аэропорта, приветственный набор и поздний выезд. Для конкретных дат напишите нам в WhatsApp.`,
+			`Выберите виллу и даты в карточке бронирования ниже, затем перейдите к безопасному прямому бронированию. Прямое бронирование дает **скидку 15%**, бесплатный трансфер из аэропорта, приветственный набор и поздний выезд.`,
 		details: (property) =>
 			`**${property.name}** включает: ${property.amenities.join(', ')}. Площадь ${property.area}m², ${property.bedrooms} спальни и ${property.bathrooms} ванные, подходит до ${property.maxGuests} гостей. Посмотрите все комнаты в **виртуальном туре 360°**!`,
 		generic:
@@ -137,7 +137,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`Abbiamo 3 proprietà di lusso:\n- **Pool Villa**: ฿8,500/notte (฿7,225 diretto)\n- **Garden Suite**: ฿4,500/notte (฿3,825 diretto)\n- **Canopy Loft Penthouse**: ฿12,000/notte (฿10,200 diretto)\n\nTutti i prezzi includono **15% di sconto diretto**. Quale proprietà ti interessa?`,
 		booking:
-			`Puoi controllare disponibilità e prenotare direttamente con il selettore date nella pagina della proprietà. La prenotazione diretta offre **15% di sconto**, transfer aeroportuale gratuito, welcome basket e late checkout. Per date specifiche scrivici su WhatsApp.`,
+			`Usa la scheda di prenotazione sotto per scegliere villa e date, poi continua con la prenotazione diretta sicura. La prenotazione diretta offre **15% di sconto**, transfer aeroportuale gratuito, welcome basket e late checkout.`,
 		details: (property) =>
 			`**${property.name}** include: ${property.amenities.join(', ')}. È di ${property.area}m² con ${property.bedrooms} camera/e e ${property.bathrooms} bagno/i, perfetta per fino a ${property.maxGuests} ospiti. Esplora ogni stanza con il **tour virtuale 360°**!`,
 		generic:
@@ -150,7 +150,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		priceAll:
 			`हमारे पास 3 लक्जरी प्रॉपर्टी हैं:\n- **Pool Villa**: ฿8,500/रात (सीधे ฿7,225)\n- **Garden Suite**: ฿4,500/रात (सीधे ฿3,825)\n- **Canopy Loft Penthouse**: ฿12,000/रात (सीधे ฿10,200)\n\nसभी कीमतों में **15% सीधी बुकिंग छूट** शामिल है। आपको कौन सी प्रॉपर्टी पसंद है?`,
 		booking:
-			`आप प्रॉपर्टी पेज पर तारीख चयनकर्ता से उपलब्धता जाँचकर सीधे बुक कर सकते हैं। सीधी बुकिंग में **15% छूट**, मुफ्त एयरपोर्ट पिकअप, वेलकम बास्केट और लेट चेकआउट मिलता है। खास तारीखों में मदद चाहिए तो WhatsApp पर संदेश भेजें।`,
+			`नीचे बुकिंग कार्ड से विला और तारीखें चुनें, फिर सुरक्षित सीधी बुकिंग पर जाएँ। सीधी बुकिंग में **15% छूट**, मुफ्त एयरपोर्ट पिकअप, वेलकम बास्केट और लेट चेकआउट मिलता है।`,
 		details: (property) =>
 			`**${property.name}** में शामिल हैं: ${property.amenities.join(', ')}। यह ${property.area}m² है, इसमें ${property.bedrooms} बेडरूम और ${property.bathrooms} बाथरूम हैं, और अधिकतम ${property.maxGuests} मेहमानों के लिए उपयुक्त है। हर कमरे को देखने के लिए **360° वर्चुअल टूर** लें!`,
 		generic:

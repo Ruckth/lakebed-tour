@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   extractChatBookingContext,
+  getBookingPromptKey,
+  getMissingChatBookingFields,
   hasChatBookingIntent,
   inferChatGuestCount,
   inferChatPropertySlug,
@@ -104,5 +106,46 @@ describe("chat booking intent helpers", () => {
         now,
       }),
     ).toMatchObject({ hasBookingIntent: false, checkIn: "", checkOut: "" });
+  });
+
+  it("reports only missing booking fields", () => {
+    expect(
+      getMissingChatBookingFields({
+        propertySlug: "pool-villa",
+        checkIn: "2026-10-30",
+        checkOut: "2026-11-03",
+      }),
+    ).toEqual([]);
+    expect(
+      getMissingChatBookingFields({
+        propertySlug: undefined,
+        checkIn: "2026-10-30",
+        checkOut: "",
+      }),
+    ).toEqual(["villa", "checkOut"]);
+  });
+
+  it("chooses localized prompt keys from missing fields", () => {
+    expect(
+      getBookingPromptKey({
+        propertySlug: undefined,
+        checkIn: "",
+        checkOut: "",
+      }),
+    ).toBe("bookingPromptMissingVillaAndDates");
+    expect(
+      getBookingPromptKey({
+        propertySlug: "pool-villa",
+        checkIn: "2026-10-30",
+        checkOut: "",
+      }),
+    ).toBe("bookingPromptMissingCheckOut");
+    expect(
+      getBookingPromptKey({
+        propertySlug: "pool-villa",
+        checkIn: "2026-10-30",
+        checkOut: "2026-11-03",
+      }),
+    ).toBe("bookingPromptReady");
   });
 });

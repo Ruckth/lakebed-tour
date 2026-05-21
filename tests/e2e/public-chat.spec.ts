@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const localizedSmoke = [
   { path: "/th", nav: "จอง", chat: "เปิดแชตคอนเซียจ", close: "ปิดแชต", placeholder: "พิมพ์คำถาม" },
@@ -24,6 +24,19 @@ async function chooseLanguage(page: Page, optionName: string) {
     }
   }
   await page.getByRole("link", { name: optionName }).click();
+}
+
+async function openCalendarPopover(page: Page, trigger: Locator) {
+  await trigger.scrollIntoViewIfNeeded();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await trigger.click();
+    const opened = await page
+      .getByRole("grid")
+      .isVisible({ timeout: 1500 })
+      .catch(() => false);
+    if (opened) return;
+  }
+  await expect(page.getByRole("grid")).toBeVisible();
 }
 
 test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
@@ -115,9 +128,19 @@ test("thai booking chat shows a prefilled booking handoff", async ({ page }) => 
 
   const bookingCard = page.getByTestId("chat-booking-card");
   await expect(bookingCard).toBeVisible();
-  await expect(bookingCard.getByLabel("เช็กอิน")).toHaveValue("2026-10-30");
-  await expect(bookingCard.getByLabel("เช็กเอาต์")).toHaveValue("2026-11-03");
-  await expect(bookingCard.getByText(/Pool Villa/)).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-booking-check-in")).toHaveAttribute(
+    "data-selected-date",
+    "2026-10-30",
+  );
+  await expect(bookingCard.getByTestId("chat-booking-check-out")).toHaveAttribute(
+    "data-selected-date",
+    "2026-11-03",
+  );
+  await expect(bookingCard.getByTestId("chat-villa-option-pool-villa")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(bookingCard.getByText(/เลือกแล้ว: Pool Villa/)).toBeVisible();
   await expect(bookingCard.getByText(/ผู้เข้าพัก 4 คน/)).toBeVisible();
   await expect(bookingCard.getByText(/4 คืน/)).toBeVisible();
   await expect(bookingCard.getByText(/฿28,900/)).toBeVisible();
@@ -133,9 +156,62 @@ test("thai booking chat shows a prefilled booking handoff", async ({ page }) => 
   });
 });
 
-test("english booking chat lets visitors choose missing dates before booking", async ({ page }) => {
+test("thai booking prompt asks only for missing fields and shows villa cards", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByPlaceholder("พิมพ์คำถาม").fill("จองวันที่ 12 เดือนหน้า");
+  await page.getByRole("button", { name: "ส่งข้อความ" }).click();
+
+  const bookingCard = page.getByTestId("chat-booking-card");
+  await expect(page.getByText(/เลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์/)).toBeVisible();
+  await expect(bookingCard).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-option-pool-villa")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-option-garden-suite")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-option-penthouse")).toBeVisible();
+});
+
+test("english booking chat lets visitors choose a missing villa before booking", async ({ page }) => {
   const checkIn = "2026-10-30";
   const checkOut = "2026-11-03";
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
+  await page.getByPlaceholder("Ask a question").fill("I want to book 30 October to 3 November");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  const bookingCard = page.getByTestId("chat-booking-card");
+  await expect(bookingCard).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-booking-check-in")).toHaveAttribute(
+    "data-selected-date",
+    checkIn,
+  );
+  await expect(bookingCard.getByTestId("chat-booking-check-out")).toHaveAttribute(
+    "data-selected-date",
+    checkOut,
+  );
+
+  await bookingCard.getByRole("button", { name: "Book" }).click();
+  await expect(bookingCard.getByRole("alert")).toContainText("Choose a villa");
+
+  await bookingCard.getByTestId("chat-villa-option-garden-suite").click();
+  await expect(bookingCard.getByTestId("chat-villa-option-garden-suite")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await bookingCard.getByRole("button", { name: "Book" }).click();
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/booking");
+    expect(url.searchParams.get("checkin")).toBe(checkIn);
+    expect(url.searchParams.get("checkout")).toBe(checkOut);
+    expect(url.searchParams.get("unit")).toBe("garden-suite");
+    return true;
+  });
+});
+
+test("mobile booking calendars open cleanly from the chat card", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
   await page.goto("/");
 
   await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
@@ -144,18 +220,13 @@ test("english booking chat lets visitors choose missing dates before booking", a
 
   const bookingCard = page.getByTestId("chat-booking-card");
   await expect(bookingCard).toBeVisible();
-  await expect(bookingCard.getByLabel("Check in")).toHaveValue("");
-  await expect(bookingCard.getByLabel("Check out")).toHaveValue("");
+  await openCalendarPopover(page, bookingCard.getByTestId("chat-booking-check-in"));
+  await expect(page.getByRole("grid")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("grid")).toHaveCount(0);
 
-  await bookingCard.getByLabel("Check in").fill(checkIn);
-  await bookingCard.getByLabel("Check out").fill(checkOut);
-  await bookingCard.getByRole("button", { name: "Book" }).click();
-  await expect(page).toHaveURL((url) => {
-    expect(url.pathname).toBe("/booking");
-    expect(url.searchParams.get("checkin")).toBe(checkIn);
-    expect(url.searchParams.get("checkout")).toBe(checkOut);
-    return true;
-  });
+  await openCalendarPopover(page, bookingCard.getByTestId("chat-booking-check-out"));
+  await expect(page.getByRole("grid")).toBeVisible();
 });
 
 test("german chat suggestions float under assistant messages and update", async ({ page }) => {
