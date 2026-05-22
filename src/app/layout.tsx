@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
+import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
 import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
@@ -55,11 +56,8 @@ export default async function RootLayout({
   const messages = await getMessages();
   const convexUrl =
     process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
-  const clerkPublishableKey =
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??
-    process.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const clerkEnabled =
-    Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
+  const clerkPublishableKey = getClerkPublishableKey();
+  const clerkEnabled = isClerkConfigured();
   const app = (
     <Providers convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
       <SiteShell>{children}</SiteShell>

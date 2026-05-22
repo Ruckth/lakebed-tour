@@ -1,11 +1,8 @@
 import { AdminChatDashboard } from "@/components/admin/AdminChatDashboard";
+import { isClerkConfigured } from "@/lib/clerk-config";
 
 export default function AdminPage() {
-  const clerkPublishableKey =
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??
-    process.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const clerkEnabled =
-    Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
+  const clerkEnabled = isClerkConfigured();
 
   if (!clerkEnabled) {
     return (
@@ -18,9 +15,9 @@ export default function AdminPage() {
             Clerk is required for admin
           </h1>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and configure the Convex
-            `CLERK_JWT_ISSUER_DOMAIN` plus `ADMIN_EMAILS` environment variables before
-            opening the dashboard.
+            Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and
+            configure the Convex `CLERK_JWT_ISSUER_DOMAIN` plus `ADMIN_EMAILS`
+            environment variables before opening the dashboard.
           </p>
         </section>
       </main>

@@ -2,12 +2,10 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import createMiddleware from "next-intl/middleware";
 import { NextResponse } from "next/server";
 import { routing } from "@/i18n/routing";
+import { isClerkConfigured } from "@/lib/clerk-config";
 
 const handleI18nRouting = createMiddleware(routing);
-const clerkPublishableKey =
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? process.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
-const clerkEnabled =
-  Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
+const clerkEnabled = isClerkConfigured();
 
 function handleRequest(request: Request & { nextUrl: URL }) {
   const { pathname } = request.nextUrl;
