@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { useChatPageContext } from "@/components/chat/ChatContext";
+import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { MessagingButtons } from "@/components/chat/MessagingButtons";
 import {
   addChatMessage,
@@ -65,6 +66,11 @@ const CHAT_PAGE_HEADER_OFFSET = 0;
 const CHAT_PAGE_MIN_HEIGHT = 360;
 const CHAT_PAGE_VIEWPORT_FALLBACK = "100svh";
 const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
+const IN_APP_KEYBOARD_FALLBACK_RATIO = 0.43;
+const IN_APP_KEYBOARD_FALLBACK_MIN = 280;
+const IN_APP_KEYBOARD_FALLBACK_MAX = 440;
+const KEYBOARD_OVERLAY_BROWSER_PATTERN =
+  /Instagram|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger|TikTok|TwitterAndroid|;\s?wv\)/i;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -124,6 +130,22 @@ function getBrowserChatMetadata() {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isKeyboardOverlayBrowser() {
+  if (typeof navigator === "undefined") return false;
+  return KEYBOARD_OVERLAY_BROWSER_PATTERN.test(navigator.userAgent);
+}
+
+function getKeyboardOverlayFallbackInset() {
+  if (typeof window === "undefined") return 0;
+  return Math.min(
+    IN_APP_KEYBOARD_FALLBACK_MAX,
+    Math.max(
+      IN_APP_KEYBOARD_FALLBACK_MIN,
+      Math.round(window.innerHeight * IN_APP_KEYBOARD_FALLBACK_RATIO),
+    ),
+  );
 }
 
 function getStoredSessionId() {
@@ -196,26 +218,12 @@ function SuggestionChips({
 }
 
 function ContactAppIcon({ app }: { app: ContactApp }) {
-  if (app === "whatsapp") {
-    return (
-      <span
-        data-testid="contact-app-icon-whatsapp"
-        aria-hidden="true"
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a9f6a] text-white"
-      >
-        <MessageCircle className="h-3.5 w-3.5" />
-      </span>
-    );
-  }
-
   return (
-    <span
-      data-testid="contact-app-icon-line"
-      aria-hidden="true"
-      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#06c755] text-white"
-    >
-      <MessageCircle className="h-3.5 w-3.5" />
-    </span>
+    <ContactAppBrandIcon
+      app={app}
+      className="h-5 w-5"
+      data-testid={`contact-app-icon-${app}`}
+    />
   );
 }
 
@@ -644,12 +652,20 @@ function ChatExperience({
             ((visualViewport?.height ?? window.innerHeight) + (visualViewport?.offsetTop ?? 0)),
         ),
       );
+      const focusedInputIsActive = document.activeElement === inputRef.current;
+      const effectiveInset =
+        mode === "page" &&
+        focusedInputIsActive &&
+        nextInset <= MOBILE_KEYBOARD_THRESHOLD &&
+        isKeyboardOverlayBrowser()
+          ? getKeyboardOverlayFallbackInset()
+          : nextInset;
       const previousInset = keyboardInsetRef.current;
-      if (Math.abs(nextInset - previousInset) < 8 && nextInset !== 0) return;
+      if (Math.abs(effectiveInset - previousInset) < 8 && effectiveInset !== 0) return;
 
-      keyboardInsetRef.current = nextInset;
-      setMobileKeyboardInset(nextInset);
-      if (nextInset <= MOBILE_KEYBOARD_THRESHOLD && document.activeElement !== inputRef.current) {
+      keyboardInsetRef.current = effectiveInset;
+      setMobileKeyboardInset(effectiveInset);
+      if (effectiveInset <= MOBILE_KEYBOARD_THRESHOLD && !focusedInputIsActive) {
         setComposerFocused(false);
       }
     }
@@ -674,7 +690,7 @@ function ChatExperience({
       window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
-  }, [mode, open, updateChatPageViewportHeight]);
+  }, [composerFocused, mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
     if (mode !== "page") return;
@@ -1032,7 +1048,7 @@ function ChatExperience({
                 {t("shareContact")}
               </summary>
               <form className="mt-3 grid gap-2" onSubmit={saveContact}>
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_9.5rem_minmax(0,1fr)]">
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)]">
                   <Input
                     value={contactForm.email}
                     onChange={(event) =>
@@ -1055,12 +1071,9 @@ function ChatExperience({
                   >
                     <SelectTrigger
                       aria-label={t("preferredApp")}
-                      className="h-9 rounded-lg px-3 text-sm"
+                      className="h-9 w-9 justify-center rounded-lg p-0 [&>svg]:hidden"
                     >
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <ContactAppIcon app={contactForm.preferredApp} />
-                        <span className="truncate">{t(contactForm.preferredApp)}</span>
-                      </span>
+                      <ContactAppIcon app={contactForm.preferredApp} />
                     </SelectTrigger>
                     <SelectContent>
                       {contactApps.map((app) => (

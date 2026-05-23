@@ -167,6 +167,36 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeVisible();
 });
 
+test("instagram in-app browser lifts the composer when viewport inset is unavailable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
+    });
+  });
+  await page.goto("/chat");
+
+  const chatFooter = page.getByTestId("chat-footer");
+  const input = page.getByPlaceholder("Ask a question");
+
+  await input.focus();
+  await input.fill("Hello from Instagram");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
+    )
+    .toBeGreaterThan(250);
+
+  const inputBox = await input.boundingBox();
+  expect(inputBox).not.toBeNull();
+  expect(inputBox!.y + inputBox!.height).toBeLessThan(520);
+});
+
 test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
   await page.goto("/th");
 
