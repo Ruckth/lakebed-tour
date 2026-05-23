@@ -1,7 +1,7 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
 import { useLocale } from "next-intl";
+import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { localizeHref } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 
@@ -16,28 +16,30 @@ export function MessagingButtons({
 }) {
   const locale = useLocale();
   const cleanNumber = whatsappNumber.replace(/[^\d]/g, "");
-  const linkClassName = quiet
-    ? "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-slate-700 transition hover:border-gold/40 hover:bg-gold/10 hover:text-navy dark:text-slate-200 dark:hover:text-gold"
-    : "inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold text-white transition";
+  const linkClassName =
+    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-slate-700 shadow-sm transition hover:border-gold/40 hover:bg-gold/10 hover:text-navy focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 dark:text-slate-200 dark:hover:text-gold";
 
   return (
-    <div className={cn("grid grid-cols-2 gap-2", quiet && "opacity-90")}>
+    <div className={cn("flex items-center gap-2", quiet && "opacity-90")}>
       <a
         href={`https://wa.me/${cleanNumber}`}
         target="_blank"
         rel="noreferrer"
-        className={cn(linkClassName, !quiet && "bg-emerald-600 hover:bg-emerald-500")}
+        aria-label="Open WhatsApp chat"
+        title="WhatsApp"
+        className={linkClassName}
       >
-        <MessageCircle className="h-3.5 w-3.5" />
-        WhatsApp
+        <ContactAppBrandIcon app="whatsapp" />
       </a>
       <a
         href={lineId ? `https://line.me/R/ti/p/${encodeURIComponent(lineId)}` : localizeHref("/#contact", locale)}
         target={lineId ? "_blank" : undefined}
         rel={lineId ? "noreferrer" : undefined}
-        className={cn(linkClassName, !quiet && "bg-lime-600 hover:bg-lime-500")}
+        aria-label="Open LINE chat"
+        title="LINE"
+        className={linkClassName}
       >
-        LINE
+        <ContactAppBrandIcon app="line" />
       </a>
     </div>
   );

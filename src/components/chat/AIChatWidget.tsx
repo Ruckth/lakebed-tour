@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -69,8 +70,17 @@ const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
 const IN_APP_KEYBOARD_FALLBACK_RATIO = 0.43;
 const IN_APP_KEYBOARD_FALLBACK_MIN = 280;
 const IN_APP_KEYBOARD_FALLBACK_MAX = 440;
+const KEYBOARD_FALLBACK_GRACE_MS = 120;
+const KEYBOARD_SAFE_GAP = 16;
+const KEYBOARD_INSET_EPSILON = 8;
+const KEYBOARD_PROBE_DELAYS_MS = [80, 180, 360, 600] as const;
 const KEYBOARD_OVERLAY_BROWSER_PATTERN =
   /Instagram|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger|TikTok|TwitterAndroid|;\s?wv\)/i;
+
+type ChatPanelStyle = CSSProperties & {
+  "--chat-keyboard-inset"?: string;
+  "--chat-visible-height"?: string;
+};
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -146,6 +156,52 @@ function getKeyboardOverlayFallbackInset() {
       Math.round(window.innerHeight * IN_APP_KEYBOARD_FALLBACK_RATIO),
     ),
   );
+}
+
+function clampKeyboardInset(inset: number) {
+  if (typeof window === "undefined") return inset;
+  const maxInset = Math.max(
+    IN_APP_KEYBOARD_FALLBACK_MAX,
+    Math.round(window.innerHeight * 0.7),
+  );
+  return Math.min(Math.max(0, Math.ceil(inset)), maxInset);
+}
+
+function getMeasuredKeyboardInset({
+  fallbackAllowed,
+  focusedInputIsActive,
+  footerNode,
+  inputNode,
+  mode,
+}: {
+  fallbackAllowed: boolean;
+  focusedInputIsActive: boolean;
+  footerNode: HTMLElement | null;
+  inputNode: HTMLElement | null;
+  mode: ChatExperienceMode;
+}) {
+  if (typeof window === "undefined") return 0;
+
+  const visualViewport = window.visualViewport;
+  const visibleViewportBottom =
+    (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight);
+  const realInset = Math.max(
+    0,
+    Math.round(window.innerHeight - visibleViewportBottom),
+  );
+
+  if (mode !== "page" || !focusedInputIsActive) return realInset;
+
+  const inputBottom = inputNode?.getBoundingClientRect().bottom ?? 0;
+  const footerBottom = footerNode?.getBoundingClientRect().bottom ?? 0;
+  const requiredLift = Math.max(
+    0,
+    Math.ceil(Math.max(inputBottom, footerBottom) - visibleViewportBottom + KEYBOARD_SAFE_GAP),
+  );
+  const overlayFallback = realInset <= MOBILE_KEYBOARD_THRESHOLD && fallbackAllowed;
+  const estimatedInset = overlayFallback ? getKeyboardOverlayFallbackInset() : 0;
+
+  return clampKeyboardInset(Math.max(realInset, requiredLift, estimatedInset));
 }
 
 function getStoredSessionId() {
@@ -292,6 +348,7 @@ function ChatExperience({
   const chatFooterRef = useRef<HTMLDivElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
+  const keyboardFocusStartedAtRef = useRef(0);
   const pathname = usePathname();
   const normalizedPathname = stripLocalePrefix(pathname);
 
@@ -368,10 +425,16 @@ function ChatExperience({
   const overlayComposerDocked =
     mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
   const pageComposerDocked = mode === "page" && mobileKeyboardActive;
-  const pageComposerReserveHeight = Math.max(
+  const footerReserveHeight = Math.max(
     composerReserveHeight,
     PAGE_COMPOSER_RESERVE_FALLBACK,
   );
+  const floatingContactActionsVisible = !hideAuxiliaryControls;
+  const floatingContactActionsStyle = floatingContactActionsVisible
+    ? {
+        bottom: `calc(${footerReserveHeight}px + 0.75rem)`,
+      }
+    : undefined;
   const chatFooterStyle =
     overlayComposerDocked
       ? {
@@ -383,7 +446,9 @@ function ChatExperience({
         }
       : pageComposerDocked
         ? {
-            bottom: keyboardInsetActive ? mobileKeyboardInset : 0,
+            "--chat-keyboard-inset": `${mobileKeyboardInset}px`,
+            "--chat-visible-height": chatPageViewportHeight,
+            bottom: keyboardInsetActive ? "var(--chat-keyboard-inset)" : 0,
             left: 0,
             marginInline: "auto",
             maxWidth: "48rem",
@@ -392,16 +457,18 @@ function ChatExperience({
             transform: "translateZ(0)",
             width: "100%",
             zIndex: 60,
-          }
+          } satisfies ChatPanelStyle
       : undefined;
   const messagesStyle =
     overlayComposerDocked
       ? { paddingBottom: "1rem" }
       : pageComposerDocked
         ? {
-            paddingBottom: `calc(${pageComposerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
+            paddingBottom: `calc(${footerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
           }
-      : undefined;
+        : floatingContactActionsVisible
+          ? { paddingBottom: "4.75rem" }
+          : undefined;
   useBodyScrollLock(shouldLockScroll);
 
   const updateChatPageViewportHeight = useCallback(() => {
@@ -414,6 +481,15 @@ function ChatExperience({
     );
     setChatPageViewportHeight(`${nextHeight}px`);
   }, [mode]);
+
+  const chatPanelStyle =
+    mode === "page"
+      ? ({
+          "--chat-keyboard-inset": `${mobileKeyboardInset}px`,
+          "--chat-visible-height": chatPageViewportHeight,
+          height: "var(--chat-visible-height)",
+        } satisfies ChatPanelStyle)
+      : undefined;
 
   const scrollTranscriptToEnd = useCallback(
     (behavior: ScrollBehavior = "auto") => {
@@ -435,7 +511,7 @@ function ChatExperience({
 
     updateChatPageViewportHeight();
     scrollTranscriptToEnd();
-    [80, 180, 360].forEach((delay) => {
+    KEYBOARD_PROBE_DELAYS_MS.forEach((delay) => {
       window.setTimeout(() => {
         updateChatPageViewportHeight();
         scrollTranscriptToEnd();
@@ -634,6 +710,7 @@ function ChatExperience({
 
     const mobileQuery = window.matchMedia("(max-width: 767px)");
     let frame = 0;
+    const timeoutIds: number[] = [];
 
     function updateKeyboardInset() {
       setIsMobileViewport(mobileQuery.matches);
@@ -644,24 +721,27 @@ function ChatExperience({
         return;
       }
 
-      const visualViewport = window.visualViewport;
-      const nextInset = Math.max(
-        0,
-        Math.round(
-          window.innerHeight -
-            ((visualViewport?.height ?? window.innerHeight) + (visualViewport?.offsetTop ?? 0)),
-        ),
-      );
       const focusedInputIsActive = document.activeElement === inputRef.current;
-      const effectiveInset =
-        mode === "page" &&
-        focusedInputIsActive &&
-        nextInset <= MOBILE_KEYBOARD_THRESHOLD &&
-        isKeyboardOverlayBrowser()
-          ? getKeyboardOverlayFallbackInset()
-          : nextInset;
+      const focusAgeMs = keyboardFocusStartedAtRef.current
+        ? Date.now() - keyboardFocusStartedAtRef.current
+        : 0;
+      const fallbackAllowed =
+        isKeyboardOverlayBrowser() ||
+        (focusedInputIsActive && focusAgeMs >= KEYBOARD_FALLBACK_GRACE_MS);
+      const effectiveInset = getMeasuredKeyboardInset({
+        fallbackAllowed,
+        focusedInputIsActive,
+        footerNode: chatFooterRef.current,
+        inputNode: inputRef.current,
+        mode,
+      });
       const previousInset = keyboardInsetRef.current;
-      if (Math.abs(effectiveInset - previousInset) < 8 && effectiveInset !== 0) return;
+      if (
+        Math.abs(effectiveInset - previousInset) < KEYBOARD_INSET_EPSILON &&
+        effectiveInset !== 0
+      ) {
+        return;
+      }
 
       keyboardInsetRef.current = effectiveInset;
       setMobileKeyboardInset(effectiveInset);
@@ -676,6 +756,9 @@ function ChatExperience({
     }
 
     scheduleKeyboardInsetUpdate();
+    KEYBOARD_PROBE_DELAYS_MS.forEach((delay) => {
+      timeoutIds.push(window.setTimeout(scheduleKeyboardInsetUpdate, delay));
+    });
     window.visualViewport?.addEventListener("resize", scheduleKeyboardInsetUpdate);
     window.visualViewport?.addEventListener("scroll", scheduleKeyboardInsetUpdate);
     window.addEventListener("resize", scheduleKeyboardInsetUpdate);
@@ -684,6 +767,7 @@ function ChatExperience({
 
     return () => {
       window.cancelAnimationFrame(frame);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       window.visualViewport?.removeEventListener("resize", scheduleKeyboardInsetUpdate);
       window.visualViewport?.removeEventListener("scroll", scheduleKeyboardInsetUpdate);
       window.removeEventListener("resize", scheduleKeyboardInsetUpdate);
@@ -693,7 +777,6 @@ function ChatExperience({
   }, [composerFocused, mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
-    if (mode !== "page") return;
     const node = chatFooterRef.current;
     if (!node) return;
     const footerNode = node;
@@ -711,7 +794,7 @@ function ChatExperience({
     const observer = new ResizeObserver(updateComposerReserve);
     observer.observe(footerNode);
     return () => observer.disconnect();
-  }, [mode, hideAuxiliaryControls]);
+  }, [hideAuxiliaryControls, mounted, mode, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -920,13 +1003,13 @@ function ChatExperience({
       className={cn(
         mode === "overlay"
           ? "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border"
-          : "mx-auto flex w-full max-w-3xl flex-col overflow-hidden bg-card",
+          : "relative mx-auto flex w-full max-w-3xl flex-col overflow-hidden bg-card",
         mode === "overlay" &&
           (open
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95"),
       )}
-      style={mode === "page" ? { height: chatPageViewportHeight } : undefined}
+      style={chatPanelStyle}
     >
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
@@ -1017,6 +1100,20 @@ function ChatExperience({
             <div ref={transcriptEndRef} />
           </div>
 
+          {floatingContactActionsVisible ? (
+            <div
+              data-testid="floating-contact-actions"
+              className="absolute left-4 z-20 md:left-3"
+              style={floatingContactActionsStyle}
+            >
+              <MessagingButtons
+                whatsappNumber={whatsappNumber}
+                lineId={lineId}
+                quiet={canShowBookingCard}
+              />
+            </div>
+          ) : null}
+
           <div
             data-testid="chat-footer"
             ref={chatFooterRef}
@@ -1031,13 +1128,6 @@ function ChatExperience({
             )}
             style={chatFooterStyle}
           >
-            <div className={cn(hideAuxiliaryControls && "hidden md:block")}>
-              <MessagingButtons
-                whatsappNumber={whatsappNumber}
-                lineId={lineId}
-                quiet={canShowBookingCard}
-              />
-            </div>
             <details
               className={cn(
                 "rounded-xl border border-border bg-background/70 px-3 py-2 text-sm",
@@ -1134,11 +1224,13 @@ function ChatExperience({
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onFocus={() => {
+                  keyboardFocusStartedAtRef.current = Date.now();
                   setComposerFocused(true);
                   refreshChatPageAfterKeyboardChange();
                 }}
                 onBlur={() => {
                   window.setTimeout(() => {
+                    keyboardFocusStartedAtRef.current = 0;
                     setComposerFocused(false);
                     refreshChatPageAfterKeyboardChange();
                   }, 120);

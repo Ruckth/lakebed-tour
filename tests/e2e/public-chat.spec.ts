@@ -147,15 +147,23 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await page.goto("/chat");
 
   const chatFooter = page.getByTestId("chat-footer");
+  const floatingContactActions = page.getByTestId("floating-contact-actions");
   const chatMessages = page.getByTestId("chat-messages");
   const input = page.getByPlaceholder("Ask a question");
+
+  await expect(
+    floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
+  ).toBeVisible();
+  await expect(
+    chatFooter.getByRole("link", { name: /Open WhatsApp chat/i }),
+  ).toHaveCount(0);
 
   await input.focus();
   await input.fill("Hello from mobile");
 
   await expect(chatFooter).toHaveCSS("position", "fixed");
   await expect(chatMessages).toHaveCSS("overflow-y", "auto");
-  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
+  await expect(floatingContactActions).toBeHidden();
   await expect(chatFooter.getByText("Share contact details")).toBeHidden();
 
   const inputBox = await input.boundingBox();
@@ -164,7 +172,9 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
 
   await input.blur();
   await expect(chatFooter).toHaveCSS("position", "static");
-  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeVisible();
+  await expect(
+    floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
+  ).toBeVisible();
 });
 
 test("instagram in-app browser lifts the composer when viewport inset is unavailable", async ({
@@ -184,6 +194,41 @@ test("instagram in-app browser lifts the composer when viewport inset is unavail
 
   await input.focus();
   await input.fill("Hello from Instagram");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
+    )
+    .toBeGreaterThan(250);
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) =>
+        Number.parseFloat(window.getComputedStyle(node).getPropertyValue("--chat-keyboard-inset")),
+      ),
+    )
+    .toBeGreaterThan(250);
+
+  const inputBox = await input.boundingBox();
+  expect(inputBox).not.toBeNull();
+  expect(inputBox!.y + inputBox!.height).toBeLessThan(520);
+});
+
+test("unknown mobile browser with zero inset uses measured composer fallback", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Mobile Safari/537.36",
+    });
+  });
+  await page.goto("/chat");
+
+  const chatFooter = page.getByTestId("chat-footer");
+  const input = page.getByPlaceholder("Ask a question");
+
+  await input.focus();
+  await input.fill("Hello from a WebView");
 
   await expect(chatFooter).toHaveCSS("position", "fixed");
   await expect
@@ -300,12 +345,16 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
 
   const bookingCard = page.getByTestId("chat-booking-card");
   const chatFooter = page.getByTestId("chat-footer");
+  const floatingContactActions = page.getByTestId("floating-contact-actions");
   const input = page.getByPlaceholder("Ask a question");
   await expect(bookingCard).toBeVisible();
   await input.focus();
   await expect(chatFooter).toHaveCSS("position", "fixed");
   await expect(input).toBeVisible();
-  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
+  await expect(floatingContactActions).toBeHidden();
+  await expect(
+    chatFooter.getByRole("link", { name: /Open WhatsApp chat/i }),
+  ).toHaveCount(0);
 
   const poolCard = bookingCard.getByTestId("chat-villa-option-pool-villa");
   const guestBadge = poolCard.getByText(/Up to 4 guests/);
