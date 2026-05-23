@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -58,7 +57,7 @@ const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
 const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
 const BACKGROUND_RECONCILE_ATTEMPTS = 30;
 const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
-const MIN_MOBILE_CHAT_HEIGHT = 360;
+const MOBILE_KEYBOARD_THRESHOLD = 80;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -264,9 +263,11 @@ export function AIChatWidget({
     contactHandle: "",
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [mobilePanelStyle, setMobilePanelStyle] = useState<CSSProperties | undefined>();
+  const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+  const [composerFocused, setComposerFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const keyboardInsetRef = useRef(0);
   const pathname = usePathname();
 
   const title = activePropertyName
@@ -327,6 +328,19 @@ export function AIChatWidget({
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
   const liftFloatingTriggerOnBooking = pathname === "/booking" || pathname.includes("/booking");
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
+  const mobileKeyboardActive =
+    composerFocused || mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
+  const chatFooterStyle =
+    mobileKeyboardInset > 0
+      ? {
+          transform: `translate3d(0, -${mobileKeyboardInset}px, 0)`,
+          willChange: "transform",
+        }
+      : undefined;
+  const messagesStyle =
+    mobileKeyboardActive && mobileKeyboardInset > 0
+      ? { paddingBottom: `calc(${mobileKeyboardInset}px + 6rem)` }
+      : undefined;
   useBodyScrollLock(shouldLockScroll);
 
   useEffect(() => {
@@ -499,47 +513,57 @@ export function AIChatWidget({
 
   useEffect(() => {
     if (!open) {
-      setMobilePanelStyle(undefined);
+      keyboardInsetRef.current = 0;
+      setMobileKeyboardInset(0);
+      setComposerFocused(false);
       return;
     }
 
     const mobileQuery = window.matchMedia("(max-width: 767px)");
+    let frame = 0;
 
-    function updatePanelViewport() {
+    function updateKeyboardInset() {
       if (!mobileQuery.matches) {
-        setMobilePanelStyle(undefined);
+        keyboardInsetRef.current = 0;
+        setMobileKeyboardInset(0);
         return;
       }
 
       const visualViewport = window.visualViewport;
-      const height = Math.max(
-        MIN_MOBILE_CHAT_HEIGHT,
-        Math.floor(visualViewport?.height ?? window.innerHeight),
+      const nextInset = Math.max(
+        0,
+        Math.round(
+          window.innerHeight -
+            ((visualViewport?.height ?? window.innerHeight) + (visualViewport?.offsetTop ?? 0)),
+        ),
       );
-      const top = Math.max(0, Math.floor(visualViewport?.offsetTop ?? 0));
+      const previousInset = keyboardInsetRef.current;
+      if (Math.abs(nextInset - previousInset) < 8 && nextInset !== 0) return;
 
-      setMobilePanelStyle({
-        bottom: "auto",
-        height,
-        maxHeight: height,
-        top,
-      });
-      window.setTimeout(() => transcriptEndRef.current?.scrollIntoView({ block: "end" }), 50);
+      keyboardInsetRef.current = nextInset;
+      setMobileKeyboardInset(nextInset);
+      if (nextInset > MOBILE_KEYBOARD_THRESHOLD) {
+        window.setTimeout(() => transcriptEndRef.current?.scrollIntoView({ block: "end" }), 50);
+      }
     }
 
-    updatePanelViewport();
-    window.visualViewport?.addEventListener("resize", updatePanelViewport);
-    window.visualViewport?.addEventListener("scroll", updatePanelViewport);
-    window.addEventListener("resize", updatePanelViewport);
-    window.addEventListener("orientationchange", updatePanelViewport);
-    mobileQuery.addEventListener("change", updatePanelViewport);
+    function scheduleKeyboardInsetUpdate() {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updateKeyboardInset);
+    }
+
+    scheduleKeyboardInsetUpdate();
+    window.visualViewport?.addEventListener("resize", scheduleKeyboardInsetUpdate);
+    window.addEventListener("resize", scheduleKeyboardInsetUpdate);
+    window.addEventListener("orientationchange", scheduleKeyboardInsetUpdate);
+    mobileQuery.addEventListener("change", scheduleKeyboardInsetUpdate);
 
     return () => {
-      window.visualViewport?.removeEventListener("resize", updatePanelViewport);
-      window.visualViewport?.removeEventListener("scroll", updatePanelViewport);
-      window.removeEventListener("resize", updatePanelViewport);
-      window.removeEventListener("orientationchange", updatePanelViewport);
-      mobileQuery.removeEventListener("change", updatePanelViewport);
+      window.cancelAnimationFrame(frame);
+      window.visualViewport?.removeEventListener("resize", scheduleKeyboardInsetUpdate);
+      window.removeEventListener("resize", scheduleKeyboardInsetUpdate);
+      window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
+      mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
   }, [open]);
 
@@ -777,7 +801,6 @@ export function AIChatWidget({
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95",
             )}
-            style={mobilePanelStyle}
           >
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
@@ -809,6 +832,7 @@ export function AIChatWidget({
           <div
             data-testid="chat-messages"
             className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4"
+            style={messagesStyle}
           >
             {messages.length === 0 ? (
               <div className="max-w-[92%]">
@@ -865,14 +889,22 @@ export function AIChatWidget({
 
           <div
             data-testid="chat-footer"
-            className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-4 backdrop-blur md:px-3 md:py-3"
+            className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3"
+            style={chatFooterStyle}
           >
-            <MessagingButtons
-              whatsappNumber={whatsappNumber}
-              lineId={lineId}
-              quiet={canShowBookingCard}
-            />
-            <details className="rounded-xl border border-border bg-background/70 px-3 py-2 text-sm">
+            <div className={cn(mobileKeyboardActive && "hidden md:block")}>
+              <MessagingButtons
+                whatsappNumber={whatsappNumber}
+                lineId={lineId}
+                quiet={canShowBookingCard}
+              />
+            </div>
+            <details
+              className={cn(
+                "rounded-xl border border-border bg-background/70 px-3 py-2 text-sm",
+                mobileKeyboardActive && "hidden md:block",
+              )}
+            >
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">
                 {t("shareContact")}
               </summary>
@@ -966,16 +998,25 @@ export function AIChatWidget({
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onFocus={() => {
+                  setComposerFocused(true);
                   window.setTimeout(
                     () => transcriptEndRef.current?.scrollIntoView({ block: "end" }),
                     50,
                   );
                 }}
-                className="h-12 min-w-0 flex-1 rounded-xl text-base placeholder:text-slate-500 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:text-sm"
+                onBlur={() => {
+                  window.setTimeout(() => setComposerFocused(false), 120);
+                }}
+                className="h-12 min-w-0 flex-1 rounded-2xl border-muted bg-muted/70 px-4 text-base placeholder:text-slate-500 focus-visible:ring-2 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:bg-background md:px-3 md:text-sm"
                 placeholder={t("askPlaceholder")}
                 enterKeyHint="send"
               />
-              <Button type="submit" size="icon" aria-label={t("send")}>
+              <Button
+                type="submit"
+                size="icon"
+                aria-label={t("send")}
+                className="h-12 w-12 shrink-0 rounded-2xl md:h-10 md:w-10 md:rounded-lg"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>
