@@ -130,6 +130,7 @@ test("mobile chat trigger opens the dedicated chat page", async ({ page }) => {
   await expect(page).toHaveURL(/\/chat$/);
   await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
   await expect(page.getByPlaceholder("Ask a question")).toBeVisible();
+  await expect(page.getByRole("banner")).toBeHidden();
 });
 
 test("localized mobile chat trigger keeps the locale on the chat page", async ({ page }) => {
@@ -152,7 +153,7 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await input.focus();
   await input.fill("Hello from mobile");
 
-  await expect(chatFooter).toHaveCSS("position", "static");
+  await expect(chatFooter).toHaveCSS("position", "fixed");
   await expect(chatMessages).toHaveCSS("overflow-y", "auto");
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
   await expect(chatFooter.getByText("Share contact details")).toBeHidden();
@@ -272,7 +273,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   const input = page.getByPlaceholder("Ask a question");
   await expect(bookingCard).toBeVisible();
   await input.focus();
-  await expect(chatFooter).toHaveCSS("position", "static");
+  await expect(chatFooter).toHaveCSS("position", "fixed");
   await expect(input).toBeVisible();
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
 

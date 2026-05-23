@@ -61,9 +61,10 @@ const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
 const BACKGROUND_RECONCILE_ATTEMPTS = 30;
 const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
 const MOBILE_KEYBOARD_THRESHOLD = 80;
-const CHAT_PAGE_HEADER_OFFSET = 64;
+const CHAT_PAGE_HEADER_OFFSET = 0;
 const CHAT_PAGE_MIN_HEIGHT = 360;
-const CHAT_PAGE_VIEWPORT_FALLBACK = "calc(100svh - 4rem)";
+const CHAT_PAGE_VIEWPORT_FALLBACK = "100svh";
+const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -277,8 +278,10 @@ function ChatExperience({
   const [composerFocused, setComposerFocused] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [chatPageViewportHeight, setChatPageViewportHeight] = useState(CHAT_PAGE_VIEWPORT_FALLBACK);
+  const [composerReserveHeight, setComposerReserveHeight] = useState(PAGE_COMPOSER_RESERVE_FALLBACK);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const chatFooterRef = useRef<HTMLDivElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const pathname = usePathname();
@@ -356,6 +359,11 @@ function ChatExperience({
   const hideAuxiliaryControls = mobileKeyboardActive;
   const overlayComposerDocked =
     mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
+  const pageComposerDocked = mode === "page" && mobileKeyboardActive;
+  const pageComposerReserveHeight = Math.max(
+    composerReserveHeight,
+    PAGE_COMPOSER_RESERVE_FALLBACK,
+  );
   const chatFooterStyle =
     overlayComposerDocked
       ? {
@@ -365,10 +373,26 @@ function ChatExperience({
           right: 0,
           zIndex: 60,
         }
+      : pageComposerDocked
+        ? {
+            bottom: keyboardInsetActive ? mobileKeyboardInset : 0,
+            left: 0,
+            marginInline: "auto",
+            maxWidth: "48rem",
+            position: "fixed" as const,
+            right: 0,
+            transform: "translateZ(0)",
+            width: "100%",
+            zIndex: 60,
+          }
       : undefined;
   const messagesStyle =
     overlayComposerDocked
       ? { paddingBottom: "1rem" }
+      : pageComposerDocked
+        ? {
+            paddingBottom: `calc(${pageComposerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
+          }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
 
@@ -653,6 +677,27 @@ function ChatExperience({
   }, [mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
+    if (mode !== "page") return;
+    const node = chatFooterRef.current;
+    if (!node) return;
+    const footerNode = node;
+
+    function updateComposerReserve() {
+      setComposerReserveHeight(Math.ceil(footerNode.getBoundingClientRect().height));
+    }
+
+    updateComposerReserve();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateComposerReserve);
+      return () => window.removeEventListener("resize", updateComposerReserve);
+    }
+
+    const observer = new ResizeObserver(updateComposerReserve);
+    observer.observe(footerNode);
+    return () => observer.disconnect();
+  }, [mode, hideAuxiliaryControls]);
+
+  useEffect(() => {
     if (!open) return;
     scrollTranscriptToEnd();
   }, [canShowBookingCard, messages.length, open, scrollTranscriptToEnd]);
@@ -859,7 +904,7 @@ function ChatExperience({
       className={cn(
         mode === "overlay"
           ? "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border"
-          : "mx-auto mt-16 flex w-full max-w-3xl flex-col overflow-hidden bg-card",
+          : "mx-auto flex w-full max-w-3xl flex-col overflow-hidden bg-card",
         mode === "overlay" &&
           (open
             ? "translate-y-0 scale-100 opacity-100"
@@ -958,12 +1003,15 @@ function ChatExperience({
 
           <div
             data-testid="chat-footer"
+            ref={chatFooterRef}
             className={cn(
               "shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3",
               mode === "page" && "pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]",
               mode === "overlay" &&
                 overlayComposerDocked &&
                 "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
+              pageComposerDocked &&
+                "inset-x-0 mx-auto w-full max-w-3xl shadow-[0_-18px_40px_rgba(0,0,0,0.22)]",
             )}
             style={chatFooterStyle}
           >

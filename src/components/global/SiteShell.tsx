@@ -20,10 +20,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
   if (normalizedPath === "/chat") {
     return (
-      <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <div className="min-h-[100dvh] overflow-hidden bg-background text-foreground">
         <DemoDisclaimerDialog />
-        <SiteHeader />
-        <main className="flex-1">{children}</main>
+        <main className="min-h-[100dvh]">{children}</main>
       </div>
     );
   }
