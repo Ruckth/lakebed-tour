@@ -177,7 +177,17 @@ export default async function HomePage() {
                 ))}
               </ul>
             </div>
-            <div className="relative min-h-[320px] overflow-hidden rounded-2xl">
+            <div className="overflow-hidden rounded-2xl border border-border bg-muted shadow-sm md:hidden">
+              <iframe
+                title={`${resort.name} Google Map, Lipa Noi, Ko Samui District, Surat Thani`}
+                src="https://www.google.com/maps?q=9.499354,99.997034&z=15&output=embed"
+                className="h-[320px] w-full"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
+            </div>
+            <div className="relative hidden min-h-[320px] overflow-hidden rounded-2xl md:block">
               <Image
                 src="https://images.unsplash.com/photo-1537956965359-7573183d1f57?w=800&h=600&fit=crop"
                 alt={getLocationImageAlt(locale)}

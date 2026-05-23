@@ -3,7 +3,15 @@
 import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { Button } from "@/components/ui/button";
@@ -50,6 +58,7 @@ const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
 const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
 const BACKGROUND_RECONCILE_ATTEMPTS = 30;
 const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
+const MIN_MOBILE_CHAT_HEIGHT = 360;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -255,6 +264,7 @@ export function AIChatWidget({
     contactHandle: "",
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [mobilePanelStyle, setMobilePanelStyle] = useState<CSSProperties | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -485,6 +495,52 @@ export function AIChatWidget({
     if (!open) return;
     const timeout = window.setTimeout(() => inputRef.current?.focus(), 260);
     return () => window.clearTimeout(timeout);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setMobilePanelStyle(undefined);
+      return;
+    }
+
+    const mobileQuery = window.matchMedia("(max-width: 767px)");
+
+    function updatePanelViewport() {
+      if (!mobileQuery.matches) {
+        setMobilePanelStyle(undefined);
+        return;
+      }
+
+      const visualViewport = window.visualViewport;
+      const height = Math.max(
+        MIN_MOBILE_CHAT_HEIGHT,
+        Math.floor(visualViewport?.height ?? window.innerHeight),
+      );
+      const top = Math.max(0, Math.floor(visualViewport?.offsetTop ?? 0));
+
+      setMobilePanelStyle({
+        bottom: "auto",
+        height,
+        maxHeight: height,
+        top,
+      });
+      window.setTimeout(() => transcriptEndRef.current?.scrollIntoView({ block: "end" }), 50);
+    }
+
+    updatePanelViewport();
+    window.visualViewport?.addEventListener("resize", updatePanelViewport);
+    window.visualViewport?.addEventListener("scroll", updatePanelViewport);
+    window.addEventListener("resize", updatePanelViewport);
+    window.addEventListener("orientationchange", updatePanelViewport);
+    mobileQuery.addEventListener("change", updatePanelViewport);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updatePanelViewport);
+      window.visualViewport?.removeEventListener("scroll", updatePanelViewport);
+      window.removeEventListener("resize", updatePanelViewport);
+      window.removeEventListener("orientationchange", updatePanelViewport);
+      mobileQuery.removeEventListener("change", updatePanelViewport);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -721,6 +777,7 @@ export function AIChatWidget({
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95",
             )}
+            style={mobilePanelStyle}
           >
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
@@ -768,6 +825,11 @@ export function AIChatWidget({
                 key={`${message.role}-${index}`}
                 className={cn(
                   "max-w-[85%]",
+                  message.role === "assistant" &&
+                    index === latestAssistantIndex &&
+                    canShowBookingCard &&
+                    latestBookingContext &&
+                    "w-full max-w-[96%] md:max-w-[85%]",
                   message.role === "user" ? "ml-auto" : "mr-auto",
                 )}
               >
@@ -903,8 +965,15 @@ export function AIChatWidget({
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onFocus={() => {
+                  window.setTimeout(
+                    () => transcriptEndRef.current?.scrollIntoView({ block: "end" }),
+                    50,
+                  );
+                }}
                 className="h-12 min-w-0 flex-1 rounded-xl text-base placeholder:text-slate-500 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:text-sm"
                 placeholder={t("askPlaceholder")}
+                enterKeyHint="send"
               />
               <Button type="submit" size="icon" aria-label={t("send")}>
                 <Send className="h-4 w-4" />

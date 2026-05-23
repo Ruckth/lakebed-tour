@@ -176,10 +176,9 @@
     "bookingCardTitle": "예약할까요?",
     "bookingCardHelper": "여기에서 날짜를 선택하고 예약 페이지로 이동하세요.",
     "bookingCardNights": "{count}박",
-    "bookingCardDirectTotal": "직접 예약 총액 {total}",
     "bookingCardVillaLabel": "빌라 선택",
+    "bookingCardSwipeHint": "밀어서 보기",
     "bookingCardMissingVilla": "예약 전에 빌라를 선택해 주세요.",
-    "bookingCardSelectedVilla": "선택됨: {summary}",
     "bookingPromptReady": "좋습니다. 아래 예약 카드에서 빌라와 날짜를 확인한 뒤 안전 예약으로 진행하세요.",
     "bookingPromptMissingVillaAndDates": "도와드릴게요. 아래 예약 카드에서 빌라, 체크인, 체크아웃 날짜를 선택하세요.",
     "bookingPromptMissingVilla": "거의 완료되었습니다. 아래 예약 카드에서 빌라를 선택한 뒤 예약으로 진행하세요.",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "직접 예약"
+  },
+  "DemoDisclaimer": {
+    "title": "데모 웹사이트입니다",
+    "body": "이 웹사이트는 제품 데모입니다. 여기에 표시되는 예약, 결제, 청구서, 메시지는 데모용이며 실제 예약이나 결제가 생성되지 않습니다.",
+    "confirm": "확인했습니다",
+    "close": "데모 웹사이트 안내 닫기"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - Koh Samui, Thailand 럭셔리 빌라",

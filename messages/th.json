@@ -176,10 +176,9 @@
     "bookingCardTitle": "พร้อมจองไหม?",
     "bookingCardHelper": "เลือกวันที่แล้วไปหน้าจองได้เลย",
     "bookingCardNights": "{count} คืน",
-    "bookingCardDirectTotal": "รวมจองตรง {total}",
     "bookingCardVillaLabel": "เลือกวิลล่า",
+    "bookingCardSwipeHint": "เลื่อนดูวิลล่า",
     "bookingCardMissingVilla": "เลือกวิลล่าก่อนจองนะคะ",
-    "bookingCardSelectedVilla": "เลือกแล้ว: {summary}",
     "bookingPromptReady": "เรียบร้อยค่ะ ใช้การ์ดด้านล่างตรวจสอบวิลล่าและวันที่ แล้วไปหน้าจองได้เลย",
     "bookingPromptMissingVillaAndDates": "ยินดีช่วยค่ะ ใช้การ์ดด้านล่างเลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์ได้เลยนะคะ",
     "bookingPromptMissingVilla": "เกือบครบแล้วค่ะ ใช้การ์ดด้านล่างเลือกวิลล่า แล้วไปหน้าจองได้เลย",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "จองตรง"
+  },
+  "DemoDisclaimer": {
+    "title": "เว็บไซต์ตัวอย่างเท่านั้น",
+    "body": "เว็บไซต์นี้เป็นเดโมสำหรับสาธิตสินค้า การจอง การชำระเงิน ใบแจ้งหนี้ และข้อความที่แสดงเป็นเพียงตัวอย่างเท่านั้น และจะไม่สร้างการจองจริงหรือเรียกเก็บเงินจริง",
+    "confirm": "เข้าใจแล้ว",
+    "close": "ปิดประกาศเว็บไซต์ตัวอย่าง"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - วิลล่าหรูใน Koh Samui, Thailand",

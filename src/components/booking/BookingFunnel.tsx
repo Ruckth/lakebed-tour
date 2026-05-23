@@ -371,6 +371,13 @@ export function BookingFunnel({
                 </Alert>
               ) : null}
 
+              <VillaSelector
+                properties={propertyList}
+                selectedId={selectedId}
+                availablePropertyIds={availablePropertyIds}
+                onSelect={selectProperty}
+              />
+
               <div className="grid gap-4">
                 <BookingDatePicker
                   checkIn={checkIn}
@@ -381,13 +388,6 @@ export function BookingFunnel({
                   helperText={invalidRange ? t("checkoutAfterCheckin") : nightHelperText}
                 />
               </div>
-
-              <VillaSelector
-                properties={propertyList}
-                selectedId={selectedId}
-                availablePropertyIds={availablePropertyIds}
-                onSelect={selectProperty}
-              />
 
               <DateStatus
                 dateWarning={dateWarning}

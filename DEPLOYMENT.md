@@ -1,25 +1,28 @@
-# Vercel Demo Deployment
+# Production Deployment
 
-This project now ships as a Next.js App Router app with Convex for backend data/functions, optional Clerk auth, optional AI chat, and an explicitly demo-only checkout fallback. The legacy SvelteKit files remain in the repo as migration reference material, but they are not the active deployment target.
+This project deploys as a Next.js App Router app on Vercel with Convex for backend data and functions. Clerk is used for the admin area when configured, AI chat uses Convex environment variables, and checkout is currently no-card/demo only. Stripe is not active in the current runtime.
 
-## What Ships
+The legacy SvelteKit prototype remains under `archive/sveltekit-prototype` for reference only. The active production target is the Next.js app in `src` plus Convex functions in `convex`.
 
-- Resort marketing pages with villa cards, media hero, amenities, reviews, and contact details.
-- Villa detail pages with image galleries, pricing comparisons, direct-booking benefits, trust badges, and 360 tour entry points.
-- 360 room tour with sphere imagery and room navigation hotspots.
-- Booking funnel with villa/date/guest/details/review steps, Convex-backed availability when seeded, secure booking access tokens, and client-only demo mode when live inventory is unavailable.
-- Demo payment flow that confirms verified live bookings through Convex or stays local for `bookingId=demo`.
-- Concierge chat backed by Convex, with Grok-powered multilingual AI responses when configured and static fallback responses when no AI key is present.
-- Optional Clerk sign-in/sign-up screens. Keep Clerk disabled for demo launch unless production auth is configured.
+## Current Production Shape
+
+- Public resort pages, localized routes, villa detail pages, room galleries, pricing, reviews, and 360 tour entry points.
+- Booking funnel with Convex-backed live inventory when production Convex is configured and seeded.
+- Demo checkout fallback at `bookingId=demo`; this confirms locally and does not charge a card.
+- Live Convex bookings are created as pending bookings with secure access tokens. Public live payment confirmation is not wired to a real payment provider.
+- Concierge chat uses Convex. If AI env vars are present, responses use the configured xAI/OpenAI-compatible endpoint; otherwise the app falls back to static localized replies.
+- Admin chat dashboard uses Clerk plus Convex JWT validation and `ADMIN_EMAILS` allowlisting.
 
 ## Vercel Project Settings
 
 Use these settings in the Vercel project:
 
-- Framework preset: `Next.js`
-- Install command: `pnpm install`
-- Build command: `pnpm vercel-build`
-- Output directory: leave unset
+| Setting | Value |
+| --- | --- |
+| Framework preset | `Next.js` |
+| Install command | `pnpm install` |
+| Build command | `pnpm vercel-build` |
+| Output directory | Leave unset |
 
 `pnpm vercel-build` runs:
 
@@ -27,42 +30,57 @@ Use these settings in the Vercel project:
 npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'
 ```
 
-This deploys Convex functions first, injects the Convex deployment URL into `NEXT_PUBLIC_CONVEX_URL`, and then builds the Next.js frontend against that backend.
+That command deploys Convex functions first, injects the Convex deployment URL into `NEXT_PUBLIC_CONVEX_URL`, then builds the Next.js frontend against that backend.
 
 ## Environment Variables
 
-Set these in Vercel:
+Most production environment variables are already in place. The only item still called out for follow-up is owner/admin notification email configuration.
 
-| Name | Environment | Required | Notes |
-| --- | --- | --- | --- |
-| `CONVEX_DEPLOY_KEY` | Production, Preview | Yes | Generate from the Convex dashboard. Use a production key for production and a preview key for preview deployments. |
-| `NEXT_PUBLIC_CONVEX_URL` | Production, Preview | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key to exist before first deploy. |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Production, Preview | No | Use `placeholder` or omit to keep auth disabled for demo launch. |
-| `AI_API_KEY` | Convex deployment | No | xAI API key. Enables live Grok concierge responses. Without it, the app uses localized fallback responses where available. |
-| `AI_API_BASE_URL` | Convex deployment | No | Set to `https://api.x.ai/v1` for xAI. |
-| `AI_SIMPLE_MODEL` | Convex deployment | No | Set to `grok-4.3`. |
-| `AI_COMPLEX_MODEL` | Convex deployment | No | Set to `grok-4.3`. |
-| `RESEND_API_KEY` | Convex deployment | No | Reserved for transactional email actions. |
-| `OWNER_NOTIFICATION_EMAIL` | Convex deployment | No | Used with Resend owner notification actions. |
-| `CLERK_JWT_ISSUER_DOMAIN` | Convex deployment | No | Required only if enabling Clerk auth. |
-| `ADMIN_EMAILS` | Convex deployment | No | Comma-separated Clerk account emails allowed to open `/admin/chat`; required for the admin chat dashboard. |
+### Vercel Environment Variables
 
-Convex environment variables are managed in the Convex dashboard or with `npx convex env set NAME value`.
+Set these in Vercel Production and Preview:
 
-For multilingual chat, configure Convex with:
+| Name | Required | Notes |
+| --- | --- | --- |
+| `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
+| `NEXT_PUBLIC_CONVEX_URL` | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key before first deploy. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
+
+### Convex Environment Variables
+
+Set these in the Convex production deployment:
+
+| Name | Required | Notes |
+| --- | --- | --- |
+| `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
+| `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
+| `AI_API_KEY` | No | Enables live AI concierge responses. |
+| `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
+| `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |
+| `AI_COMPLEX_MODEL` | No | Current expected value is `grok-4.3`. |
+| `RESEND_API_KEY` | No | Required only for email actions. |
+| `OWNER_NOTIFICATION_EMAIL` | Follow-up | Needed for owner/admin notification emails. The email action exists, but automatic booking notification is not currently wired into the booking flow. |
+
+Convex environment variables can be managed in the Convex dashboard or with:
 
 ```sh
-npx convex env set AI_API_BASE_URL https://api.x.ai/v1
-npx convex env set AI_SIMPLE_MODEL grok-4.3
-npx convex env set AI_COMPLEX_MODEL grok-4.3
-npx convex env set AI_API_KEY <xAI key>
+npx convex env set NAME value
 ```
 
-Grok detects the visitor's latest message language and replies in that language. Static website and chat UI copy uses `next-intl`; Google Translate is not part of the v1 runtime.
+There is currently no `ALLOW_DEMO_PAYMENTS` environment variable in the codebase. Do not add it in Vercel or Convex expecting it to change checkout behavior.
 
-If Vercel fails with `Vercel build environment detected but no Convex deployment configuration found`, add `CONVEX_DEPLOY_KEY` to the Vercel project for the environment being deployed, then redeploy. The build-script warnings from pnpm are not the cause of that failure.
+## Payment Mode
 
-## Seeding Data
+Production does not process real card payments right now.
+
+- `bookingId=demo` checkout confirms locally and is safe for no-card demos.
+- Live Convex bookings can be created and viewed with their access token, but the pay page disables public confirmation for non-demo booking IDs.
+- `markPaidFromTrustedWebhook` exists as an internal Convex mutation for a future trusted webhook or admin path.
+- Stripe variables in `.env.example` are placeholders for future production checkout only.
+
+If the production goal is a full no-card confirmation for live Convex bookings, that needs a code change. No existing env var enables it today.
+
+## Production Data
 
 After the first production deployment, seed the production Convex deployment once:
 
@@ -70,42 +88,52 @@ After the first production deployment, seed the production Convex deployment onc
 pnpm seed
 ```
 
-For preview deployments that should get fresh demo data automatically, change the Vercel build command to:
+`seed:seedAll` is idempotent and exits with `already_seeded` if properties already exist.
+
+For Preview deployments that should get fresh demo data automatically, change the Vercel build command to:
 
 ```sh
 npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run seed:seedAll
 ```
 
-`seed:seedAll` is idempotent: it exits with `already_seeded` if properties already exist.
+## Admin Setup
 
-## Demo Boundaries
+To enable `/admin`:
 
-- Checkout is demo-only when Convex is absent or live inventory cannot load. No real card is processed.
-- Live Convex bookings require a booking access token in pay/success URLs before they can be displayed.
-- Live payment confirmation must happen through a trusted payment webhook or authenticated admin path, not from the browser checkout page.
-- Stripe variables in `.env.example` are future production-checkout placeholders only.
-- Booking confirmations happen in-app via the success page. Legacy Svelte PDF download flows are not active in the Next.js app.
+1. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in Vercel.
+2. Configure the Clerk `convex` JWT template.
+3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
+4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
 
-## Legacy SvelteKit Files
+If Clerk is missing or set to `placeholder`, `/admin` shows the setup state. If Clerk is enabled but Convex cannot validate the token, the admin dashboard shows the Convex auth setup warning.
 
-Legacy SvelteKit routes, components, stores, and config now live under `archive/sveltekit-prototype`. The active app is Next/React only; do not target the archive for new product work unless a separate restoration project explicitly changes that decision.
+## Deployment
+
+Deploy with the Vercel Git integration or with:
+
+```sh
+vercel deploy --prod
+```
+
+If Vercel fails with `Vercel build environment detected but no Convex deployment configuration found`, add or refresh `CONVEX_DEPLOY_KEY` for that Vercel environment and redeploy.
 
 ## Verification
 
-Run before pushing:
+Run before shipping:
 
 ```sh
 pnpm verify
 ```
 
-Smoke-test the deployed preview:
+Smoke-test production after deploy:
 
 - Home page loads and hero media plays.
-- Villa pages open and image galleries render.
+- Localized routes load.
+- Villa pages open and galleries render.
 - 360 viewer opens, shows a non-blank sphere, and closes cleanly.
-- Chat opens and either replies with AI or fallback content.
-- Booking cannot advance to Pay until dates, guest count, and guest details are valid.
-- Live booking creates a pending Convex booking and includes a secure token in the payment URL.
-- Demo payment only runs for `bookingId=demo`.
-- Success page verifies paid live bookings before displaying confirmation.
+- Booking funnel validates dates, guests, and guest details.
+- Demo checkout with `bookingId=demo` reaches the success page and does not charge a card.
+- Live Convex booking creates a pending booking with a secure token.
+- `/admin` requires Clerk sign-in and only allowlisted admin emails can load chat sessions.
+- Chat opens and returns either AI or fallback content.
 - Mobile layout has no visible overlap in hero, booking, chat, or 360 tour views.

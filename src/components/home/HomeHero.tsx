@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
@@ -200,24 +200,6 @@ export function HomeHero() {
                 <div className={cn("absolute inset-0", slot === "top" ? "bg-gradient-to-b from-black/20 via-transparent to-black/30" : "bg-gradient-to-t from-black/40 via-transparent to-black/20")} />
               </div>
             ))}
-            <div className="absolute inset-x-5 bottom-20 z-10 flex items-center justify-between md:hidden">
-              <button
-                type="button"
-                onClick={() => setManualMobileSlide(mobileSlide - 1)}
-                aria-label={a11y("previousHeroSlide")}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setManualMobileSlide(mobileSlide + 1)}
-                aria-label={a11y("nextHeroSlide")}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
             <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 gap-2 md:hidden">
               {mobileSlides.map((_, index) => (
                 <button

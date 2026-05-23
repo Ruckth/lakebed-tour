@@ -176,10 +176,9 @@
     "bookingCardTitle": "बुक करने के लिए तैयार?",
     "bookingCardHelper": "यहां तारीखें चुनें और सुरक्षित बुकिंग पर जाएं।",
     "bookingCardNights": "{count} रातें",
-    "bookingCardDirectTotal": "सीधी बुकिंग कुल {total}",
     "bookingCardVillaLabel": "विला चुनें",
+    "bookingCardSwipeHint": "और देखने के लिए स्वाइप करें",
     "bookingCardMissingVilla": "बुक करने से पहले विला चुनें।",
-    "bookingCardSelectedVilla": "चुना गया: {summary}",
     "bookingPromptReady": "बहुत अच्छा। नीचे बुकिंग कार्ड में विला और तारीखें जाँचें, फिर सुरक्षित बुकिंग पर जाएँ।",
     "bookingPromptMissingVillaAndDates": "ज़रूर। नीचे बुकिंग कार्ड से विला, चेक-इन और चेकआउट तारीखें चुनें।",
     "bookingPromptMissingVilla": "लगभग पूरा है। नीचे बुकिंग कार्ड में विला चुनें, फिर बुकिंग पर जाएँ।",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें"
+  },
+  "DemoDisclaimer": {
+    "title": "केवल डेमो वेबसाइट",
+    "body": "यह वेबसाइट एक product demo है। यहां दिखाई गई bookings, payments, invoices और messages सिर्फ demo के लिए हैं और कोई real reservation या charge नहीं बनाते।",
+    "confirm": "मैं समझ गया",
+    "close": "डेमो वेबसाइट सूचना बंद करें"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - Koh Samui, Thailand में लक्जरी विला",

@@ -2,6 +2,7 @@
 
 import { AIChatWidget } from "@/components/chat/AIChatWidget";
 import { ChatContextProvider } from "@/components/chat/ChatContext";
+import { DemoDisclaimerDialog } from "@/components/global/DemoDisclaimerDialog";
 import { SiteFooter } from "@/components/global/SiteFooter";
 import { SiteHeader } from "@/components/global/SiteHeader";
 import { resort } from "@/lib/data/resort-config";
@@ -17,6 +18,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <DemoDisclaimerDialog />
       <SiteHeader />
       <ChatContextProvider>
         <main className="flex-1">{children}</main>

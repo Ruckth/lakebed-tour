@@ -176,10 +176,9 @@
     "bookingCardTitle": "Готовы забронировать?",
     "bookingCardHelper": "Выберите даты здесь и перейдите к безопасному бронированию.",
     "bookingCardNights": "{count} ночей",
-    "bookingCardDirectTotal": "Итого напрямую {total}",
     "bookingCardVillaLabel": "Выберите виллу",
+    "bookingCardSwipeHint": "Листайте виллы",
     "bookingCardMissingVilla": "Выберите виллу перед бронированием.",
-    "bookingCardSelectedVilla": "Выбрано: {summary}",
     "bookingPromptReady": "Отлично. Проверьте виллу и даты в карточке бронирования ниже и продолжите.",
     "bookingPromptMissingVillaAndDates": "Конечно. В карточке ниже выберите виллу, дату заезда и выезда.",
     "bookingPromptMissingVilla": "Почти готово. Выберите виллу в карточке ниже и продолжите бронирование.",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "Бронировать напрямую"
+  },
+  "DemoDisclaimer": {
+    "title": "Только демо-сайт",
+    "body": "Этот сайт является демонстрацией продукта. Бронирования, платежи, счета и сообщения, показанные здесь, предназначены только для демонстрации и не создают реальные бронирования или списания.",
+    "confirm": "Понятно",
+    "close": "Закрыть уведомление о демо-сайте"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - роскошные виллы в Koh Samui, Thailand",

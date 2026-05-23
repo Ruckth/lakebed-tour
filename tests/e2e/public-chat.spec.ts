@@ -1,4 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { bypassDemoDisclaimer } from "./demo-disclaimer";
+
+test.beforeEach(async ({ page }) => {
+  await bypassDemoDisclaimer(page);
+});
 
 const localizedSmoke = [
   { path: "/th", nav: "จอง", chat: "เปิดแชตคอนเซียจ", close: "ปิดแชต", placeholder: "พิมพ์คำถาม" },
@@ -140,10 +145,8 @@ test("thai booking chat shows a prefilled booking handoff", async ({ page }) => 
     "aria-pressed",
     "true",
   );
-  await expect(bookingCard.getByText(/เลือกแล้ว: Pool Villa/)).toBeVisible();
-  await expect(bookingCard.getByText(/ผู้เข้าพัก 4 คน/)).toBeVisible();
-  await expect(bookingCard.getByText(/4 คืน/)).toBeVisible();
-  await expect(bookingCard.getByText(/฿28,900/)).toBeVisible();
+  await expect(bookingCard.getByText(/เลือกแล้ว:/)).toHaveCount(0);
+  await expect(bookingCard.getByTestId("chat-villa-swipe-hint")).toContainText("เลื่อนดูวิลล่า");
 
   await bookingCard.getByRole("button", { name: "จอง" }).click();
   await expect(page).toHaveURL((url) => {
@@ -167,6 +170,7 @@ test("thai booking prompt asks only for missing fields and shows villa cards", a
   await expect(page.getByText(/เลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์/)).toBeVisible();
   await expect(bookingCard).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-swipe-hint")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-option-pool-villa")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-option-garden-suite")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-option-penthouse")).toBeVisible();
@@ -220,13 +224,26 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
 
   const bookingCard = page.getByTestId("chat-booking-card");
   await expect(bookingCard).toBeVisible();
+  const poolCard = bookingCard.getByTestId("chat-villa-option-pool-villa");
+  const guestBadge = poolCard.getByText(/Up to 4 guests/);
+  const price = bookingCard.getByTestId("chat-villa-price-pool-villa");
+  const guestBox = await guestBadge.boundingBox();
+  const priceBox = await price.boundingBox();
+  expect(guestBox).not.toBeNull();
+  expect(priceBox).not.toBeNull();
+  expect(priceBox!.y).toBeGreaterThan(guestBox!.y + 8);
+
   await openCalendarPopover(page, bookingCard.getByTestId("chat-booking-check-in"));
   await expect(page.getByRole("grid")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkIn")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("grid")).toHaveCount(0);
 
   await openCalendarPopover(page, bookingCard.getByTestId("chat-booking-check-out"));
   await expect(page.getByRole("grid")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkIn")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
 });
 
 test("german chat suggestions float under assistant messages and update", async ({ page }) => {

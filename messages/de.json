@@ -176,10 +176,9 @@
     "bookingCardTitle": "Bereit zu buchen?",
     "bookingCardHelper": "Wählen Sie hier die Daten und fahren Sie zur sicheren Buchung fort.",
     "bookingCardNights": "{count} Nächte",
-    "bookingCardDirectTotal": "Direktpreis gesamt {total}",
     "bookingCardVillaLabel": "Villa wählen",
+    "bookingCardSwipeHint": "Wischen für mehr",
     "bookingCardMissingVilla": "Bitte wählen Sie vor der Buchung eine Villa.",
-    "bookingCardSelectedVilla": "Ausgewählt: {summary}",
     "bookingPromptReady": "Perfekt. Prüfen Sie Villa und Daten in der Buchungskarte unten und fahren Sie dann fort.",
     "bookingPromptMissingVillaAndDates": "Gerne. Wählen Sie Villa, Check-in und Checkout in der Buchungskarte unten.",
     "bookingPromptMissingVilla": "Fast fertig. Wählen Sie die Villa in der Buchungskarte unten und fahren Sie fort.",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "Direkt buchen"
+  },
+  "DemoDisclaimer": {
+    "title": "Nur Demo-Website",
+    "body": "Diese Website ist eine Produktdemo. Buchungen, Zahlungen, Rechnungen und Nachrichten, die hier angezeigt werden, dienen nur der Demonstration und erstellen keine echten Reservierungen oder Abbuchungen.",
+    "confirm": "Verstanden",
+    "close": "Hinweis zur Demo-Website schließen"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - Luxusvillen in Koh Samui, Thailand",

@@ -176,10 +176,9 @@
     "bookingCardTitle": "准备预订？",
     "bookingCardHelper": "在这里选择日期，然后继续到安全预订。",
     "bookingCardNights": "{count} 晚",
-    "bookingCardDirectTotal": "直接预订总计 {total}",
     "bookingCardVillaLabel": "选择别墅",
+    "bookingCardSwipeHint": "滑动查看更多",
     "bookingCardMissingVilla": "请先选择一间别墅。",
-    "bookingCardSelectedVilla": "已选择：{summary}",
     "bookingPromptReady": "好的。请使用下方预订卡确认别墅和日期，然后继续安全预订。",
     "bookingPromptMissingVillaAndDates": "很乐意帮您。请使用下方预订卡选择别墅、入住和退房日期。",
     "bookingPromptMissingVilla": "快完成了。请使用下方预订卡选择别墅，然后继续预订。",
@@ -198,6 +197,12 @@
   },
   "Footer": {
     "bookDirect": "直接预订"
+  },
+  "DemoDisclaimer": {
+    "title": "仅为演示网站",
+    "body": "此网站是产品演示。这里显示的预订、付款、发票和消息仅用于演示，不会创建真实预订或产生真实扣款。",
+    "confirm": "我已了解",
+    "close": "关闭演示网站提示"
   },
   "SEO": {
     "rootTitle": "Seaview Residence - Koh Samui, Thailand 豪华别墅",

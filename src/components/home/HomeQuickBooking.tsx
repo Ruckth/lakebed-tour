@@ -1,14 +1,12 @@
 "use client";
 
-import { CalendarDays } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import { todayIsoLocal } from "@/lib/booking/dates";
+import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 export function HomeQuickBooking() {
   const bookingT = useTranslations("Booking");
@@ -42,55 +40,27 @@ export function HomeQuickBooking() {
     <section className="relative z-20 px-5 pb-0 pt-4 md:px-8 md:pb-0 md:pt-6">
       <form
         onSubmit={submitQuickBooking}
-        className="mx-auto grid max-w-5xl gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end"
+        className="mx-auto grid max-w-5xl gap-3 md:grid-cols-[1fr_auto] md:items-end"
         aria-label={bookingT("directBooking")}
       >
-        <div className="space-y-2">
-          <Label htmlFor="home-check-in" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {bookingT("checkIn")}
-          </Label>
-          <div className="relative">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="home-check-in"
-              type="date"
-              min={today}
-              value={checkIn}
-              onChange={(event) => {
-                setCheckIn(event.target.value);
-                setError("");
-              }}
-              className="h-12 rounded-xl pl-10 text-base md:h-11 md:text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="home-check-out" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {bookingT("checkOut")}
-          </Label>
-          <div className="relative">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="home-check-out"
-              type="date"
-              min={checkIn || today}
-              value={checkOut}
-              onChange={(event) => {
-                setCheckOut(event.target.value);
-                setError("");
-              }}
-              className="h-12 rounded-xl pl-10 text-base md:h-11 md:text-sm"
-            />
-          </div>
-        </div>
+        <BookingRangePicker
+          checkIn={checkIn}
+          checkOut={checkOut}
+          onChange={(range) => {
+            setCheckIn(range.checkIn);
+            setCheckOut(range.checkOut);
+            setError("");
+          }}
+          isDateDisabled={(date) => dateToIso(date) < today}
+          onRangeChange={() => setError("")}
+        />
 
         <Button type="submit" variant="gold" className="h-12 rounded-xl px-8 md:h-11">
           {navT("book")}
         </Button>
 
         {error ? (
-          <p className="text-sm font-medium text-destructive md:col-span-3" role="alert">
+          <p className="text-sm font-medium text-destructive md:col-span-2" role="alert">
             {error}
           </p>
         ) : null}
