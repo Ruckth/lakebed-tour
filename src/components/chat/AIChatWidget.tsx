@@ -344,7 +344,7 @@ export function AIChatWidget({
       : undefined;
   const messagesStyle =
     mobileComposerDocked
-      ? { paddingBottom: `calc(${mobileKeyboardInset}px + 6.5rem)` }
+      ? { paddingBottom: "1rem" }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
 
@@ -547,8 +547,8 @@ export function AIChatWidget({
 
       keyboardInsetRef.current = nextInset;
       setMobileKeyboardInset(nextInset);
-      if (nextInset > MOBILE_KEYBOARD_THRESHOLD) {
-        window.setTimeout(() => transcriptEndRef.current?.scrollIntoView({ block: "end" }), 50);
+      if (nextInset <= MOBILE_KEYBOARD_THRESHOLD) {
+        setComposerFocused(false);
       }
     }
 
@@ -575,7 +575,7 @@ export function AIChatWidget({
   useEffect(() => {
     if (!open) return;
     transcriptEndRef.current?.scrollIntoView({ block: "end" });
-  }, [open, messages, isTyping, visibleSuggestions]);
+  }, [canShowBookingCard, messages.length, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1007,10 +1007,6 @@ export function AIChatWidget({
                 onChange={(event) => setInput(event.target.value)}
                 onFocus={() => {
                   setComposerFocused(true);
-                  window.setTimeout(
-                    () => transcriptEndRef.current?.scrollIntoView({ block: "end" }),
-                    50,
-                  );
                 }}
                 onBlur={() => {
                   window.setTimeout(() => setComposerFocused(false), 120);
