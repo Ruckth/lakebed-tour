@@ -84,6 +84,7 @@ export function LanguageSwitcher({
   return (
     <Popover>
       <PopoverTrigger
+        data-testid="language-switcher"
         aria-label={a11y("language")}
         className={cn(
           "inline-flex h-9 items-center justify-between gap-2 rounded-full border text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-3 focus:ring-ring/40",

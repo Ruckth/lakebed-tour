@@ -13,3 +13,20 @@ test("villa detail page renders gallery, 360 entry, and chat trigger", async ({ 
   await expect(page.getByRole("button", { name: /Explore 360|Explore in 360/i }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open concierge chat" })).toBeVisible();
 });
+
+test("mobile villa chat trigger targets the property chat page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/rooms/pool-villa");
+
+  const chatLink = page.getByRole("link", { name: "Open concierge chat" });
+  await expect(chatLink).toBeVisible();
+  await expect(chatLink).toHaveAttribute("href", "/chat?property=pool-villa");
+
+  await page.goto("/chat?property=pool-villa");
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/chat");
+    expect(url.searchParams.get("property")).toBe("pool-villa");
+    return true;
+  });
+  await expect(page.getByRole("button", { name: /Restart chat - Pool Villa concierge/i })).toBeVisible();
+});

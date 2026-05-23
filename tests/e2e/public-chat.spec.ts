@@ -19,7 +19,7 @@ const localizedSmoke = [
 ];
 
 async function chooseLanguage(page: Page, optionName: string) {
-  const languageButtons = page.getByLabel("Language");
+  const languageButtons = page.getByTestId("language-switcher");
   const buttonCount = await languageButtons.count();
   for (let index = 0; index < buttonCount; index += 1) {
     const button = languageButtons.nth(index);
@@ -122,6 +122,25 @@ test("thai locale renders translated public UI and chat labels", async ({ page }
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
 });
 
+test("mobile chat trigger opens the dedicated chat page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/");
+
+  await page.getByRole("link", { name: "Open concierge chat" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
+  await expect(page.getByPlaceholder("Ask a question")).toBeVisible();
+});
+
+test("localized mobile chat trigger keeps the locale on the chat page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/th");
+
+  await page.getByRole("link", { name: "เปิดแชตคอนเซียจ" }).click();
+  await expect(page).toHaveURL(/\/th\/chat$/);
+  await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
+});
+
 test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
   await page.goto("/th");
 
@@ -170,7 +189,7 @@ test("thai booking prompt asks only for missing fields and shows villa cards", a
   await expect(page.getByText(/เลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์/)).toBeVisible();
   await expect(bookingCard).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
-  await expect(bookingCard.getByTestId("chat-villa-swipe-hint")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-swipe-hint")).toContainText("เลื่อนดูวิลล่า");
   await expect(bookingCard.getByTestId("chat-villa-option-pool-villa")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-option-garden-suite")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-option-penthouse")).toBeVisible();
@@ -218,7 +237,8 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   await page.setViewportSize({ width: 390, height: 760 });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
+  await page.getByRole("link", { name: "Open concierge chat" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
   await page.getByPlaceholder("Ask a question").fill("I want to book a villa");
   await page.getByRole("button", { name: "Send message" }).click();
 
@@ -327,7 +347,7 @@ test("mobile language switcher stays compact while opening full options", async 
   await page.setViewportSize({ width: 720, height: 360 });
   await page.goto("/th");
 
-  const language = page.getByRole("button", { name: "Language" });
+  const language = page.getByTestId("language-switcher").filter({ hasText: /^TH$/ });
   await expect(language).toHaveText("TH");
   const box = await language.boundingBox();
   expect(box?.width).toBeLessThan(90);

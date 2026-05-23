@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { localizeHref } from "@/i18n/routing";
 
 export function MobileStickyBar({
@@ -12,12 +12,10 @@ export function MobileStickyBar({
   propertyId: string;
 }) {
   const locale = useLocale();
+  const router = useRouter();
   const t = useTranslations("Nav");
   const chatT = useTranslations("Chat");
-
-  function openChat() {
-    window.dispatchEvent(new CustomEvent("open-concierge-chat"));
-  }
+  const chatHref = localizeHref(`/chat?property=${encodeURIComponent(propertyId)}`, locale);
 
   return (
     <div className="fixed inset-x-4 bottom-3 z-40 md:hidden">
@@ -28,16 +26,17 @@ export function MobileStickyBar({
         >
           {t("book")}
         </Link>
-        <Button
-          type="button"
-          onClick={openChat}
-          variant="outline"
-          size="icon"
-          className="h-12 w-12 shrink-0 rounded-full bg-card"
+        <Link
+          href={chatHref}
+          onClick={(event) => {
+            event.preventDefault();
+            router.push(chatHref);
+          }}
+          className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           aria-label={chatT("open")}
         >
           <MessageCircle className="h-5 w-5" />
-        </Button>
+        </Link>
       </div>
     </div>
   );

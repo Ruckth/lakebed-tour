@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -34,6 +35,7 @@ import {
   type ChatSuggestionCandidate,
   type ChatSuggestionId,
 } from "@/lib/chat/suggestions";
+import { localizeHref, stripLocalePrefix } from "@/i18n/routing";
 import { extractChatBookingContext, getBookingPromptKey, type ChatBookingContext } from "@/lib/chat/booking-intent";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,7 @@ type Message = { role: "user" | "assistant"; content: string };
 type ContactApp = "whatsapp" | "line";
 type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
 type ChatSuggestion = ChatSuggestionCandidate & { answer: string };
+type ChatExperienceMode = "overlay" | "page";
 type LatestExchange = {
   userMessage: string;
   assistantMessage: string;
@@ -232,24 +235,28 @@ function TypingIndicator({ label }: { label: string }) {
   );
 }
 
-export function AIChatWidget({
+function ChatExperience({
+  mode,
   propertySlug,
   propertyName,
   whatsappNumber,
   lineId,
 }: {
+  mode: ChatExperienceMode;
   propertySlug?: string;
   propertyName?: string;
   whatsappNumber: string;
   lineId?: string;
 }) {
+  const isPageMode = mode === "page";
   const t = useTranslations("Chat");
   const locale = useLocale();
+  const router = useRouter();
   const convex = useOptionalConvex();
   const pageContext = useChatPageContext();
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
   const activePropertyName = propertyName ?? pageContext?.context.propertyName;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(isPageMode);
   const [hydrated, setHydrated] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -269,6 +276,7 @@ export function AIChatWidget({
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const pathname = usePathname();
+  const normalizedPathname = stripLocalePrefix(pathname);
 
   const title = activePropertyName
     ? t("propertyTitle", { propertyName: activePropertyName })
@@ -325,15 +333,23 @@ export function AIChatWidget({
     !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
   const canShowBookingCard =
     canShowMessageSuggestions && Boolean(latestBookingContext?.hasBookingIntent);
-  const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
+  const hideFloatingTriggerOnMobileRoom = normalizedPathname.startsWith("/rooms/");
   const liftFloatingTriggerOnBooking = pathname === "/booking" || pathname.includes("/booking");
-  const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
+  const chatHref = localizeHref(
+    activePropertySlug ? `/chat?property=${encodeURIComponent(activePropertySlug)}` : "/chat",
+    locale,
+  );
+  const shouldLockScroll =
+    mode === "overlay" &&
+    open &&
+    typeof window !== "undefined" &&
+    !window.matchMedia("(min-width: 768px)").matches;
   const mobileKeyboardActive =
     composerFocused || mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
   const mobileComposerDocked =
     mobileKeyboardActive && mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
   const chatFooterStyle =
-    mobileComposerDocked
+    mode === "overlay" && mobileComposerDocked
       ? {
           bottom: mobileKeyboardInset,
           left: 0,
@@ -343,7 +359,7 @@ export function AIChatWidget({
         }
       : undefined;
   const messagesStyle =
-    mobileComposerDocked
+    mode === "overlay" && mobileComposerDocked
       ? { paddingBottom: "1rem" }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
@@ -456,10 +472,11 @@ export function AIChatWidget({
   );
 
   const openChat = useCallback(() => {
+    if (mode === "page") return;
     setMounted(true);
     void ensureSession(true, true);
     setOpen(true);
-  }, [ensureSession]);
+  }, [ensureSession, mode]);
 
   const restartChat = useCallback(async () => {
     if (!convex) {
@@ -489,34 +506,48 @@ export function AIChatWidget({
   }, [convex, createFreshSession]);
 
   const closeChat = useCallback(() => {
+    if (mode === "page") {
+      if (convex && sessionId) {
+        void closeChatSession(convex, { sessionId }).catch(() => undefined);
+      }
+      router.push(localizeHref("/", locale));
+      return;
+    }
+
     setOpen(false);
     if (convex && sessionId) {
       void closeChatSession(convex, { sessionId }).catch(() => undefined);
     }
-  }, [convex, sessionId]);
+  }, [convex, locale, mode, router, sessionId]);
 
   useEffect(() => {
+    if (mode === "page") return;
+
     function openFromStickyBar() {
       openChat();
     }
 
     window.addEventListener("open-concierge-chat", openFromStickyBar);
     return () => window.removeEventListener("open-concierge-chat", openFromStickyBar);
-  }, [openChat]);
+  }, [mode, openChat]);
 
   useEffect(() => {
+    if (mode === "page") return;
     if (open) return;
     const timeout = window.setTimeout(() => setMounted(false), 220);
     return () => window.clearTimeout(timeout);
-  }, [open]);
+  }, [mode, open]);
 
   useEffect(() => {
+    if (mode === "page") return;
     if (!open) return;
     const timeout = window.setTimeout(() => inputRef.current?.focus(), 260);
     return () => window.clearTimeout(timeout);
-  }, [open]);
+  }, [mode, open]);
 
   useEffect(() => {
+    if (mode === "page") return;
+
     if (!open) {
       keyboardInsetRef.current = 0;
       setMobileKeyboardInset(0);
@@ -570,7 +601,7 @@ export function AIChatWidget({
       window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
-  }, [open]);
+  }, [mode, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -773,40 +804,19 @@ export function AIChatWidget({
     }
   }
 
-  return (
-    <>
-      {hydrated ? (
-        <button
-          type="button"
-          onClick={openChat}
-          className={cn(
-            "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105",
-            hideFloatingTriggerOnMobileRoom && "hidden md:flex",
-            liftFloatingTriggerOnBooking && "bottom-24 md:bottom-5",
-            open && "pointer-events-none opacity-0",
-          )}
-          aria-label={t("open")}
-        >
-          <MessageCircle className="h-6 w-6" />
-        </button>
-      ) : null}
-
-      {hydrated && mounted ? createPortal((
-        <div
-          className={cn(
-            "fixed inset-0 z-50 bg-background/85 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none md:pointer-events-none md:bg-transparent md:backdrop-blur-0",
-            open ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <div
-            data-testid="chat-panel"
-            className={cn(
-              "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border",
-              open
-                ? "translate-y-0 scale-100 opacity-100"
-                : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95",
-            )}
-          >
+  const panel = (
+    <div
+      data-testid="chat-panel"
+      className={cn(
+        mode === "overlay"
+          ? "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border"
+          : "mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col bg-card",
+        mode === "overlay" &&
+          (open
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95"),
+      )}
+    >
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-gold" />
@@ -836,7 +846,11 @@ export function AIChatWidget({
 
           <div
             data-testid="chat-messages"
-            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4"
+            className={cn(
+              "min-h-0 flex-1 space-y-3 px-5 py-5 md:px-4 md:py-4",
+              mode === "overlay" && "overflow-y-auto",
+              mode === "page" && "pb-6",
+            )}
             style={messagesStyle}
           >
             {messages.length === 0 ? (
@@ -896,11 +910,14 @@ export function AIChatWidget({
             data-testid="chat-footer"
             className={cn(
               "shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3",
-              mobileComposerDocked && "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
+              mode === "overlay" &&
+                mobileComposerDocked &&
+                "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
+              mode === "page" && "sticky bottom-0 z-10",
             )}
             style={chatFooterStyle}
           >
-            <div className={cn(mobileKeyboardActive && "hidden md:block")}>
+            <div className={cn(mode === "overlay" && mobileKeyboardActive && "hidden md:block")}>
               <MessagingButtons
                 whatsappNumber={whatsappNumber}
                 lineId={lineId}
@@ -910,7 +927,7 @@ export function AIChatWidget({
             <details
               className={cn(
                 "rounded-xl border border-border bg-background/70 px-3 py-2 text-sm",
-                mobileKeyboardActive && "hidden md:block",
+                mode === "overlay" && mobileKeyboardActive && "hidden md:block",
               )}
             >
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">
@@ -1025,9 +1042,72 @@ export function AIChatWidget({
               </Button>
             </form>
           </div>
-          </div>
+    </div>
+  );
+
+  if (mode === "page") {
+    return panel;
+  }
+
+  return (
+    <>
+      {hydrated ? (
+        <>
+          {!hideFloatingTriggerOnMobileRoom ? (
+            <Link
+              href={chatHref}
+              className={cn(
+                "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden",
+                liftFloatingTriggerOnBooking && "bottom-24",
+              )}
+              aria-label={t("open")}
+            >
+              <MessageCircle className="h-6 w-6" />
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={openChat}
+            className={cn(
+              "fixed bottom-5 right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex",
+              liftFloatingTriggerOnBooking && "md:bottom-5",
+              open && "pointer-events-none opacity-0",
+            )}
+            aria-label={t("open")}
+          >
+            <MessageCircle className="h-6 w-6" />
+          </button>
+        </>
+      ) : null}
+
+      {hydrated && mounted ? createPortal((
+        <div
+          className={cn(
+            "fixed inset-0 z-50 bg-background/85 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none md:pointer-events-none md:bg-transparent md:backdrop-blur-0",
+            open ? "opacity-100" : "opacity-0",
+          )}
+        >
+          {panel}
         </div>
       ), document.body) : null}
     </>
   );
+}
+
+export function AIChatWidget(props: {
+  propertySlug?: string;
+  propertyName?: string;
+  whatsappNumber: string;
+  lineId?: string;
+}) {
+  return <ChatExperience {...props} mode="overlay" />;
+}
+
+export function AIChatPage(props: {
+  propertySlug?: string;
+  propertyName?: string;
+  whatsappNumber: string;
+  lineId?: string;
+}) {
+  return <ChatExperience {...props} mode="page" />;
 }
