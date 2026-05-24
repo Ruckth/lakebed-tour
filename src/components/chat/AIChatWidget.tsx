@@ -722,6 +722,10 @@ function ChatExperience({
       }
 
       const focusedInputIsActive = document.activeElement === inputRef.current;
+      if (mode === "page" && focusedInputIsActive && !composerFocused) {
+        keyboardFocusStartedAtRef.current ||= Date.now();
+        setComposerFocused(true);
+      }
       const focusAgeMs = keyboardFocusStartedAtRef.current
         ? Date.now() - keyboardFocusStartedAtRef.current
         : 0;
