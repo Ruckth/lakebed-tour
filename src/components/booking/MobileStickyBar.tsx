@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { localizeHref } from "@/i18n/routing";
 
 export function MobileStickyBar({
@@ -13,9 +13,17 @@ export function MobileStickyBar({
 }) {
   const locale = useLocale();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useTranslations("Nav");
   const chatT = useTranslations("Chat");
-  const chatHref = localizeHref(`/chat?property=${encodeURIComponent(propertyId)}`, locale);
+  const currentSearch = searchParams.toString();
+  const returnTo = currentSearch ? `${pathname}?${currentSearch}` : pathname;
+  const chatParams = new URLSearchParams({
+    property: propertyId,
+    returnTo,
+  });
+  const chatHref = localizeHref(`/chat?${chatParams.toString()}`, locale);
 
   return (
     <div className="fixed inset-x-4 bottom-3 z-40 md:hidden">

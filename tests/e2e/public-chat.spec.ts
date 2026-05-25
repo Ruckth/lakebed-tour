@@ -127,10 +127,15 @@ test("mobile chat trigger opens the dedicated chat page", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("link", { name: "Open concierge chat" }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(
+    (url) => url.pathname === "/chat" && url.searchParams.get("returnTo") === "/",
+  );
   await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
   await expect(page.getByPlaceholder("Ask a question")).toBeVisible();
   await expect(page.getByRole("banner")).toBeHidden();
+
+  await page.getByRole("button", { name: "Close chat" }).click();
+  await expect(page).toHaveURL(/\/$/);
 });
 
 test("localized mobile chat trigger keeps the locale on the chat page", async ({ page }) => {
@@ -138,8 +143,28 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
   await page.goto("/th");
 
   await page.getByRole("link", { name: "เปิดแชตคอนเซียจ" }).click();
-  await expect(page).toHaveURL(/\/th\/chat$/);
+  await expect(page).toHaveURL(
+    (url) => url.pathname === "/th/chat" && url.searchParams.get("returnTo") === "/th",
+  );
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
+
+  await page.getByRole("button", { name: "ปิดแชต" }).click();
+  await expect(page).toHaveURL(/\/th$/);
+});
+
+test("mobile chat trigger stays in the same position on booking and home", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+
+  await page.goto("/");
+  const homeBox = await page.getByRole("link", { name: "Open concierge chat" }).boundingBox();
+  expect(homeBox).not.toBeNull();
+
+  await page.goto("/booking");
+  const bookingBox = await page.getByRole("link", { name: "Open concierge chat" }).boundingBox();
+  expect(bookingBox).not.toBeNull();
+
+  expect(Math.abs(bookingBox!.x - homeBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(bookingBox!.y - homeBox!.y)).toBeLessThanOrEqual(1);
 });
 
 test("mobile chat page keeps the composer visible while typing", async ({ page }) => {
@@ -339,7 +364,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   await page.goto("/");
 
   await page.getByRole("link", { name: "Open concierge chat" }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL((url) => url.pathname === "/chat");
   await page.getByPlaceholder("Ask a question").fill("I want to book a villa");
   await page.getByRole("button", { name: "Send message" }).click();
 
@@ -441,14 +466,14 @@ test("language switcher preserves dark theme preference", async ({ page }) => {
   await page.goto("/ko");
 
   await expect
-    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .poll(() => page.evaluate(() => document.documentElement?.classList.contains("dark") ?? false))
     .toBe(true);
   const beforeBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
   await chooseLanguage(page, "English EN");
   await expect(page).toHaveURL(/\/$/);
   await expect
-    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .poll(() => page.evaluate(() => document.documentElement?.classList.contains("dark") ?? false))
     .toBe(true);
   await expect
     .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))

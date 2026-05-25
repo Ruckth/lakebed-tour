@@ -33,6 +33,10 @@ test("booking flow validates steps and reaches demo payment", async ({ page }) =
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Review and pay" })).toBeVisible();
+  await expect(page.getByTestId("booking-review-property")).toContainText("Garden Suite");
+  await expect(page.getByTestId("booking-review-dates")).toContainText("2 nights");
+  await expect(page.getByTestId("booking-review-guests")).toHaveText("2 guests");
+  await expect(page.getByText(/Garden Suite, 2 guests, 2 nights/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Continue to Pay" }).click();
 
   await expect(page).toHaveURL(/\/booking\/pay\?bookingId=demo/);
@@ -45,15 +49,17 @@ test("booking dates open as a unified start/end range picker", async ({ page }) 
 
   await page.getByLabel("Check in").click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByTestId("booking-range-checkIn")).toContainText("Check in");
-  await expect(page.getByTestId("booking-range-checkOut")).toContainText("Check out");
+  await expect(page.getByTestId("booking-range-checkIn")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkIn")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("gridcell", { selected: true })).toHaveCount(3);
   await page.keyboard.press("Escape");
 
   await page.getByLabel("Check out").click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByTestId("booking-range-checkIn")).toContainText("Check in");
-  await expect(page.getByTestId("booking-range-checkOut")).toContainText("Check out");
+  await expect(page.getByTestId("booking-range-checkIn")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
+  await expect(page.getByTestId("booking-range-checkOut")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("thai booking calendar localizes the month header", async ({ page }) => {

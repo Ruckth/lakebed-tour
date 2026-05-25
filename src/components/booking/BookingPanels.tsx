@@ -1,6 +1,17 @@
 "use client";
 
-import { CheckCircle2, Mail, Minus, Phone, Plus, Shield, User } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  Home,
+  Mail,
+  Minus,
+  Phone,
+  Plus,
+  Shield,
+  User,
+  Users,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -354,17 +365,45 @@ export function ReviewPanel({
   bookingMode: BookingMode;
 }) {
   const t = useTranslations("Booking");
+  const chatT = useTranslations("Chat");
+  const villaT = useTranslations("Villa");
+  const reviewDetails = [
+    {
+      icon: Home,
+      label: property.name,
+      testId: "booking-review-property",
+    },
+    {
+      icon: CalendarDays,
+      label: `${formatDisplayDate(checkIn)} - ${formatDisplayDate(checkOut)} · ${chatT("bookingCardNights", { count: nights })}`,
+      testId: "booking-review-dates",
+    },
+    {
+      icon: Users,
+      label: villaT("guests", { count: guests }),
+      testId: "booking-review-guests",
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-foreground">{t("reviewPay")}</h2>
-      <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-        {t("reviewSummary", {
-          propertyName: property.name,
-          guests,
-          nights,
-          checkIn: formatDisplayDate(checkIn),
-          checkOut: formatDisplayDate(checkOut),
-        })}
+      <div className="rounded-xl bg-muted p-4">
+        <ul className="space-y-3 text-sm text-muted-foreground">
+          {reviewDetails.map((item) => {
+            const Icon = item.icon;
+            return (
+              <li
+                key={item.testId}
+                data-testid={item.testId}
+                className="flex items-start gap-3 leading-relaxed"
+              >
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+                <span className="min-w-0">{item.label}</span>
+              </li>
+            );
+          })}
+        </ul>
       </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 text-gold" />

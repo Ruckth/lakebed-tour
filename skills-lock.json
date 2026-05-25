@@ -36,11 +36,6 @@
       "sourceType": "github",
       "computedHash": "a935fd51b32e4e37d23286c04748825a6a193ef74d9980385449aa4f80646f9d"
     },
-    "sveltekit-svelte5-tailwind-skill": {
-      "source": "claude-skills/sveltekit-svelte5-tailwind-skill",
-      "sourceType": "github",
-      "computedHash": "bb72a52a2c415aa8743bf3146dd615f9084e17a8a05e2198f8c3ba23a8053b8b"
-    },
     "threejs-fundamentals": {
       "source": "cloudai-x/threejs-skills",
       "sourceType": "github",

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -55,6 +55,7 @@ type LatestExchange = {
 
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
+const CHAT_RETURN_TO_PARAM = "returnTo";
 const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
 const HEARTBEAT_MS = 30_000;
 const contactApps: ContactApp[] = ["whatsapp", "line"];
@@ -247,6 +248,19 @@ function localBookingReplyKey(context: ChatBookingContext) {
   return getBookingPromptKey(context);
 }
 
+function getSafeChatReturnTo(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    if (stripLocalePrefix(url.pathname) === "/chat") return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 function SuggestionChips({
   suggestions,
   onSelect,
@@ -350,7 +364,11 @@ function ChatExperience({
   const keyboardInsetRef = useRef(0);
   const keyboardFocusStartedAtRef = useRef(0);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const normalizedPathname = stripLocalePrefix(pathname);
+  const currentSearch = searchParams.toString();
+  const currentPathWithSearch = currentSearch ? `${pathname}?${currentSearch}` : pathname;
+  const returnToParam = searchParams.get(CHAT_RETURN_TO_PARAM);
 
   const title = activePropertyName
     ? t("propertyTitle", { propertyName: activePropertyName })
@@ -408,11 +426,15 @@ function ChatExperience({
   const canShowBookingCard =
     canShowMessageSuggestions && Boolean(latestBookingContext?.hasBookingIntent);
   const hideFloatingTriggerOnMobileRoom = normalizedPathname.startsWith("/rooms/");
-  const liftFloatingTriggerOnBooking = pathname === "/booking" || pathname.includes("/booking");
-  const chatHref = localizeHref(
-    activePropertySlug ? `/chat?property=${encodeURIComponent(activePropertySlug)}` : "/chat",
-    locale,
-  );
+  const chatHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (activePropertySlug) params.set("property", activePropertySlug);
+    if (normalizedPathname !== "/chat") {
+      params.set(CHAT_RETURN_TO_PARAM, currentPathWithSearch);
+    }
+    const query = params.toString();
+    return localizeHref(`/chat${query ? `?${query}` : ""}`, locale);
+  }, [activePropertySlug, currentPathWithSearch, locale, normalizedPathname]);
   const shouldLockScroll =
     mode === "overlay" &&
     open &&
@@ -665,7 +687,7 @@ function ChatExperience({
       if (convex && sessionId) {
         void closeChatSession(convex, { sessionId }).catch(() => undefined);
       }
-      router.push(localizeHref("/", locale));
+      router.push(getSafeChatReturnTo(returnToParam) ?? localizeHref("/", locale));
       return;
     }
 
@@ -673,7 +695,7 @@ function ChatExperience({
     if (convex && sessionId) {
       void closeChatSession(convex, { sessionId }).catch(() => undefined);
     }
-  }, [convex, locale, mode, router, sessionId]);
+  }, [convex, locale, mode, returnToParam, router, sessionId]);
 
   useEffect(() => {
     if (mode === "page") return;
@@ -1267,10 +1289,11 @@ function ChatExperience({
           {!hideFloatingTriggerOnMobileRoom ? (
             <Link
               href={chatHref}
-              className={cn(
-                "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden",
-                liftFloatingTriggerOnBooking && "bottom-24",
-              )}
+              onClick={(event) => {
+                event.preventDefault();
+                router.push(chatHref);
+              }}
+              className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden"
               aria-label={t("open")}
             >
               <MessageCircle className="h-6 w-6" />
@@ -1281,7 +1304,6 @@ function ChatExperience({
             onClick={openChat}
             className={cn(
               "fixed bottom-5 right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex",
-              liftFloatingTriggerOnBooking && "md:bottom-5",
               open && "pointer-events-none opacity-0",
             )}
             aria-label={t("open")}
