@@ -34,6 +34,7 @@ export default async function ChatPage({
     <AIChatPage
       propertySlug={property?.id}
       propertyName={property?.name}
+      contactEmail={resort.contactEmail}
       whatsappNumber={resort.whatsapp}
       lineId={resort.lineId}
     />

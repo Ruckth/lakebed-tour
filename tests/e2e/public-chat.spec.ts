@@ -96,7 +96,11 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
 
   await page.getByText("Share contact details").click();
   await page.getByLabel("Email").fill("visitor@example.com");
-  await page.getByLabel("Preferred app").click();
+  const contactAppField = page.getByTestId("contact-app-field");
+  await expect(contactAppField).toBeVisible();
+  await expect(contactAppField.getByLabel("Preferred app")).toBeVisible();
+  await expect(contactAppField.getByLabel("Contact handle")).toBeVisible();
+  await contactAppField.getByLabel("Preferred app").click();
   const whatsappOption = page.getByTestId("contact-app-option-whatsapp");
   const lineOption = page.getByTestId("contact-app-option-line");
   await expect(whatsappOption).toBeVisible();
@@ -180,6 +184,12 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
     floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
   ).toBeVisible();
   await expect(
+    floatingContactActions.getByRole("link", { name: /Open LINE chat/i }),
+  ).toBeVisible();
+  await expect(
+    floatingContactActions.getByRole("link", { name: /Email concierge/i }),
+  ).toBeVisible();
+  await expect(
     chatFooter.getByRole("link", { name: /Open WhatsApp chat/i }),
   ).toHaveCount(0);
 
@@ -199,6 +209,12 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await expect(chatFooter).toHaveCSS("position", "static");
   await expect(
     floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
+  ).toBeVisible();
+  await expect(
+    floatingContactActions.getByRole("link", { name: /Open LINE chat/i }),
+  ).toBeVisible();
+  await expect(
+    floatingContactActions.getByRole("link", { name: /Email concierge/i }),
   ).toBeVisible();
 });
 

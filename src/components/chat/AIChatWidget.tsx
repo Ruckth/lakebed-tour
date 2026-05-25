@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import * as SelectPrimitive from "@radix-ui/react-select";
 import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -17,7 +18,7 @@ import { createPortal } from "react-dom";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
@@ -318,6 +319,7 @@ function TypingIndicator({ label }: { label: string }) {
 }
 
 function ChatExperience({
+  contactEmail,
   mode,
   propertySlug,
   propertyName,
@@ -327,6 +329,7 @@ function ChatExperience({
   mode: ChatExperienceMode;
   propertySlug?: string;
   propertyName?: string;
+  contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
 }) {
@@ -1133,6 +1136,7 @@ function ChatExperience({
               style={floatingContactActionsStyle}
             >
               <MessagingButtons
+                contactEmail={contactEmail}
                 whatsappNumber={whatsappNumber}
                 lineId={lineId}
                 quiet={canShowBookingCard}
@@ -1164,7 +1168,7 @@ function ChatExperience({
                 {t("shareContact")}
               </summary>
               <form className="mt-3 grid gap-2" onSubmit={saveContact}>
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)]">
+                <div className="grid gap-2 md:grid-cols-2">
                   <Input
                     value={contactForm.email}
                     onChange={(event) =>
@@ -1175,49 +1179,55 @@ function ChatExperience({
                     type="email"
                     aria-label={t("email")}
                   />
-                  <Select
-                    value={contactForm.preferredApp}
-                    onValueChange={(value) =>
-                      setContactForm((current) => ({
-                        ...current,
-                        preferredApp: value as ContactApp,
-                        contactHandle: "",
-                      }))
-                    }
+                  <div
+                    data-testid="contact-app-field"
+                    className="flex h-9 min-w-0 items-center overflow-hidden rounded-lg border border-input bg-background shadow-sm transition focus-within:ring-3 focus-within:ring-ring/40"
                   >
-                    <SelectTrigger
-                      aria-label={t("preferredApp")}
-                      className="h-9 w-9 justify-center rounded-lg p-0 [&>svg]:hidden"
+                    <Select
+                      value={contactForm.preferredApp}
+                      onValueChange={(value) =>
+                        setContactForm((current) => ({
+                          ...current,
+                          preferredApp: value as ContactApp,
+                          contactHandle: "",
+                        }))
+                      }
                     >
-                      <ContactAppIcon app={contactForm.preferredApp} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {contactApps.map((app) => (
-                        <SelectItem key={app} value={app}>
-                          <span
-                            data-testid={`contact-app-option-${app}`}
-                            className="inline-flex min-w-0 items-center gap-2"
-                          >
-                            <ContactAppIcon app={app} />
-                            <span className="truncate">{t(app)}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    value={contactForm.contactHandle}
-                    onChange={(event) =>
-                      setContactForm((current) => ({ ...current, contactHandle: event.target.value }))
-                    }
-                    className="h-9 rounded-lg text-sm"
-                    placeholder={
-                      contactForm.preferredApp === "whatsapp"
-                        ? t("whatsappPlaceholder")
-                        : t("linePlaceholder")
-                    }
-                    aria-label={t("contactHandle")}
-                  />
+                      <SelectPrimitive.Trigger
+                        aria-label={t("preferredApp")}
+                        className="inline-flex h-full w-12 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-foreground transition focus:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                      >
+                        <ContactAppIcon app={contactForm.preferredApp} />
+                      </SelectPrimitive.Trigger>
+                      <SelectContent>
+                        {contactApps.map((app) => (
+                          <SelectItem key={app} value={app}>
+                            <span
+                              data-testid={`contact-app-option-${app}`}
+                              className="inline-flex min-w-0 items-center gap-2"
+                            >
+                              <ContactAppIcon app={app} />
+                              <span className="truncate">{t(app)}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="h-5 w-px shrink-0 bg-border" />
+                    <Input
+                      value={contactForm.contactHandle}
+                      onChange={(event) =>
+                        setContactForm((current) => ({ ...current, contactHandle: event.target.value }))
+                      }
+                      className="h-9 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-sm shadow-none focus-visible:ring-0"
+                      placeholder={
+                        contactForm.preferredApp === "whatsapp"
+                          ? t("whatsappPlaceholder")
+                          : t("linePlaceholder")
+                      }
+                      aria-label={t("contactHandle")}
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-slate-700 dark:text-slate-300">
@@ -1330,6 +1340,7 @@ function ChatExperience({
 export function AIChatWidget(props: {
   propertySlug?: string;
   propertyName?: string;
+  contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
 }) {
@@ -1339,6 +1350,7 @@ export function AIChatWidget(props: {
 export function AIChatPage(props: {
   propertySlug?: string;
   propertyName?: string;
+  contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
 }) {

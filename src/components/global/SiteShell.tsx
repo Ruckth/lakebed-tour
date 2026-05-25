@@ -34,7 +34,11 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <ChatContextProvider>
         <main className="flex-1">{children}</main>
         <SiteFooter />
-        <AIChatWidget whatsappNumber={resort.whatsapp} lineId={resort.lineId} />
+        <AIChatWidget
+          contactEmail={resort.contactEmail}
+          whatsappNumber={resort.whatsapp}
+          lineId={resort.lineId}
+        />
       </ChatContextProvider>
     </div>
   );
