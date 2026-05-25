@@ -1,18 +1,24 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { StarRating } from "@/components/social/StarRating";
 import { Badge } from "@/components/ui/badge";
-import { ButtonLink } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { resort } from "@/lib/data/resort-config";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
 import type { PropertySocialProof } from "@/lib/data/reviews";
 import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
 import { cn } from "@/lib/utils";
+
+const TourViewer = dynamic(
+  () => import("@/components/tour/TourViewer").then((mod) => mod.TourViewer),
+  { ssr: false },
+);
 
 export function VillaCard({
   property,
@@ -29,6 +35,7 @@ export function VillaCard({
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const [index, setIndex] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
+  const [showTour, setShowTour] = useState(false);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
 
@@ -151,10 +158,10 @@ export function VillaCard({
         </div>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <ButtonLink href={localizeHref(`/rooms/${property.id}?tour=1`, locale)} className="w-full sm:flex-1">
+          <Button type="button" onClick={() => setShowTour(true)} className="w-full sm:flex-1">
             <Globe2 className="h-4 w-4" />
             {t("explore360")}
-          </ButtonLink>
+          </Button>
           <ButtonLink
             href={localizeHref(`/rooms/${property.id}`, locale)}
             variant="outline"
@@ -164,6 +171,7 @@ export function VillaCard({
           </ButtonLink>
         </div>
       </div>
+      {showTour ? <TourViewer property={property} onClose={() => setShowTour(false)} /> : null}
     </article>
   );
 }

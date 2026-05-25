@@ -13,7 +13,6 @@ import { DirectBookingBenefits } from "@/components/pricing/DirectBookingBenefit
 import { PriceComparison } from "@/components/pricing/PriceComparison";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { StarRating } from "@/components/social/StarRating";
-import { TrustBadges } from "@/components/trust/TrustBadges";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
@@ -126,7 +125,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
               ) : null}
             </div>
 
-            <Button variant="outline" className="mt-3 w-full bg-card py-3 md:mt-4" onClick={openTour}>
+            <Button variant="outline" className="mt-3 w-full bg-card py-3 md:hidden" onClick={openTour}>
               <Globe2 className="h-4 w-4" />
               {t("exploreIn360")}
             </Button>
@@ -180,10 +179,6 @@ export function RoomDetailClient({ property }: { property: Property }) {
             </section>
 
             <DirectBookingBenefits propertyId={property.id} />
-
-            <div className="mt-8">
-              <TrustBadges />
-            </div>
 
             {socialProof && socialProof.reviews.length > 0 ? (
               <section className="mt-10">

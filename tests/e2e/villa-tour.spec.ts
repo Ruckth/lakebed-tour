@@ -11,7 +11,21 @@ test("villa detail page renders gallery, 360 entry, and chat trigger", async ({ 
   await expect(page.getByRole("heading", { name: "Pool Villa" })).toBeVisible();
   await expect(page.getByText("Private paradise with infinity pool")).toBeVisible();
   await expect(page.getByRole("button", { name: /Explore 360|Explore in 360/i }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Explore in 360" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open concierge chat" })).toBeVisible();
+});
+
+test("home villa 360 opens the tour overlay without leaving home", async ({ page }) => {
+  await page.goto("/");
+
+  const poolCard = page
+    .getByRole("article")
+    .filter({ has: page.getByRole("heading", { name: "Pool Villa" }) });
+  await poolCard.getByRole("button", { name: "Explore 360" }).click();
+
+  await expect(page).toHaveURL((url) => url.pathname === "/");
+  await expect(page.getByTestId("tour-viewer")).toContainText("Pool Villa");
+  await expect(page.getByRole("button", { name: "Close" })).toBeVisible();
 });
 
 test("mobile villa chat trigger targets the property chat page", async ({ page }) => {
@@ -20,12 +34,16 @@ test("mobile villa chat trigger targets the property chat page", async ({ page }
 
   const chatLink = page.getByRole("link", { name: "Open concierge chat" });
   await expect(chatLink).toBeVisible();
-  await expect(chatLink).toHaveAttribute("href", "/chat?property=pool-villa");
+  await expect(chatLink).toHaveAttribute(
+    "href",
+    "/chat?property=pool-villa&returnTo=%2Frooms%2Fpool-villa",
+  );
 
-  await page.goto("/chat?property=pool-villa");
+  await page.goto("/chat?property=pool-villa&returnTo=%2Frooms%2Fpool-villa");
   await expect(page).toHaveURL((url) => {
     expect(url.pathname).toBe("/chat");
     expect(url.searchParams.get("property")).toBe("pool-villa");
+    expect(url.searchParams.get("returnTo")).toBe("/rooms/pool-villa");
     return true;
   });
   await expect(page.getByRole("button", { name: /Restart chat - Pool Villa concierge/i })).toBeVisible();

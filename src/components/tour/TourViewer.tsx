@@ -101,7 +101,7 @@ export function TourViewer({
   if (!activeRooms.length) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
+    <div data-testid="tour-viewer" className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
       <div
         className={cn(
           "absolute inset-0 transition-[filter,opacity] duration-700",
