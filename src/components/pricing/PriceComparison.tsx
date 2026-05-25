@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ShieldCheck } from "lucide-react";
+import { Check, Globe2, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
@@ -58,7 +58,8 @@ export function PriceComparison({
           {t("bookDirect")}
         </a>
         {onOpen360 ? (
-          <Button variant="outline" onClick={onOpen360} className="w-full">
+          <Button variant="outline" size="lg" onClick={onOpen360} className="w-full bg-card">
+            <Globe2 className="h-4 w-4" />
             {t("explore360First")}
           </Button>
         ) : null}
