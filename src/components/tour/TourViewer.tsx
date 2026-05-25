@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
@@ -100,7 +101,7 @@ export function TourViewer({
 
   if (!activeRooms.length) return null;
 
-  return (
+  const viewer = (
     <div data-testid="tour-viewer" className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
       <div
         className={cn(
@@ -207,4 +208,6 @@ export function TourViewer({
       ) : null}
     </div>
   );
+
+  return createPortal(viewer, document.body);
 }

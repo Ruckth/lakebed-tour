@@ -26,6 +26,15 @@ test("home villa 360 opens the tour overlay without leaving home", async ({ page
   await expect(page).toHaveURL((url) => url.pathname === "/");
   await expect(page.getByTestId("tour-viewer")).toContainText("Pool Villa");
   await expect(page.getByRole("button", { name: "Close" })).toBeVisible();
+
+  const viewerBox = await page.getByTestId("tour-viewer").boundingBox();
+  const viewport = page.viewportSize();
+  expect(viewerBox).toMatchObject({
+    x: 0,
+    y: 0,
+    width: viewport?.width,
+    height: viewport?.height,
+  });
 });
 
 test("mobile villa chat trigger targets the property chat page", async ({ page }) => {
