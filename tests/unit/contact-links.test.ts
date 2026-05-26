@@ -29,6 +29,9 @@ describe("contact link helpers", () => {
 
     expect(url.protocol).toBe("mailto:");
     expect(url.pathname).toBe("rugbykritsakorn@gmail.com");
+    expect(href).toContain("subject=Website%20inquiry");
+    expect(href).toContain("body=Hi%2C%20I%27m%20interested");
+    expect(href).not.toContain("+");
     expect(url.searchParams.get("subject")).toBe(CONTACT_EMAIL_SUBJECT);
     expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
   });

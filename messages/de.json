@@ -198,12 +198,16 @@
     "fallback": "Bitte versuchen Sie es erneut oder kontaktieren Sie uns unten.",
     "sent": "Ich habe das an den Concierge gesendet. Nutzen Sie WhatsApp, wenn Sie sofort eine Antwort brauchen.",
     "browserGateTitle": "Chat wird in Chrome geöffnet",
+    "browserGateTitleSafari": "Chat wird in Safari geöffnet",
     "browserGateDescription": "Der In-App-Browser kann die Tastatur verdecken oder den Chatstatus verlieren. Wir öffnen denselben Chat in Chrome für eine stabilere Nutzung.",
+    "browserGateDescriptionSafari": "Der In-App-Browser kann die Tastatur verdecken oder den Chatstatus verlieren. Wir öffnen denselben Chat in Safari für eine stabilere Nutzung.",
     "browserGateOpenChrome": "In Chrome öffnen",
+    "browserGateOpenSafari": "In Safari öffnen",
     "browserGateCopy": "Browser-Link kopieren",
     "browserGateCopied": "Kopiert",
     "browserGateContinue": "Hier fortfahren",
-    "browserGateFallback": "Wenn Chrome nicht geöffnet wird, kopieren Sie den Link und fügen Sie ihn in Chrome oder Safari ein."
+    "browserGateFallback": "Wenn Chrome nicht geöffnet wird, kopieren Sie den Link und fügen Sie ihn in Chrome oder Safari ein.",
+    "browserGateFallbackSafari": "Wenn Safari nicht geöffnet wird, kopieren Sie den Link und fügen Sie ihn in Safari ein."
   },
   "Footer": {
     "bookDirect": "Direkt buchen"

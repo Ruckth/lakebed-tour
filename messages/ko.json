@@ -198,12 +198,16 @@
     "fallback": "다시 시도하거나 아래 연락 방법을 이용해 주세요.",
     "sent": "컨시어지에게 보냈습니다. 즉시 답변이 필요하면 WhatsApp 을 이용해 주세요.",
     "browserGateTitle": "Chrome에서 채팅 여는 중",
+    "browserGateTitleSafari": "Safari에서 채팅 여는 중",
     "browserGateDescription": "이 앱 내 브라우저에서는 키보드나 채팅 상태 문제가 생길 수 있습니다. 같은 채팅을 Chrome에서 열어 더 안정적으로 이용합니다.",
+    "browserGateDescriptionSafari": "이 앱 내 브라우저에서는 키보드나 채팅 상태 문제가 생길 수 있습니다. 같은 채팅을 Safari에서 열어 더 안정적으로 이용합니다.",
     "browserGateOpenChrome": "Chrome에서 열기",
+    "browserGateOpenSafari": "Safari에서 열기",
     "browserGateCopy": "브라우저 링크 복사",
     "browserGateCopied": "복사됨",
     "browserGateContinue": "여기서 계속하기",
-    "browserGateFallback": "Chrome이 열리지 않으면 링크를 복사해 Chrome 또는 Safari에 붙여넣어 주세요."
+    "browserGateFallback": "Chrome이 열리지 않으면 링크를 복사해 Chrome 또는 Safari에 붙여넣어 주세요.",
+    "browserGateFallbackSafari": "Safari가 열리지 않으면 링크를 복사해 Safari에 붙여넣어 주세요."
   },
   "Footer": {
     "bookDirect": "직접 예약"

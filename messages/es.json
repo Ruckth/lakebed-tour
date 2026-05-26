@@ -198,12 +198,16 @@
     "fallback": "Inténtelo de nuevo o contáctenos abajo.",
     "sent": "Lo envié a conserjería. Use WhatsApp si necesita una respuesta inmediata.",
     "browserGateTitle": "Abriendo el chat en Chrome",
+    "browserGateTitleSafari": "Abriendo el chat en Safari",
     "browserGateDescription": "El navegador integrado de esta app puede ocultar el teclado o perder el estado del chat. Abrimos el mismo chat en Chrome para una experiencia más estable.",
+    "browserGateDescriptionSafari": "El navegador integrado de esta app puede ocultar el teclado o perder el estado del chat. Abrimos el mismo chat en Safari para una experiencia más estable.",
     "browserGateOpenChrome": "Abrir en Chrome",
+    "browserGateOpenSafari": "Abrir en Safari",
     "browserGateCopy": "Copiar enlace",
     "browserGateCopied": "Copiado",
     "browserGateContinue": "Continuar aquí",
-    "browserGateFallback": "Si Chrome no se abre, copia el enlace y pégalo en Chrome o Safari."
+    "browserGateFallback": "Si Chrome no se abre, copia el enlace y pégalo en Chrome o Safari.",
+    "browserGateFallbackSafari": "Si Safari no se abre, copia el enlace y pégalo en Safari."
   },
   "Footer": {
     "bookDirect": "Reservar directo"

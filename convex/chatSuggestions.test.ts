@@ -77,4 +77,125 @@ describe("chatSuggestions.nextForSession", () => {
       "Which villa fits my group best?",
     ]);
   });
+
+  it("returns the requested locale question when translations exist", async () => {
+    const t = convexTest(schema, modules);
+    const now = 1_700_000_000_000;
+    const sessionId = await t.run(async (ctx) => {
+      const session = await ctx.db.insert("chatSessions", {
+        channel: "web",
+        visitorId: "visitor-locale",
+        lastSeenAt: now,
+        createdAt: now,
+      });
+      const assistantMessage = await ctx.db.insert("chatMessages", {
+        sessionId: session,
+        role: "assistant",
+        content: "Direct booking includes better pricing.",
+        timestamp: now + 1,
+      });
+
+      await ctx.db.insert("chatSuggestedQuestions", {
+        sessionId: session,
+        assistantMessageId: assistantMessage,
+        question: "Can I check availability for my dates?",
+        normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
+        translations: {
+          en: "Wrong English should not override the canonical question",
+          th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        },
+        locale: "en",
+        topic: "availability",
+        score: 95,
+        status: "active",
+        createdAt: now + 2,
+      });
+
+      return session;
+    });
+
+    const selected = await t.query(api.chatSuggestions.nextForSession, {
+      sessionId,
+      locale: "th",
+      limit: 1,
+    });
+
+    expect(selected.map((question) => question.question)).toEqual([
+      "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+    ]);
+
+    const englishSelected = await t.query(api.chatSuggestions.nextForSession, {
+      sessionId,
+      locale: "en",
+      limit: 1,
+    });
+
+    expect(englishSelected.map((question) => question.question)).toEqual([
+      "Can I check availability for my dates?",
+    ]);
+  });
+
+  it("blocks repeats across translated variants and falls back for older rows", async () => {
+    const t = convexTest(schema, modules);
+    const now = 1_700_000_000_000;
+    const sessionId = await t.run(async (ctx) => {
+      const session = await ctx.db.insert("chatSessions", {
+        channel: "web",
+        visitorId: "visitor-repeat",
+        lastSeenAt: now,
+        createdAt: now,
+      });
+      await ctx.db.insert("chatMessages", {
+        sessionId: session,
+        role: "user",
+        content: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        timestamp: now + 1,
+      });
+      const assistantMessage = await ctx.db.insert("chatMessages", {
+        sessionId: session,
+        role: "assistant",
+        content: "Use the booking card to choose dates.",
+        timestamp: now + 2,
+      });
+
+      await ctx.db.insert("chatSuggestedQuestions", {
+        sessionId: session,
+        assistantMessageId: assistantMessage,
+        question: "Can I check availability for my dates?",
+        normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
+        translations: {
+          en: "Can I check availability for my dates?",
+          th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        },
+        locale: "en",
+        topic: "availability",
+        score: 99,
+        status: "active",
+        createdAt: now + 3,
+      });
+      await ctx.db.insert("chatSuggestedQuestions", {
+        sessionId: session,
+        assistantMessageId: assistantMessage,
+        question: "Which villa fits my group best?",
+        normalizedQuestion: normalizeSuggestedQuestion("Which villa fits my group best?"),
+        locale: "en",
+        topic: "villa_fit",
+        score: 80,
+        status: "active",
+        createdAt: now + 4,
+      });
+
+      return session;
+    });
+
+    const selected = await t.query(api.chatSuggestions.nextForSession, {
+      sessionId,
+      locale: "th",
+      limit: 2,
+    });
+
+    expect(selected.map((question) => question.question)).toEqual([
+      "Which villa fits my group best?",
+    ]);
+  });
 });

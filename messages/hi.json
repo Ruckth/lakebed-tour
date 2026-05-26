@@ -198,12 +198,16 @@
     "fallback": "कृपया फिर से कोशिश करें या नीचे दिए गए विकल्प से संपर्क करें।",
     "sent": "मैंने इसे कंसीयर्ज को भेज दिया है। तुरंत जवाब चाहिए तो WhatsApp उपयोग करें।",
     "browserGateTitle": "Chrome में चैट खोली जा रही है",
+    "browserGateTitleSafari": "Safari में चैट खोली जा रही है",
     "browserGateDescription": "इस ऐप के अंदर का ब्राउज़र कीबोर्ड छिपा सकता है या चैट स्टेट खो सकता है। बेहतर अनुभव के लिए हम वही चैट Chrome में खोल रहे हैं।",
+    "browserGateDescriptionSafari": "इस ऐप के अंदर का ब्राउज़र कीबोर्ड छिपा सकता है या चैट स्टेट खो सकता है। बेहतर अनुभव के लिए हम वही चैट Safari में खोल रहे हैं।",
     "browserGateOpenChrome": "Chrome में खोलें",
+    "browserGateOpenSafari": "Safari में खोलें",
     "browserGateCopy": "ब्राउज़र लिंक कॉपी करें",
     "browserGateCopied": "कॉपी हो गया",
     "browserGateContinue": "यहीं जारी रखें",
-    "browserGateFallback": "अगर Chrome नहीं खुलता है, तो लिंक कॉपी करके Chrome या Safari में पेस्ट करें।"
+    "browserGateFallback": "अगर Chrome नहीं खुलता है, तो लिंक कॉपी करके Chrome या Safari में पेस्ट करें।",
+    "browserGateFallbackSafari": "अगर Safari नहीं खुलता है, तो लिंक कॉपी करके Safari में पेस्ट करें।"
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें"

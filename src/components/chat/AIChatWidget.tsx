@@ -54,6 +54,7 @@ import {
   detectChatInAppBrowser,
   shouldBypassChatBrowserGate,
   stripChatHandoffParam,
+  type ExternalBrowserTarget,
 } from "@/lib/chat/external-browser";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
@@ -490,16 +491,19 @@ function ChatBrowserGate({
   browserUrl,
   copyStatus,
   externalOpenUrl,
+  targetBrowser,
   onContinue,
   onCopy,
 }: {
   browserUrl: string | null;
   copyStatus: "idle" | "copied" | "error";
   externalOpenUrl: string | null;
+  targetBrowser: ExternalBrowserTarget["browser"];
   onContinue: () => void;
   onCopy: () => void;
 }) {
   const t = useTranslations("Chat");
+  const isSafariTarget = targetBrowser === "safari";
 
   return (
     <div className="min-h-[100svh] bg-background px-5 py-8 text-foreground">
@@ -512,17 +516,21 @@ function ChatBrowserGate({
             <ExternalLink className="h-5 w-5" />
           </div>
           <h1 className="text-2xl font-semibold text-foreground">
-            {t("browserGateTitle")}
+            {t(isSafariTarget ? "browserGateTitleSafari" : "browserGateTitle")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
-            {t("browserGateDescription")}
+            {t(isSafariTarget ? "browserGateDescriptionSafari" : "browserGateDescription")}
           </p>
           <div className="mt-6 grid gap-3">
             {externalOpenUrl ? (
               <Button asChild size="lg" variant="gold" className="w-full">
-                <a href={externalOpenUrl} data-testid="chat-open-chrome">
+                <a
+                  href={externalOpenUrl}
+                  data-browser-target={targetBrowser}
+                  data-testid="chat-open-browser"
+                >
                   <ExternalLink className="h-4 w-4" />
-                  {t("browserGateOpenChrome")}
+                  {t(isSafariTarget ? "browserGateOpenSafari" : "browserGateOpenChrome")}
                 </a>
               </Button>
             ) : null}
@@ -556,7 +564,7 @@ function ChatBrowserGate({
             </Button>
           </div>
           <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-400">
-            {t("browserGateFallback")}
+            {t(isSafariTarget ? "browserGateFallbackSafari" : "browserGateFallback")}
           </p>
         </div>
       </div>
@@ -617,6 +625,8 @@ function ChatExperience({
   const [browserGateVisible, setBrowserGateVisible] = useState(false);
   const [browserGateUrl, setBrowserGateUrl] = useState<string | null>(null);
   const [browserGateOpenUrl, setBrowserGateOpenUrl] = useState<string | null>(null);
+  const [browserGateTargetBrowser, setBrowserGateTargetBrowser] =
+    useState<ExternalBrowserTarget["browser"]>("browser");
   const [browserGateCopyStatus, setBrowserGateCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const inputRef = useRef<HTMLInputElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
@@ -878,15 +888,22 @@ function ChatExperience({
     if (mode !== "page" || !hydrated) return;
     if (browserGateBypassed || browserHandoffToken) {
       setBrowserGateVisible(false);
+      setBrowserGateTargetBrowser("browser");
       return;
     }
 
     const detection = detectChatInAppBrowser(navigator.userAgent);
     setBrowserGateVisible(detection.isInAppBrowser);
+    if (detection.isInAppBrowser) {
+      setBrowserGateTargetBrowser(
+        detection.platform === "ios" ? "safari" : detection.platform === "android" ? "chrome" : "browser",
+      );
+    }
     if (!detection.isInAppBrowser) {
       browserGateAttemptedRef.current = false;
       setBrowserGateUrl(null);
       setBrowserGateOpenUrl(null);
+      setBrowserGateTargetBrowser("browser");
     }
   }, [browserGateBypassed, browserHandoffToken, hydrated, mode]);
 
@@ -946,6 +963,7 @@ function ChatExperience({
         try {
           const nextSuggestions = await getNextChatSuggestions(convex, {
             sessionId,
+            locale,
             limit: 2,
           });
           if (cancelled) return;
@@ -972,6 +990,7 @@ function ChatExperience({
     convex,
     latestExchange?.assistantMessage,
     latestExchange?.userMessage,
+    locale,
     sessionId,
   ]);
 
@@ -1159,6 +1178,7 @@ function ChatExperience({
       const target = buildExternalBrowserTarget(browserUrl, navigator.userAgent);
       setBrowserGateUrl(browserUrl);
       setBrowserGateOpenUrl(target.url);
+      setBrowserGateTargetBrowser(target.browser);
 
       fallbackTimeout = window.setTimeout(() => {
         setBrowserGateCopyStatus("idle");
@@ -1660,6 +1680,7 @@ function ChatExperience({
         browserUrl={browserGateUrl}
         copyStatus={browserGateCopyStatus}
         externalOpenUrl={browserGateOpenUrl}
+        targetBrowser={browserGateTargetBrowser}
         onContinue={continueInAppBrowser}
         onCopy={copyBrowserLink}
       />
@@ -1761,8 +1782,7 @@ function ChatExperience({
                 ) : null}
                 {message.role === "assistant" &&
                 index === latestAssistantIndex &&
-                canShowMessageSuggestions &&
-                !canShowBookingCard ? (
+                canShowMessageSuggestions ? (
                   <SuggestionChips
                     suggestions={visibleSuggestions}
                     onSelect={sendMessage}
@@ -1830,7 +1850,7 @@ function ChatExperience({
                     onChange={(event) =>
                       setContactForm((current) => ({ ...current, email: event.target.value }))
                     }
-                    className="h-9 rounded-lg text-sm"
+                    className="h-9 rounded-lg text-base md:text-sm"
                     placeholder={t("email")}
                     type="email"
                     aria-label={t("email")}
@@ -1875,7 +1895,7 @@ function ChatExperience({
                       onChange={(event) =>
                         setContactForm((current) => ({ ...current, contactHandle: event.target.value }))
                       }
-                      className="h-9 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-sm shadow-none focus-visible:ring-0"
+                      className="h-9 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-base shadow-none focus-visible:ring-0 md:text-sm"
                       placeholder={
                         contactForm.preferredApp === "whatsapp"
                           ? t("whatsappPlaceholder")

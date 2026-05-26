@@ -18,6 +18,7 @@ export type ChatInAppBrowserDetection = {
 };
 
 export type ExternalBrowserTarget = {
+  browser: "chrome" | "safari" | "browser";
   platform: "android" | "ios" | "other";
   url: string;
 };
@@ -93,20 +94,23 @@ export function buildExternalBrowserTarget(
   if (detection.platform === "android") {
     const scheme = url.protocol.replace(":", "");
     return {
+      browser: "chrome",
       platform: "android",
       url: `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=${scheme};package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url.toString())};end`,
     };
   }
 
   if (detection.platform === "ios") {
-    const chromeScheme = url.protocol === "https:" ? "googlechromes:" : "googlechrome:";
+    const scheme = url.protocol.replace(":", "");
     return {
+      browser: "safari",
       platform: "ios",
-      url: `${chromeScheme}//${url.host}${url.pathname}${url.search}${url.hash}`,
+      url: `x-safari-${scheme}://${url.host}${url.pathname}${url.search}${url.hash}`,
     };
   }
 
   return {
+    browser: "browser",
     platform: "other",
     url: url.toString(),
   };

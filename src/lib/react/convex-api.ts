@@ -68,6 +68,7 @@ export type ChatTranscriptMessage = {
 export type RankedChatSuggestion = {
   _id: string;
   question: string;
+  translations?: Record<string, string>;
   topic: string;
   score: number;
   locale: string;
@@ -299,7 +300,7 @@ export async function askConcierge(
 
 export async function getNextChatSuggestions(
   client: ConvexReactClient,
-  args: { sessionId: string; limit?: number },
+  args: { sessionId: string; locale?: string; limit?: number },
 ) {
   return (await withConvexTimeout(
     client.query(api.chatSuggestions.nextForSession, args as never),

@@ -198,12 +198,16 @@
     "fallback": "请重试，或通过下方方式联系我们。",
     "sent": "我已发送给礼宾。如需即时回复，请使用 WhatsApp。",
     "browserGateTitle": "正在用 Chrome 打开聊天",
+    "browserGateTitleSafari": "正在用 Safari 打开聊天",
     "browserGateDescription": "当前应用内浏览器可能会遮挡键盘或丢失聊天状态。我们会在 Chrome 中打开同一段聊天，体验更稳定。",
+    "browserGateDescriptionSafari": "当前应用内浏览器可能会遮挡键盘或丢失聊天状态。我们会在 Safari 中打开同一段聊天，体验更稳定。",
     "browserGateOpenChrome": "在 Chrome 中打开",
+    "browserGateOpenSafari": "在 Safari 中打开",
     "browserGateCopy": "复制浏览器链接",
     "browserGateCopied": "已复制",
     "browserGateContinue": "继续在此打开",
-    "browserGateFallback": "如果 Chrome 没有打开，请复制链接并粘贴到 Chrome 或 Safari。"
+    "browserGateFallback": "如果 Chrome 没有打开，请复制链接并粘贴到 Chrome 或 Safari。",
+    "browserGateFallbackSafari": "如果 Safari 没有打开，请复制链接并粘贴到 Safari。"
   },
   "Footer": {
     "bookDirect": "直接预订"

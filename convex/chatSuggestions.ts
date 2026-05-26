@@ -6,8 +6,12 @@ import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
 import {
 	clampSuggestionScore,
+	getSuggestedQuestionForLocale,
 	normalizeSuggestedQuestion,
-	selectRankedSuggestedQuestions
+	normalizeSuggestionLocale,
+	selectRankedSuggestedQuestions,
+	supportedSuggestionLocales,
+	type SuggestedQuestionTranslations
 } from './lib/chatSuggestions';
 
 const DEFAULT_LIMIT = 2;
@@ -36,13 +40,10 @@ type GenerationContext = {
 
 type GeneratedQuestion = {
 	question: string;
+	translations?: SuggestedQuestionTranslations;
 	topic: string;
 	score: number;
 };
-
-function localeOrDefault(locale?: string) {
-	return locale?.trim() || 'en';
-}
 
 function detectTopic(text: string): SuggestionTopic {
 	const lower = text.toLocaleLowerCase();
@@ -126,8 +127,25 @@ function parseGeneratedQuestions(content: string | null): GeneratedQuestion[] {
 			const question = typeof row.question === 'string' ? row.question.trim() : '';
 			const topic = typeof row.topic === 'string' ? row.topic.trim() : 'villa_fit';
 			const score = typeof row.score === 'number' ? row.score : Number(row.score);
+			const translations: SuggestedQuestionTranslations = {};
+			if (row.translations && typeof row.translations === 'object') {
+				const translationRows = row.translations as Record<string, unknown>;
+				for (const locale of supportedSuggestionLocales) {
+					const translated = translationRows[locale];
+					if (typeof translated === 'string' && translated.trim().length > 0) {
+						translations[locale] = translated.trim();
+					}
+				}
+			}
 			if (!question || question.length > 160) return [];
-			return [{ question, topic: topic || 'villa_fit', score: clampSuggestionScore(score) }];
+			return [
+				{
+					question,
+					translations: Object.keys(translations).length > 0 ? translations : undefined,
+					topic: topic || 'villa_fit',
+					score: clampSuggestionScore(score)
+				}
+			];
 		});
 	} catch {
 		return [];
@@ -143,8 +161,15 @@ function sanitizeCandidates(candidates: GeneratedQuestion[]) {
 		const normalized = normalizeSuggestedQuestion(question);
 		if (!question || !normalized || seen.has(normalized)) continue;
 		seen.add(normalized);
+		const translations: SuggestedQuestionTranslations = { en: question };
+		for (const locale of supportedSuggestionLocales) {
+			if (locale === 'en') continue;
+			const translated = candidate.translations?.[locale]?.trim();
+			translations[locale] = translated && translated.length <= 160 ? translated : question;
+		}
 		sanitized.push({
 			question,
+			translations,
 			topic: candidate.topic.trim() || 'villa_fit',
 			score: clampSuggestionScore(candidate.score)
 		});
@@ -164,6 +189,7 @@ async function generateQuestionsWithAi(context: GenerationContext, locale: strin
 	const transcript = context.recentMessages
 		.map((message) => `${message.role}: ${message.content}`)
 		.join('\n');
+	const targetLocales = supportedSuggestionLocales.join(', ');
 	const messages: ChatMessage[] = [
 		{
 			role: 'system',
@@ -173,6 +199,7 @@ async function generateQuestionsWithAi(context: GenerationContext, locale: strin
 		{
 			role: 'user',
 			content: `Locale: ${locale}
+Supported locales: ${targetLocales}
 Property context: ${propertyLine}
 
 Recent transcript:
@@ -183,11 +210,14 @@ ${context.assistantMessage.content}
 
 Create 3 to 5 concise visitor follow-up questions for the next chat chips.
 Rules:
-- Same language as locale/message when possible.
+- The top-level question field must be English.
+- Include a translations object with keys for every supported locale.
+- translations.en must exactly match question.
+- Translate only the question text. Do not translate villa names, price amounts, currency symbols, or factual rules.
 - Each question must be useful after the assistant reply.
 - Do not repeat a question the visitor already asked.
 - Do not invent resort facts.
-- Return a JSON array of objects with question, topic, and score.
+- Return a JSON array of objects with question, translations, topic, and score.
 - topic must be one of villa_fit, direct_booking, tour, availability, booking, amenities, contact.
 - score is 0-100, higher means more useful next.`
 		}
@@ -240,6 +270,7 @@ export const storeGenerated = internalMutation({
 		candidates: v.array(
 			v.object({
 				question: v.string(),
+				translations: v.optional(v.record(v.string(), v.string())),
 				topic: v.string(),
 				score: v.number()
 			})
@@ -263,6 +294,7 @@ export const storeGenerated = internalMutation({
 				userMessageId: args.userMessageId,
 				question: candidate.question,
 				normalizedQuestion: normalizeSuggestedQuestion(candidate.question),
+				...(candidate.translations ? { translations: candidate.translations } : {}),
 				locale: args.locale,
 				propertySlug: args.propertySlug,
 				topic: candidate.topic,
@@ -296,14 +328,11 @@ export const generateForAssistant = internalAction({
 		);
 		if (!context) return { inserted: 0 };
 
-		const locale = localeOrDefault(args.locale);
+		const locale = normalizeSuggestionLocale(args.locale);
 		const textForTopic = `${context.userMessage?.content ?? ''} ${context.assistantMessage.content}`;
 		let candidates = await generateQuestionsWithAi(context, locale).catch(() => []);
-		if (candidates.length === 0 && locale.toLocaleLowerCase().startsWith('en')) {
-			candidates = fallbackQuestionsForEnglish(
-				detectTopic(textForTopic),
-				context.property?.name
-			);
+		if (candidates.length === 0 && locale === 'en') {
+			candidates = fallbackQuestionsForEnglish(detectTopic(textForTopic), context.property?.name);
 		}
 		const sanitized = sanitizeCandidates(candidates);
 		if (sanitized.length === 0) return { inserted: 0 };
@@ -326,10 +355,12 @@ export const generateForAssistant = internalAction({
 export const nextForSession = query({
 	args: {
 		sessionId: v.id('chatSessions'),
+		locale: v.optional(v.string()),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), 5);
+		const locale = normalizeSuggestionLocale(args.locale);
 		const [activeQuestions, clickedQuestions, messages] = await Promise.all([
 			ctx.db
 				.query('chatSuggestedQuestions')
@@ -359,11 +390,17 @@ export const nextForSession = query({
 			askedQuestions: messages
 				.filter((message) => message.role === 'user')
 				.map((message) => message.content),
-			clickedQuestions: clickedQuestions.map((question) => question.question),
+			clickedQuestions: clickedQuestions.flatMap((question) => [
+				question.question,
+				...Object.values(question.translations ?? {})
+			]),
 			limit
 		});
 
-		return selected;
+		return selected.map((question) => ({
+			...question,
+			question: getSuggestedQuestionForLocale(question, locale)
+		}));
 	}
 });
 

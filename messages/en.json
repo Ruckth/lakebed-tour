@@ -198,12 +198,16 @@
     "fallback": "Please try again, or contact us below.",
     "sent": "I sent that to the concierge. Please use WhatsApp if you need an immediate reply.",
     "browserGateTitle": "Opening chat in Chrome",
+    "browserGateTitleSafari": "Opening chat in Safari",
     "browserGateDescription": "This app browser can hide the keyboard or lose chat state. We are opening the same chat in Chrome for a smoother experience.",
+    "browserGateDescriptionSafari": "This app browser can hide the keyboard or lose chat state. We are opening the same chat in Safari for a smoother experience.",
     "browserGateOpenChrome": "Open in Chrome",
+    "browserGateOpenSafari": "Open in Safari",
     "browserGateCopy": "Copy browser link",
     "browserGateCopied": "Copied",
     "browserGateContinue": "Continue here",
-    "browserGateFallback": "If Chrome does not open, copy the link and paste it into Chrome or Safari."
+    "browserGateFallback": "If Chrome does not open, copy the link and paste it into Chrome or Safari.",
+    "browserGateFallbackSafari": "If Safari does not open, copy the link and paste it into Safari."
   },
   "Footer": {
     "bookDirect": "Book Direct"

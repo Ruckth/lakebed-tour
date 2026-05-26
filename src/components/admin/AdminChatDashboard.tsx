@@ -22,7 +22,15 @@ import { useQuery } from "convex/react";
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { defaultLocale, localeLabels, locales, type Locale } from "@/i18n/routing";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +85,7 @@ type AdminSuggestedQuestion = {
   _id: Id<"chatSuggestedQuestions">;
   sessionId: Id<"chatSessions">;
   question: string;
+  translations?: Record<string, string>;
   locale: string;
   propertySlug?: string;
   topic: string;
@@ -157,6 +166,20 @@ function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
   return now;
 }
 
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+
+  return matches;
+}
+
 function useLatestDefined<T>(value: T | undefined, resetKey: string) {
   const [latest, setLatest] = useState<{ resetKey: string; value: T } | null>(
     value === undefined ? null : { resetKey, value },
@@ -172,6 +195,11 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
 
   if (value !== undefined) return value;
   return latest?.resetKey === resetKey ? latest.value : undefined;
+}
+
+function getQuestionForLocale(question: AdminSuggestedQuestion, locale: Locale) {
+  if (locale === defaultLocale) return question.question;
+  return question.translations?.[locale]?.trim() || question.question;
 }
 
 function AdminQueryError({ error }: { error: Error }) {
@@ -308,6 +336,7 @@ export function AdminChatDashboard() {
 
 function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const now = usePresenceClock();
+  const isLargeViewport = useMediaQuery("(min-width: 1024px)");
   const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
   const [propertySlug, setPropertySlug] = useState("");
@@ -350,9 +379,9 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       if (current && sessionsResult.sessions.some((session) => session._id === current)) {
         return current;
       }
-      return sessionsResult.sessions[0]?._id ?? null;
+      return isLargeViewport ? sessionsResult.sessions[0]?._id ?? null : null;
     });
-  }, [sessionsResult]);
+  }, [isLargeViewport, sessionsResult]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -394,6 +423,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       {view === "questions" ? (
         <AdminQuestionsView questions={liveQuestions} />
       ) : (
+      <>
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <aside className="min-h-[calc(100vh-132px)] border border-border bg-card">
           <div className="border-b border-border p-3">
@@ -483,142 +513,198 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </div>
         </aside>
 
-        <section className="min-h-[calc(100vh-132px)] border border-border bg-card">
-          {!selectedSession ? (
-            <div className="grid h-full min-h-[420px] place-items-center p-6 text-center text-muted-foreground">
-              Select a visitor session to inspect the transcript.
-            </div>
-          ) : (
-            <div className="grid h-full min-h-[calc(100vh-132px)] grid-rows-[auto_1fr]">
-              <div className="border-b border-border p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-serif text-3xl font-semibold text-foreground">
-                        {visitorLabel(selectedSession)}
-                      </h2>
-                      {selectedSession.isActive ? (
-                        <Badge className="rounded-full bg-emerald-600 text-white">Active now</Badge>
-                      ) : (
-                        <Badge variant="outline" className="rounded-full">
-                          Inactive
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}
-                    </p>
-                  </div>
-                  <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-gold" />
-                      {selectedSession.visitorEmail ?? "No email"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-gold" />
-                      {contactLabel(selectedSession)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-gold" />
-                      {formatDateTime(selectedSession.createdAt)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <UserRound className="h-4 w-4 text-gold" />
-                      {truncate(selectedSession.visitorId, 28) || "No visitor ID"}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <Badge variant="secondary" className="rounded-full">
-                    {selectedSession.propertyName ?? selectedSession.propertySlug ?? "General"}
-                  </Badge>
-                  {selectedSession.currentPath ? (
-                    <Badge variant="outline" className="rounded-full">
-                      <ExternalLink className="mr-1 h-3 w-3" />
-                      {selectedSession.currentPath}
-                    </Badge>
-                  ) : null}
-                </div>
-                <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Visitor context
-                  </div>
-                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
-                    <div className="flex items-center gap-2">
-                      <Globe2 className="h-3.5 w-3.5 text-gold" />
-                      {selectedSession.timeZone ?? "Unknown timezone"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Globe2 className="h-3.5 w-3.5 text-gold" />
-                      {selectedSession.browserLanguage ?? "Unknown language"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                      {selectedSession.viewportSize
-                        ? `Viewport ${selectedSession.viewportSize}`
-                        : "Unknown viewport"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                      {selectedSession.screenSize
-                        ? `Screen ${selectedSession.screenSize}`
-                        : "Unknown screen"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <UserRound className="h-3.5 w-3.5 text-gold" />
-                      {selectedSession.platform ?? "Unknown platform"}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ExternalLink className="h-3.5 w-3.5 text-gold" />
-                      {truncate(selectedSession.referrer, 44) || "No referrer"}
-                    </div>
-                  </div>
-                  <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
-                    {selectedSession.userAgent
-                      ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
-                      : "No user agent"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="min-h-0 overflow-y-auto bg-background/50 p-4">
-                {loadingTranscript ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading transcript
-                  </div>
-                ) : null}
-                <div className="space-y-3">
-                  {(transcript?.messages ?? []).map((message) => (
-                    <div
-                      key={message._id}
-                      className={cn(
-                        "max-w-[78%] border border-border px-4 py-3 text-sm leading-6 shadow-sm",
-                        message.role === "user"
-                          ? "ml-auto bg-navy text-white"
-                          : "bg-card text-foreground",
-                      )}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-70">
-                        <span>{message.role === "user" ? "Visitor" : "Assistant"}</span>
-                        <span>{formatDateTime(message.timestamp)}</span>
-                      </div>
-                      <p className="whitespace-pre-wrap">{message.content}</p>
-                    </div>
-                  ))}
-                  {!loadingTranscript && transcript?.messages.length === 0 ? (
-                    <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
-                      This visitor opened chat but has not sent a message yet.
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          )}
+        <section className="hidden min-h-[calc(100vh-132px)] border border-border bg-card lg:block">
+          <AdminSessionDetail
+            loadingTranscript={loadingTranscript}
+            now={now}
+            selectedSession={selectedSession}
+            transcript={transcript}
+          />
         </section>
       </main>
+      <Dialog
+        open={!isLargeViewport && Boolean(selectedSession)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setSelectedSessionId(null);
+        }}
+      >
+        <DialogContent
+          data-testid="admin-chat-detail-dialog"
+          className="flex max-h-[calc(100svh-2rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        >
+          <DialogTitle className="sr-only">
+            {selectedSession ? `Chat details for ${visitorLabel(selectedSession)}` : "Chat details"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Visitor context and transcript for the selected chat session.
+          </DialogDescription>
+          <AdminSessionDetail
+            compact
+            loadingTranscript={loadingTranscript}
+            now={now}
+            selectedSession={selectedSession}
+            transcript={transcript}
+          />
+        </DialogContent>
+      </Dialog>
+      </>
       )}
+    </div>
+  );
+}
+
+function AdminSessionDetail({
+  compact = false,
+  loadingTranscript,
+  now,
+  selectedSession,
+  transcript,
+}: {
+  compact?: boolean;
+  loadingTranscript: boolean;
+  now: number;
+  selectedSession: AdminSession | null;
+  transcript?: TranscriptResult;
+}) {
+  if (!selectedSession) {
+    return (
+      <div className="grid h-full min-h-[420px] place-items-center p-6 text-center text-muted-foreground">
+        Select a visitor session to inspect the transcript.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "grid h-full grid-rows-[auto_1fr]",
+        compact ? "min-h-0" : "min-h-[calc(100vh-132px)]",
+      )}
+    >
+      <div className="border-b border-border p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-serif text-3xl font-semibold text-foreground">
+                {visitorLabel(selectedSession)}
+              </h2>
+              {selectedSession.isActive ? (
+                <Badge className="rounded-full bg-emerald-600 text-white">Active now</Badge>
+              ) : (
+                <Badge variant="outline" className="rounded-full">
+                  Inactive
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}
+            </p>
+          </div>
+          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-gold" />
+              {selectedSession.visitorEmail ?? "No email"}
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone className="h-4 w-4 text-gold" />
+              {contactLabel(selectedSession)}
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-gold" />
+              {formatDateTime(selectedSession.createdAt)}
+            </div>
+            <div className="flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-gold" />
+              {truncate(selectedSession.visitorId, 28) || "No visitor ID"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="rounded-full">
+            {selectedSession.propertyName ?? selectedSession.propertySlug ?? "General"}
+          </Badge>
+          {selectedSession.currentPath ? (
+            <Badge variant="outline" className="rounded-full">
+              <ExternalLink className="mr-1 h-3 w-3" />
+              {selectedSession.currentPath}
+            </Badge>
+          ) : null}
+        </div>
+        <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
+            <MapPin className="h-3.5 w-3.5" />
+            Visitor context
+          </div>
+          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-3.5 w-3.5 text-gold" />
+              {selectedSession.timeZone ?? "Unknown timezone"}
+            </div>
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-3.5 w-3.5 text-gold" />
+              {selectedSession.browserLanguage ?? "Unknown language"}
+            </div>
+            <div className="flex items-center gap-2">
+              <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+              {selectedSession.viewportSize
+                ? `Viewport ${selectedSession.viewportSize}`
+                : "Unknown viewport"}
+            </div>
+            <div className="flex items-center gap-2">
+              <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+              {selectedSession.screenSize
+                ? `Screen ${selectedSession.screenSize}`
+                : "Unknown screen"}
+            </div>
+            <div className="flex items-center gap-2">
+              <UserRound className="h-3.5 w-3.5 text-gold" />
+              {selectedSession.platform ?? "Unknown platform"}
+            </div>
+            <div className="flex items-center gap-2">
+              <ExternalLink className="h-3.5 w-3.5 text-gold" />
+              {truncate(selectedSession.referrer, 44) || "No referrer"}
+            </div>
+          </div>
+          <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
+            {selectedSession.userAgent
+              ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
+              : "No user agent"}
+          </p>
+        </div>
+      </div>
+
+      <div className="min-h-0 overflow-y-auto bg-background/50 p-4">
+        {loadingTranscript ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading transcript
+          </div>
+        ) : null}
+        <div className="space-y-3">
+          {(transcript?.messages ?? []).map((message) => (
+            <div
+              key={message._id}
+              className={cn(
+                "max-w-[78%] border border-border px-4 py-3 text-sm leading-6 shadow-sm",
+                message.role === "user"
+                  ? "ml-auto bg-navy text-white"
+                  : "bg-card text-foreground",
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-70">
+                <span>{message.role === "user" ? "Visitor" : "Assistant"}</span>
+                <span>{formatDateTime(message.timestamp)}</span>
+              </div>
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            </div>
+          ))}
+          {!loadingTranscript && transcript?.messages.length === 0 ? (
+            <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
+              This visitor opened chat but has not sent a message yet.
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -628,6 +714,7 @@ function AdminQuestionsView({
 }: {
   questions: AdminSuggestedQuestion[] | undefined;
 }) {
+  const [selectedLocale, setSelectedLocale] = useState<Locale>(defaultLocale);
   const loading = questions === undefined;
   const rows = questions ?? [];
 
@@ -644,9 +731,30 @@ function AdminQuestionsView({
               Suggested Questions
             </h2>
           </div>
-          <Badge variant="secondary" className="w-fit rounded-full">
-            Read only
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={selectedLocale}
+              onValueChange={(value) => setSelectedLocale(value as Locale)}
+            >
+              <SelectTrigger
+                className="h-10 w-[11rem] rounded-lg"
+                aria-label="Suggested question language"
+                data-testid="admin-question-language"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {locales.map((locale) => (
+                  <SelectItem key={locale} value={locale}>
+                    {localeLabels[locale]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Badge variant="secondary" className="w-fit rounded-full">
+              Read only
+            </Badge>
+          </div>
         </div>
 
         {loading ? (
@@ -682,7 +790,7 @@ function AdminQuestionsView({
                   <tr key={question._id} className="border-b border-border last:border-b-0">
                     <td className="max-w-[360px] px-4 py-3">
                       <p className="font-medium text-foreground">
-                        {question.question}
+                        {getQuestionForLocale(question, selectedLocale)}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {truncate(question.currentPath, 72) ||

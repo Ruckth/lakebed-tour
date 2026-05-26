@@ -53,19 +53,21 @@ describe("chat external browser helpers", () => {
 
     expect(browserUrl).toBe("https://example.com/chat?property=pool&external=1&handoff=token123");
     expect(target.platform).toBe("android");
+    expect(target.browser).toBe("chrome");
     expect(target.url).toContain("intent://example.com/chat?property=pool&external=1&handoff=token123#Intent;");
     expect(target.url).toContain("package=com.android.chrome");
   });
 
-  it("builds iOS Chrome URLs and strips claimed handoff params", () => {
+  it("builds iOS Safari URLs and strips claimed handoff params", () => {
     const target = buildExternalBrowserTarget(
       "https://example.com/th/chat?external=1&handoff=token123",
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1 Line/14.0.0",
     );
 
     expect(target).toEqual({
+      browser: "safari",
       platform: "ios",
-      url: "googlechromes://example.com/th/chat?external=1&handoff=token123",
+      url: "x-safari-https://example.com/th/chat?external=1&handoff=token123",
     });
     expect(stripChatHandoffParam("/th/chat?external=1&handoff=token123")).toBe(
       "/th/chat?external=1",

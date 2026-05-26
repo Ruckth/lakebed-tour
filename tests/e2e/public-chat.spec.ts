@@ -197,10 +197,10 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toHaveCount(0);
+  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
   await expect(
     chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -275,6 +275,25 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
 
   await page.getByRole("button", { name: "ปิดแชต" }).click();
   await expect(page).toHaveURL(/\/th$/);
+});
+
+test("localized chat page keeps cached messages and updates suggestion language", async ({ page }) => {
+  const sessionId = "cached-locale-session";
+  await seedChatMessageCache(page, sessionId, [
+    { role: "user", content: "What's included when booking direct?" },
+    {
+      role: "assistant",
+      content:
+        "Direct booking saves around 15% versus OTA pricing and keeps support with the host.",
+    },
+  ]);
+
+  await page.goto("/th/chat?continueInApp=1");
+
+  await expect(page.getByText("What's included when booking direct?")).toBeVisible();
+  await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" })).toBeVisible();
 });
 
 test("mobile chat page restores cached messages and keeps the first new send", async ({ page }) => {
@@ -438,6 +457,20 @@ test("mobile Chrome keeps Thai contact details typable while the viewport resize
   const chatInput = page.getByPlaceholder("พิมพ์คำถาม");
 
   await page.getByText("ฝากข้อมูลติดต่อ").click();
+  await expect
+    .poll(async () =>
+      emailInput.evaluate((node) =>
+        Number.parseFloat(window.getComputedStyle(node).fontSize),
+      ),
+    )
+    .toBeGreaterThanOrEqual(16);
+  await expect
+    .poll(async () =>
+      page
+        .getByRole("textbox", { name: "ช่องทางติดต่อ" })
+        .evaluate((node) => Number.parseFloat(window.getComputedStyle(node).fontSize)),
+    )
+    .toBeGreaterThanOrEqual(16);
   await emailInput.focus();
   await page.evaluate(() => {
     (
@@ -469,7 +502,8 @@ test("instagram in-app browser shows the external browser chat gate", async ({ p
   const gate = page.getByTestId("chat-browser-gate");
   await expect(gate).toBeVisible();
   await expect(page.getByText("Opening chat in Chrome")).toBeVisible();
-  await expect(page.getByTestId("chat-open-chrome")).toHaveAttribute(
+  await expect(page.getByTestId("chat-open-browser")).toHaveAttribute("data-browser-target", "chrome");
+  await expect(page.getByTestId("chat-open-browser")).toHaveAttribute(
     "href",
     /intent:\/\/.*external=1.*package=com\.android\.chrome/,
   );
@@ -489,9 +523,11 @@ test("LINE in-app browser shows the external browser chat gate", async ({ page }
   await page.goto("/chat");
 
   await expect(page.getByTestId("chat-browser-gate")).toBeVisible();
-  await expect(page.getByTestId("chat-open-chrome")).toHaveAttribute(
+  await expect(page.getByText("Opening chat in Safari")).toBeVisible();
+  await expect(page.getByTestId("chat-open-browser")).toHaveAttribute("data-browser-target", "safari");
+  await expect(page.getByTestId("chat-open-browser")).toHaveAttribute(
     "href",
-    /googlechrome:\/\/.*external=1/,
+    /x-safari-https?:\/\/.*external=1/,
   );
 });
 

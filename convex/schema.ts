@@ -268,6 +268,7 @@ export default defineSchema({
 		userMessageId: v.optional(v.id('chatMessages')),
 		question: v.string(),
 		normalizedQuestion: v.string(),
+		translations: v.optional(v.record(v.string(), v.string())),
 		locale: v.string(),
 		propertySlug: v.optional(v.string()),
 		topic: v.string(),

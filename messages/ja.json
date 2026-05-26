@@ -198,12 +198,16 @@
     "fallback": "もう一度お試しください。または下の連絡方法をご利用ください。",
     "sent": "コンシェルジュへ送信しました。すぐに返信が必要な場合は WhatsApp をご利用ください。",
     "browserGateTitle": "Chromeでチャットを開いています",
+    "browserGateTitleSafari": "Safariでチャットを開いています",
     "browserGateDescription": "このアプリ内ブラウザではキーボード表示やチャット状態に問題が出る場合があります。同じチャットをChromeで開きます。",
+    "browserGateDescriptionSafari": "このアプリ内ブラウザではキーボード表示やチャット状態に問題が出る場合があります。同じチャットをSafariで開きます。",
     "browserGateOpenChrome": "Chromeで開く",
+    "browserGateOpenSafari": "Safariで開く",
     "browserGateCopy": "リンクをコピー",
     "browserGateCopied": "コピーしました",
     "browserGateContinue": "ここで続ける",
-    "browserGateFallback": "Chromeが開かない場合は、リンクをコピーしてChromeまたはSafariに貼り付けてください。"
+    "browserGateFallback": "Chromeが開かない場合は、リンクをコピーしてChromeまたはSafariに貼り付けてください。",
+    "browserGateFallbackSafari": "Safariが開かない場合は、リンクをコピーしてSafariに貼り付けてください。"
   },
   "Footer": {
     "bookDirect": "直接予約"

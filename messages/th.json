@@ -198,12 +198,16 @@
     "fallback": "ลองอีกครั้ง หรือติดต่อเราด้านล่างนะคะ",
     "sent": "ฉันส่งต่อให้คอนเซียจแล้ว หากต้องการคำตอบด่วน โปรดใช้ WhatsApp",
     "browserGateTitle": "กำลังเปิดแชตใน Chrome",
+    "browserGateTitleSafari": "กำลังเปิดแชตใน Safari",
     "browserGateDescription": "เบราว์เซอร์ในแอปนี้อาจทำให้คีย์บอร์ดบังหรือแชตไม่ต่อเนื่อง เรากำลังเปิดแชตเดิมใน Chrome เพื่อให้ใช้งานลื่นขึ้น",
+    "browserGateDescriptionSafari": "เบราว์เซอร์ในแอปนี้อาจทำให้คีย์บอร์ดบังหรือแชตไม่ต่อเนื่อง เรากำลังเปิดแชตเดิมใน Safari เพื่อให้ใช้งานลื่นขึ้น",
     "browserGateOpenChrome": "เปิดใน Chrome",
+    "browserGateOpenSafari": "เปิดใน Safari",
     "browserGateCopy": "คัดลอกลิงก์",
     "browserGateCopied": "คัดลอกแล้ว",
     "browserGateContinue": "ใช้งานที่นี่ต่อ",
-    "browserGateFallback": "ถ้า Chrome ไม่เปิด ให้คัดลอกลิงก์แล้ววางใน Chrome หรือ Safari"
+    "browserGateFallback": "ถ้า Chrome ไม่เปิด ให้คัดลอกลิงก์แล้ววางใน Chrome หรือ Safari",
+    "browserGateFallbackSafari": "ถ้า Safari ไม่เปิด ให้คัดลอกลิงก์แล้ววางใน Safari"
   },
   "Footer": {
     "bookDirect": "จองตรง"

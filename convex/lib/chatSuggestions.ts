@@ -1,9 +1,27 @@
 export type SuggestedQuestionStatus = "active" | "clicked" | "archived";
 
+export const supportedSuggestionLocales = [
+  "en",
+  "th",
+  "zh-CN",
+  "ja",
+  "ko",
+  "fr",
+  "de",
+  "es",
+  "ru",
+  "it",
+  "hi",
+] as const;
+
+export type SuggestionLocale = (typeof supportedSuggestionLocales)[number];
+export type SuggestedQuestionTranslations = Partial<Record<SuggestionLocale, string>>;
+
 export type SuggestedQuestionCandidate = {
   _id?: string;
   question: string;
   normalizedQuestion?: string;
+  translations?: SuggestedQuestionTranslations;
   score: number;
   createdAt: number;
   clickedAt?: number;
@@ -33,6 +51,37 @@ export function normalizeSuggestedQuestion(value: string) {
     .trim();
 }
 
+export function normalizeSuggestionLocale(locale?: string): SuggestionLocale {
+  const normalized = locale?.trim();
+  return supportedSuggestionLocales.includes(normalized as SuggestionLocale)
+    ? (normalized as SuggestionLocale)
+    : "en";
+}
+
+export function getSuggestedQuestionForLocale(
+  candidate: Pick<SuggestedQuestionCandidate, "question" | "translations">,
+  locale?: string,
+) {
+  const normalizedLocale = normalizeSuggestionLocale(locale);
+  if (normalizedLocale === "en") return candidate.question;
+  return (
+    candidate.translations?.[normalizedLocale]?.trim() ||
+    candidate.question
+  );
+}
+
+function normalizedQuestionVariants(candidate: SuggestedQuestionCandidate) {
+  const values = [
+    candidate.question,
+    candidate.normalizedQuestion,
+    ...Object.values(candidate.translations ?? {}),
+  ];
+  return values
+    .filter((value): value is string => typeof value === "string")
+    .map(normalizeSuggestedQuestion)
+    .filter(Boolean);
+}
+
 export function selectRankedSuggestedQuestions<T extends SuggestedQuestionCandidate>({
   candidates,
   askedQuestions = [],
@@ -53,10 +102,12 @@ export function selectRankedSuggestedQuestions<T extends SuggestedQuestionCandid
       return right.createdAt - left.createdAt;
     })
     .filter((candidate) => {
-      const normalized =
-        candidate.normalizedQuestion || normalizeSuggestedQuestion(candidate.question);
-      if (!normalized || blocked.has(normalized) || seen.has(normalized)) return false;
-      seen.add(normalized);
+      const variants = normalizedQuestionVariants(candidate);
+      if (!variants.length) return false;
+      if (variants.some((normalized) => blocked.has(normalized) || seen.has(normalized))) {
+        return false;
+      }
+      variants.forEach((normalized) => seen.add(normalized));
       return true;
     })
     .slice(0, Math.max(0, limit));

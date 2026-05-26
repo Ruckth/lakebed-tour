@@ -198,12 +198,16 @@
     "fallback": "Попробуйте еще раз или свяжитесь с нами ниже.",
     "sent": "Я отправил это консьержу. Если нужен срочный ответ, используйте WhatsApp.",
     "browserGateTitle": "Открываем чат в Chrome",
+    "browserGateTitleSafari": "Открываем чат в Safari",
     "browserGateDescription": "Встроенный браузер приложения может скрывать клавиатуру или терять состояние чата. Мы откроем этот же чат в Chrome для более стабильной работы.",
+    "browserGateDescriptionSafari": "Встроенный браузер приложения может скрывать клавиатуру или терять состояние чата. Мы откроем этот же чат в Safari для более стабильной работы.",
     "browserGateOpenChrome": "Открыть в Chrome",
+    "browserGateOpenSafari": "Открыть в Safari",
     "browserGateCopy": "Скопировать ссылку",
     "browserGateCopied": "Скопировано",
     "browserGateContinue": "Продолжить здесь",
-    "browserGateFallback": "Если Chrome не открылся, скопируйте ссылку и вставьте ее в Chrome или Safari."
+    "browserGateFallback": "Если Chrome не открылся, скопируйте ссылку и вставьте ее в Chrome или Safari.",
+    "browserGateFallbackSafari": "Если Safari не открылся, скопируйте ссылку и вставьте ее в Safari."
   },
   "Footer": {
     "bookDirect": "Бронировать напрямую"

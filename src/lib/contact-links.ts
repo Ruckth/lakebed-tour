@@ -3,6 +3,12 @@ export const CONTACT_PREFILL_MESSAGE =
 
 export const CONTACT_EMAIL_SUBJECT = "Website inquiry";
 
+function buildMailtoQuery(params: Record<string, string>) {
+  // Some mail clients, including Gmail on Android, render URLSearchParams'
+  // form-style "+" spaces literally in mailto compose fields.
+  return new URLSearchParams(params).toString().replace(/\+/g, "%20");
+}
+
 export function normalizeWhatsAppNumber(number: string, countryCode = "66") {
   const digits = number.replace(/\D/g, "");
   if (digits.startsWith("0")) return `${countryCode}${digits.slice(1)}`;
@@ -22,11 +28,11 @@ export function buildEmailHref(
   email: string,
   message = CONTACT_PREFILL_MESSAGE,
 ) {
-  const params = new URLSearchParams({
+  const params = buildMailtoQuery({
     subject: CONTACT_EMAIL_SUBJECT,
     body: message,
   });
-  return `mailto:${email.trim()}?${params.toString()}`;
+  return `mailto:${email.trim()}?${params}`;
 }
 
 export function buildLineHref({
