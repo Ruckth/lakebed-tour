@@ -53,9 +53,25 @@ type LatestExchange = {
   assistantMessage: string;
   clickedSuggestionId?: ChatSuggestionId | null;
 };
+type ChatMessageCache = {
+  version: number;
+  sessionId: string | null;
+  messages: Message[];
+  latestExchange: LatestExchange | null;
+  updatedAt: number;
+};
+type EnsureSessionOptions = {
+  markOpen?: boolean;
+  validateForReuse?: boolean;
+  hydrateMessages?: boolean;
+};
 
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
+const MESSAGE_CACHE_STORAGE_PREFIX = "sv_chat_messages:";
+const LOCAL_MESSAGE_CACHE_ID = "local";
+const MESSAGE_CACHE_VERSION = 1;
+const MAX_CACHED_MESSAGES = 100;
 const CHAT_RETURN_TO_PARAM = "returnTo";
 const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
 const HEARTBEAT_MS = 30_000;
@@ -72,7 +88,6 @@ const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
 const IN_APP_KEYBOARD_FALLBACK_RATIO = 0.43;
 const IN_APP_KEYBOARD_FALLBACK_MIN = 280;
 const IN_APP_KEYBOARD_FALLBACK_MAX = 440;
-const KEYBOARD_FALLBACK_GRACE_MS = 120;
 const KEYBOARD_SAFE_GAP = 16;
 const KEYBOARD_INSET_EPSILON = 8;
 const KEYBOARD_PROBE_DELAYS_MS = [80, 180, 360, 600] as const;
@@ -160,6 +175,16 @@ function getKeyboardOverlayFallbackInset() {
   );
 }
 
+function getVisualViewportHeight() {
+  if (typeof window === "undefined") return 0;
+  return window.visualViewport?.height ?? window.innerHeight;
+}
+
+function getKeyboardViewportBaselineHeight() {
+  if (typeof window === "undefined") return 0;
+  return Math.max(window.innerHeight, getVisualViewportHeight());
+}
+
 function clampKeyboardInset(inset: number) {
   if (typeof window === "undefined") return inset;
   const maxInset = Math.max(
@@ -175,24 +200,32 @@ function getMeasuredKeyboardInset({
   footerNode,
   inputNode,
   mode,
+  viewportBaselineHeight,
 }: {
   fallbackAllowed: boolean;
   focusedInputIsActive: boolean;
   footerNode: HTMLElement | null;
   inputNode: HTMLElement | null;
   mode: ChatExperienceMode;
+  viewportBaselineHeight: number | null;
 }) {
   if (typeof window === "undefined") return 0;
 
   const visualViewport = window.visualViewport;
+  const visualViewportHeight = getVisualViewportHeight();
   const visibleViewportBottom =
-    (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight);
+    (visualViewport?.offsetTop ?? 0) + visualViewportHeight;
   const realInset = Math.max(
     0,
     Math.round(window.innerHeight - visibleViewportBottom),
   );
+  const viewportShrink = viewportBaselineHeight
+    ? Math.max(0, Math.round(viewportBaselineHeight - visualViewportHeight))
+    : 0;
+  const viewportResizedByKeyboard = viewportShrink > MOBILE_KEYBOARD_THRESHOLD;
 
   if (mode !== "page" || !focusedInputIsActive) return realInset;
+  if (viewportResizedByKeyboard) return 0;
 
   const inputBottom = inputNode?.getBoundingClientRect().bottom ?? 0;
   const footerBottom = footerNode?.getBoundingClientRect().bottom ?? 0;
@@ -219,6 +252,97 @@ function setStoredSessionId(sessionId: string) {
 function clearStoredSessionId() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(SESSION_ID_STORAGE_KEY);
+}
+
+function getMessageCacheStorageKey(sessionId: string | null) {
+  return `${MESSAGE_CACHE_STORAGE_PREFIX}${sessionId ?? LOCAL_MESSAGE_CACHE_ID}`;
+}
+
+function isMessage(value: unknown): value is Message {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<Message>;
+  return (
+    (item.role === "user" || item.role === "assistant") &&
+    typeof item.content === "string"
+  );
+}
+
+function isLatestExchange(value: unknown): value is LatestExchange {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<LatestExchange>;
+  return (
+    typeof item.userMessage === "string" &&
+    typeof item.assistantMessage === "string" &&
+    (item.clickedSuggestionId === undefined ||
+      item.clickedSuggestionId === null ||
+      typeof item.clickedSuggestionId === "string")
+  );
+}
+
+function normalizeCachedMessages(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isMessage).slice(-MAX_CACHED_MESSAGES);
+}
+
+function readCachedChatMessages(sessionId: string | null): ChatMessageCache | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(getMessageCacheStorageKey(sessionId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<ChatMessageCache>;
+    if (parsed.version !== MESSAGE_CACHE_VERSION) return null;
+
+    const messages = normalizeCachedMessages(parsed.messages);
+    if (!messages.length) return null;
+
+    return {
+      version: MESSAGE_CACHE_VERSION,
+      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : null,
+      messages,
+      latestExchange: isLatestExchange(parsed.latestExchange)
+        ? parsed.latestExchange
+        : latestExchangeFromMessages(messages),
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedChatMessages(
+  sessionId: string | null,
+  messages: Message[],
+  latestExchange: LatestExchange | null,
+) {
+  if (typeof window === "undefined") return;
+
+  const cachedMessages = normalizeCachedMessages(messages);
+  if (!cachedMessages.length) return;
+
+  const cache: ChatMessageCache = {
+    version: MESSAGE_CACHE_VERSION,
+    sessionId,
+    messages: cachedMessages,
+    latestExchange: latestExchange ?? latestExchangeFromMessages(cachedMessages),
+    updatedAt: Date.now(),
+  };
+
+  window.localStorage.setItem(getMessageCacheStorageKey(sessionId), JSON.stringify(cache));
+  if (sessionId) {
+    window.localStorage.removeItem(getMessageCacheStorageKey(null));
+  }
+}
+
+function clearCachedChatMessages(sessionId: string | null) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(getMessageCacheStorageKey(sessionId));
+}
+
+function clearKnownChatMessageCaches(sessionId: string | null) {
+  clearCachedChatMessages(sessionId);
+  clearCachedChatMessages(null);
 }
 
 function normalizeTranscriptMessages(transcript: { role: "user" | "assistant"; content: string }[]) {
@@ -265,9 +389,11 @@ function getSafeChatReturnTo(value: string | null) {
 function SuggestionChips({
   suggestions,
   onSelect,
+  disabled = false,
 }: {
   suggestions: ChatSuggestion[];
   onSelect: (text: string) => void;
+  disabled?: boolean;
 }) {
   if (!suggestions.length) return null;
 
@@ -278,8 +404,11 @@ function SuggestionChips({
           key={item.id}
           type="button"
           data-suggestion-id={item.id}
-          onClick={() => onSelect(item.text)}
-          className="rounded-full border border-border bg-background/85 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white"
+          disabled={disabled}
+          onClick={() => {
+            if (!disabled) onSelect(item.text);
+          }}
+          className="rounded-full border border-border bg-background/85 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white"
         >
           {item.text}
         </button>
@@ -345,6 +474,9 @@ function ChatExperience({
   const [hydrated, setHydrated] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messageCacheReady, setMessageCacheReady] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [isHydratingSession, setIsHydratingSession] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -366,6 +498,9 @@ function ChatExperience({
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const keyboardFocusStartedAtRef = useRef(0);
+  const keyboardViewportBaselineRef = useRef<number | null>(null);
+  const restoredMessageCacheRef = useRef(false);
+  const previousPropertySlugRef = useRef(activePropertySlug);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const normalizedPathname = stripLocalePrefix(pathname);
@@ -428,6 +563,11 @@ function ChatExperience({
     !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
   const canShowBookingCard =
     canShowMessageSuggestions && Boolean(latestBookingContext?.hasBookingIntent);
+  const chatInputDisabled =
+    !messageCacheReady ||
+    isTyping ||
+    (Boolean(convex) && !sessionReady && messages.length === 0) ||
+    (isHydratingSession && messages.length === 0);
   const hideFloatingTriggerOnMobileRoom = normalizedPathname.startsWith("/rooms/");
   const chatHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -549,6 +689,45 @@ function ChatExperience({
   }, []);
 
   useEffect(() => {
+    const storedSessionId = getStoredSessionId();
+    const cachedTranscript =
+      readCachedChatMessages(storedSessionId) ?? readCachedChatMessages(null);
+
+    if (storedSessionId) {
+      setSessionId(storedSessionId);
+    }
+
+    if (cachedTranscript) {
+      restoredMessageCacheRef.current = true;
+      setMessages(cachedTranscript.messages);
+      setLatestExchange(
+        cachedTranscript.latestExchange ?? latestExchangeFromMessages(cachedTranscript.messages),
+      );
+    }
+
+    setMessageCacheReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!messageCacheReady) return;
+    if (!messages.length) return;
+
+    writeCachedChatMessages(
+      sessionId ?? getStoredSessionId(),
+      messages,
+      latestExchange ?? latestExchangeFromMessages(messages),
+    );
+  }, [latestExchange, messageCacheReady, messages, sessionId]);
+
+  useEffect(() => {
+    if (!messageCacheReady || convex) return;
+    setSessionReady(true);
+    setIsHydratingSession(false);
+  }, [convex, messageCacheReady]);
+
+  useEffect(() => {
+    if (previousPropertySlugRef.current === activePropertySlug) return;
+    previousPropertySlugRef.current = activePropertySlug;
     setLatestExchange(null);
   }, [activePropertySlug]);
 
@@ -566,7 +745,7 @@ function ChatExperience({
   }, [activePropertySlug, convex]);
 
   const hydrateExistingSession = useCallback(
-    async (id: string, markOpen = false) => {
+    async (id: string, markOpen = false, hydrateMessages = true) => {
       if (!convex) return null;
       await touchChatSession(convex, {
         sessionId: id,
@@ -574,6 +753,13 @@ function ChatExperience({
         ...getBrowserChatMetadata(),
         isOpen: markOpen,
       });
+
+      setStoredSessionId(id);
+      setSessionId(id);
+
+      if (!hydrateMessages) {
+        return id;
+      }
 
       const transcript = await getChatMessages(convex, {
         sessionId: id,
@@ -584,8 +770,6 @@ function ChatExperience({
       }
 
       const restoredMessages = normalizeTranscriptMessages(transcript);
-      setStoredSessionId(id);
-      setSessionId(id);
       setMessages(restoredMessages);
       setLatestExchange(latestExchangeFromMessages(restoredMessages));
       return id;
@@ -594,18 +778,25 @@ function ChatExperience({
   );
 
   const ensureSession = useCallback(
-    async (markOpen = false, validateForReuse = false) => {
+    async ({
+      markOpen = false,
+      validateForReuse = false,
+      hydrateMessages = false,
+    }: EnsureSessionOptions = {}) => {
       if (!convex) return null;
       if (sessionId) {
         if (validateForReuse) {
           try {
-            await hydrateExistingSession(sessionId, markOpen);
+            await hydrateExistingSession(sessionId, markOpen, hydrateMessages);
             return sessionId;
           } catch {
             clearStoredSessionId();
+            clearCachedChatMessages(sessionId);
             setSessionId(null);
-            setMessages([]);
-            setLatestExchange(null);
+            if (hydrateMessages && !restoredMessageCacheRef.current) {
+              setMessages([]);
+              setLatestExchange(null);
+            }
             return await createFreshSession();
           }
         }
@@ -624,10 +815,11 @@ function ChatExperience({
       const storedId = getStoredSessionId();
       if (storedId) {
         try {
-          await hydrateExistingSession(storedId, markOpen);
+          await hydrateExistingSession(storedId, markOpen, hydrateMessages);
           return storedId;
         } catch {
           clearStoredSessionId();
+          clearCachedChatMessages(storedId);
         }
       }
 
@@ -639,7 +831,11 @@ function ChatExperience({
             messageLimit: REUSABLE_CHAT_MESSAGE_LIMIT,
           });
           if (reusableSession?._id) {
-            return await hydrateExistingSession(reusableSession._id, markOpen);
+            return await hydrateExistingSession(
+              reusableSession._id,
+              markOpen,
+              hydrateMessages,
+            );
           }
         } catch {
           // If lookup fails, create a clean session so chat stays available.
@@ -651,22 +847,52 @@ function ChatExperience({
     [activePropertySlug, convex, createFreshSession, hydrateExistingSession, sessionId],
   );
 
+  const primeSessionForOpen = useCallback(async () => {
+    if (!convex || !messageCacheReady) {
+      setSessionReady(true);
+      return;
+    }
+
+    const shouldHydrateMessages = !restoredMessageCacheRef.current && messages.length === 0;
+    setIsHydratingSession(true);
+    try {
+      await ensureSession({
+        markOpen: true,
+        validateForReuse: true,
+        hydrateMessages: shouldHydrateMessages,
+      });
+    } catch {
+      // Chat can still operate from the local transcript if the session touch fails.
+    } finally {
+      setSessionReady(true);
+      setIsHydratingSession(false);
+    }
+  }, [convex, ensureSession, messageCacheReady, messages.length]);
+
   const openChat = useCallback(() => {
     if (mode === "page") return;
     setMounted(true);
-    void ensureSession(true, true);
     setOpen(true);
-  }, [ensureSession, mode]);
+    setSessionReady(false);
+    void primeSessionForOpen();
+  }, [mode, primeSessionForOpen]);
 
   const restartChat = useCallback(async () => {
+    const previousSessionId = sessionId ?? getStoredSessionId();
+    clearKnownChatMessageCaches(previousSessionId);
+    clearStoredSessionId();
+    restoredMessageCacheRef.current = false;
+    setSessionReady(false);
+    setIsHydratingSession(false);
+
     if (!convex) {
-      clearStoredSessionId();
       setSessionId(null);
       setMessages([]);
       setLatestExchange(null);
       setInput("");
       setIsTyping(false);
       setContactStatus("idle");
+      setSessionReady(true);
       setOpen(true);
       return;
     }
@@ -679,11 +905,13 @@ function ChatExperience({
       setInput("");
       setIsTyping(false);
       setContactStatus("idle");
+      setSessionReady(true);
       setOpen(true);
     } catch {
+      setSessionReady(true);
       setContactStatus("error");
     }
-  }, [convex, createFreshSession]);
+  }, [convex, createFreshSession, sessionId]);
 
   const closeChat = useCallback(() => {
     if (mode === "page") {
@@ -699,6 +927,19 @@ function ChatExperience({
       void closeChatSession(convex, { sessionId }).catch(() => undefined);
     }
   }, [convex, locale, mode, returnToParam, router, sessionId]);
+
+  useEffect(() => {
+    if (mode !== "page") return;
+    if (!open || !messageCacheReady || sessionReady || isHydratingSession) return;
+    void primeSessionForOpen();
+  }, [
+    isHydratingSession,
+    messageCacheReady,
+    mode,
+    open,
+    primeSessionForOpen,
+    sessionReady,
+  ]);
 
   useEffect(() => {
     if (mode === "page") return;
@@ -728,6 +969,7 @@ function ChatExperience({
   useEffect(() => {
     if (!open) {
       keyboardInsetRef.current = 0;
+      keyboardViewportBaselineRef.current = null;
       setMobileKeyboardInset(0);
       setComposerFocused(false);
       return;
@@ -742,6 +984,7 @@ function ChatExperience({
       updateChatPageViewportHeight();
       if (!mobileQuery.matches) {
         keyboardInsetRef.current = 0;
+        keyboardViewportBaselineRef.current = null;
         setMobileKeyboardInset(0);
         return;
       }
@@ -751,18 +994,19 @@ function ChatExperience({
         keyboardFocusStartedAtRef.current ||= Date.now();
         setComposerFocused(true);
       }
-      const focusAgeMs = keyboardFocusStartedAtRef.current
-        ? Date.now() - keyboardFocusStartedAtRef.current
-        : 0;
-      const fallbackAllowed =
-        isKeyboardOverlayBrowser() ||
-        (focusedInputIsActive && focusAgeMs >= KEYBOARD_FALLBACK_GRACE_MS);
+      if (focusedInputIsActive) {
+        keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
+      } else {
+        keyboardViewportBaselineRef.current = null;
+      }
+      const fallbackAllowed = isKeyboardOverlayBrowser();
       const effectiveInset = getMeasuredKeyboardInset({
         fallbackAllowed,
         focusedInputIsActive,
         footerNode: chatFooterRef.current,
         inputNode: inputRef.current,
         mode,
+        viewportBaselineHeight: keyboardViewportBaselineRef.current,
       });
       const previousInset = keyboardInsetRef.current;
       if (
@@ -846,7 +1090,7 @@ function ChatExperience({
   useEffect(() => {
     if (!open || !convex) return;
     const interval = window.setInterval(() => {
-      void ensureSession(true);
+      void ensureSession({ markOpen: true });
     }, HEARTBEAT_MS);
     return () => window.clearInterval(interval);
   }, [convex, ensureSession, open]);
@@ -861,7 +1105,7 @@ function ChatExperience({
 
     setContactStatus("saving");
     try {
-      const id = await ensureSession(true);
+      const id = await ensureSession({ markOpen: true });
       if (!id) throw new Error("No chat session");
       await identifyChatVisitor(convex, {
         sessionId: id,
@@ -929,7 +1173,7 @@ function ChatExperience({
 
   async function sendMessage(text: string) {
     const clean = text.trim();
-    if (!clean || isTyping) return;
+    if (!clean || chatInputDisabled) return;
     setInput("");
     setLatestExchange(null);
     setMessages((items) => [...items, { role: "user", content: clean }]);
@@ -945,7 +1189,7 @@ function ChatExperience({
       });
       if (convex) {
         try {
-          const id = await ensureSession(true);
+          const id = await ensureSession({ markOpen: true });
           if (id) {
             await addChatMessage(convex, { sessionId: id, role: "user", content: clean });
             await addChatMessage(convex, {
@@ -987,7 +1231,7 @@ function ChatExperience({
     setIsTyping(true);
     let id: string | null = null;
     try {
-      id = await ensureSession(true);
+      id = await ensureSession({ markOpen: true });
       if (!id) throw new Error("No chat session");
       const result = await askConcierge(convex, {
         sessionId: id,
@@ -1082,7 +1326,11 @@ function ChatExperience({
                   {t("intro")}
                 </div>
                 {!isTyping ? (
-                  <SuggestionChips suggestions={visibleSuggestions} onSelect={sendMessage} />
+                  <SuggestionChips
+                    suggestions={visibleSuggestions}
+                    onSelect={sendMessage}
+                    disabled={chatInputDisabled}
+                  />
                 ) : null}
               </div>
             ) : null}
@@ -1119,7 +1367,11 @@ function ChatExperience({
                 index === latestAssistantIndex &&
                 canShowMessageSuggestions &&
                 !canShowBookingCard ? (
-                  <SuggestionChips suggestions={visibleSuggestions} onSelect={sendMessage} />
+                  <SuggestionChips
+                    suggestions={visibleSuggestions}
+                    onSelect={sendMessage}
+                    disabled={chatInputDisabled}
+                  />
                 ) : null}
               </div>
             ))}
@@ -1259,14 +1511,19 @@ function ChatExperience({
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onPointerDown={() => {
+                  keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
+                }}
                 onFocus={() => {
                   keyboardFocusStartedAtRef.current = Date.now();
+                  keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
                   setComposerFocused(true);
                   refreshChatPageAfterKeyboardChange();
                 }}
                 onBlur={() => {
                   window.setTimeout(() => {
                     keyboardFocusStartedAtRef.current = 0;
+                    keyboardViewportBaselineRef.current = null;
                     setComposerFocused(false);
                     refreshChatPageAfterKeyboardChange();
                   }, 120);
@@ -1278,6 +1535,7 @@ function ChatExperience({
               <Button
                 type="submit"
                 size="icon"
+                disabled={chatInputDisabled}
                 aria-label={t("send")}
                 className="h-12 w-12 shrink-0 rounded-2xl md:h-10 md:w-10 md:rounded-lg"
               >

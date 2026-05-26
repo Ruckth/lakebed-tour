@@ -18,6 +18,12 @@ const localizedSmoke = [
   { path: "/hi", nav: "बुक करें", chat: "कंसीयर्ज चैट खोलें", close: "चैट बंद करें", placeholder: "प्रश्न पूछें" },
 ];
 
+const CHAT_SESSION_STORAGE_KEY = "sv_chat_session_id";
+const CHAT_MESSAGE_CACHE_PREFIX = "sv_chat_messages:";
+const CHAT_MESSAGE_CACHE_VERSION = 1;
+
+type SeededChatMessage = { role: "user" | "assistant"; content: string };
+
 async function chooseLanguage(page: Page, optionName: string) {
   const languageButtons = page.getByTestId("language-switcher");
   const buttonCount = await languageButtons.count();
@@ -42,6 +48,99 @@ async function openCalendarPopover(page: Page, trigger: Locator) {
     if (opened) return;
   }
   await expect(page.getByRole("grid")).toBeVisible();
+}
+
+async function installMockVisualViewport(page: Page, userAgent: string) {
+  await page.addInitScript(({ mockedUserAgent }) => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () => mockedUserAgent,
+    });
+
+    type VisualViewportListener = (event: Event) => void;
+    const listeners = new Map<string, Set<VisualViewportListener>>();
+    const viewport = {
+      width: 390,
+      height: 760,
+      offsetTop: 0,
+      offsetLeft: 0,
+      pageTop: 0,
+      pageLeft: 0,
+      scale: 1,
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+        if (typeof listener !== "function") return;
+        const items = listeners.get(type) ?? new Set<VisualViewportListener>();
+        items.add(listener);
+        listeners.set(type, items);
+      },
+      removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+        if (typeof listener !== "function") return;
+        listeners.get(type)?.delete(listener);
+      },
+      dispatchEvent(event: Event) {
+        listeners.get(event.type)?.forEach((listener) => listener(event));
+        return true;
+      },
+    };
+
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      get: () => viewport,
+    });
+    (
+      window as unknown as {
+        __setTestVisualViewportHeight: (height: number) => void;
+      }
+    ).__setTestVisualViewportHeight = (height: number) => {
+      viewport.height = height;
+      viewport.dispatchEvent(new Event("resize"));
+    };
+  }, { mockedUserAgent: userAgent });
+}
+
+async function seedChatMessageCache(
+  page: Page,
+  sessionId: string,
+  messages: SeededChatMessage[],
+) {
+  await page.addInitScript(
+    ({ cachePrefix, cacheVersion, sessionKey, seededMessages, seededSessionId }) => {
+      let latestExchange: { userMessage: string; assistantMessage: string } | null = null;
+      for (let assistantIndex = seededMessages.length - 1; assistantIndex >= 0; assistantIndex -= 1) {
+        if (seededMessages[assistantIndex]?.role !== "assistant") continue;
+
+        for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
+          if (seededMessages[userIndex]?.role === "user") {
+            latestExchange = {
+              userMessage: seededMessages[userIndex].content,
+              assistantMessage: seededMessages[assistantIndex].content,
+            };
+            break;
+          }
+        }
+
+        if (latestExchange) break;
+      }
+
+      window.localStorage.setItem(sessionKey, seededSessionId);
+      window.localStorage.setItem(
+        `${cachePrefix}${seededSessionId}`,
+        JSON.stringify({
+          version: cacheVersion,
+          sessionId: seededSessionId,
+          messages: seededMessages,
+          latestExchange,
+          updatedAt: Date.now(),
+        }),
+      );
+    },
+    {
+      cachePrefix: CHAT_MESSAGE_CACHE_PREFIX,
+      cacheVersion: CHAT_MESSAGE_CACHE_VERSION,
+      sessionKey: CHAT_SESSION_STORAGE_KEY,
+      seededMessages: messages,
+      seededSessionId: sessionId,
+    },
+  );
 }
 
 test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
@@ -95,7 +194,7 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await expect(page.getByText(/I can help pick the right villa/i)).toBeVisible();
 
   await page.getByText("Share contact details").click();
-  await page.getByLabel("Email").fill("visitor@example.com");
+  await page.getByRole("textbox", { name: "Email" }).fill("visitor@example.com");
   const contactAppField = page.getByTestId("contact-app-field");
   await expect(contactAppField).toBeVisible();
   await expect(contactAppField.getByLabel("Preferred app")).toBeVisible();
@@ -154,6 +253,70 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
 
   await page.getByRole("button", { name: "ปิดแชต" }).click();
   await expect(page).toHaveURL(/\/th$/);
+});
+
+test("mobile chat page restores cached messages and keeps the first new send", async ({ page }) => {
+  const sessionId = "cached-mobile-session";
+  await page.setViewportSize({ width: 390, height: 760 });
+  await seedChatMessageCache(page, sessionId, [
+    { role: "user", content: "Cached question about airport pickup" },
+    { role: "assistant", content: "Cached answer about private transfers" },
+  ]);
+
+  await page.goto("/chat");
+
+  await expect(page.getByText("Cached question about airport pickup")).toBeVisible();
+  await expect(page.getByText("Cached answer about private transfers")).toBeVisible();
+
+  await page.getByPlaceholder("Ask a question").fill("First new message after cache restore");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  await expect(page.getByText("Cached question about airport pickup")).toBeVisible();
+  await expect(page.getByText("Cached answer about private transfers")).toBeVisible();
+  await expect(page.getByText("First new message after cache restore")).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ cachePrefix, seededSessionId }) => {
+          const raw = window.localStorage.getItem(`${cachePrefix}${seededSessionId}`);
+          if (!raw) return "";
+          const cache = JSON.parse(raw) as { messages?: Array<{ content?: string }> };
+          return cache.messages?.map((message) => message.content ?? "").join("\n") ?? "";
+        },
+        { cachePrefix: CHAT_MESSAGE_CACHE_PREFIX, seededSessionId: sessionId },
+      ),
+    )
+    .toContain("First new message after cache restore");
+});
+
+test("restart chat clears cached mobile messages", async ({ page }) => {
+  const sessionId = "cached-restart-session";
+  await page.setViewportSize({ width: 390, height: 760 });
+  await seedChatMessageCache(page, sessionId, [
+    { role: "user", content: "Cached restart question" },
+    { role: "assistant", content: "Cached restart answer" },
+  ]);
+
+  await page.goto("/chat");
+
+  await expect(page.getByText("Cached restart question")).toBeVisible();
+  await page.getByRole("button", { name: /Restart chat/i }).click();
+
+  await expect(page.getByText("Cached restart question")).toHaveCount(0);
+  await expect(page.getByText("Cached restart answer")).toHaveCount(0);
+  await expect(page.getByText(/I can help pick the right villa/i)).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ cachePrefix, seededSessionId }) =>
+          window.localStorage.getItem(`${cachePrefix}${seededSessionId}`),
+        { cachePrefix: CHAT_MESSAGE_CACHE_PREFIX, seededSessionId: sessionId },
+      ),
+    )
+    .toBeNull();
+  await expect
+    .poll(async () => page.evaluate((sessionKey) => window.localStorage.getItem(sessionKey), CHAT_SESSION_STORAGE_KEY))
+    .toBeNull();
 });
 
 test("mobile chat trigger stays in the same position on booking and home", async ({ page }) => {
@@ -255,7 +418,61 @@ test("instagram in-app browser lifts the composer when viewport inset is unavail
   expect(inputBox!.y + inputBox!.height).toBeLessThan(520);
 });
 
-test("unknown mobile browser with zero inset uses measured composer fallback", async ({ page }) => {
+test("LINE/Safari resized viewport keeps the composer near the keyboard", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await installMockVisualViewport(
+    page,
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1 Line/14.0.0",
+  );
+  await page.goto("/chat");
+
+  const chatPanel = page.getByTestId("chat-panel");
+  const chatFooter = page.getByTestId("chat-footer");
+  const chatMessages = page.getByTestId("chat-messages");
+  const input = page.getByPlaceholder("Ask a question");
+
+  await input.focus();
+  await page.evaluate(() => {
+    (
+      window as unknown as {
+        __setTestVisualViewportHeight: (height: number) => void;
+      }
+    ).__setTestVisualViewportHeight(500);
+  });
+  await input.fill("Hello from LINE");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatMessages).toHaveCSS("overflow-y", "auto");
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
+    )
+    .toBeLessThan(80);
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) =>
+        Number.parseFloat(window.getComputedStyle(node).getPropertyValue("--chat-keyboard-inset")),
+      ),
+    )
+    .toBeLessThan(80);
+  await expect
+    .poll(async () =>
+      chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
+    )
+    .toBeGreaterThan(450);
+  await expect
+    .poll(async () =>
+      chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
+    )
+    .toBeLessThan(530);
+
+  const inputBox = await input.boundingBox();
+  expect(inputBox).not.toBeNull();
+  expect(inputBox!.y).toBeGreaterThan(600);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(760);
+});
+
+test("unknown mobile browser with zero inset avoids synthetic overlay fallback", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "userAgent", {
@@ -276,11 +493,12 @@ test("unknown mobile browser with zero inset uses measured composer fallback", a
     .poll(async () =>
       chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
     )
-    .toBeGreaterThan(250);
+    .toBeLessThan(80);
 
   const inputBox = await input.boundingBox();
   expect(inputBox).not.toBeNull();
-  expect(inputBox!.y + inputBox!.height).toBeLessThan(520);
+  expect(inputBox!.y).toBeGreaterThan(600);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(760);
 });
 
 test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
