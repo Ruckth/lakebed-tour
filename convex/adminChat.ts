@@ -9,11 +9,12 @@ export const listSessions = query({
 		propertySlug: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.number()),
-		now: v.number()
+		now: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
+		const now = args.now ?? Date.now();
 		const limit = Math.min(Math.max(args.limit ?? 30, 1), 50);
 		const scanLimit = Math.min(limit * 4, 200);
 		const rows = await ctx.db
@@ -26,7 +27,7 @@ export const listSessions = query({
 
 		const filtered = rows.filter((session) => {
 			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
-			const active = isChatSessionActive(session, args.now);
+			const active = isChatSessionActive(session, now);
 			if (args.status === 'active') return active;
 			if (args.status === 'inactive') return !active;
 			return true;
@@ -48,7 +49,7 @@ export const listSessions = query({
 					...session,
 					propertyName: property?.name,
 					latestMessage,
-					isActive: isChatSessionActive(session, args.now)
+					isActive: isChatSessionActive(session, now)
 				};
 			})
 		);
@@ -62,10 +63,11 @@ export const listSessions = query({
 });
 
 export const getTranscript = query({
-	args: { sessionId: v.id('chatSessions'), now: v.number() },
+	args: { sessionId: v.id('chatSessions'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
+		const now = args.now ?? Date.now();
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
@@ -82,7 +84,7 @@ export const getTranscript = query({
 			session: {
 				...session,
 				propertyName: property?.name,
-				isActive: isChatSessionActive(session, args.now)
+				isActive: isChatSessionActive(session, now)
 			},
 			messages
 		};
