@@ -1,6 +1,7 @@
 import { action } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
 import { TOOLS, executeTool } from './lib/chatTools';
@@ -19,7 +20,7 @@ export const respond = action({
 		});
 		if (!session) throw new Error('Session not found');
 
-		await ctx.runMutation(api.chat.addMessage, {
+		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(api.chat.addMessage, {
 			sessionId: args.sessionId,
 			role: 'user',
 			content: args.userMessage
@@ -87,7 +88,10 @@ STYLE:
 			await ctx.runMutation(api.chat.addMessage, {
 				sessionId: args.sessionId,
 				role: 'assistant',
-				content: fallbackResponse
+				content: fallbackResponse,
+				locale: args.locale,
+				propertySlug: args.propertySlug,
+				replyToMessageId: userMessageId
 			});
 			return { response: fallbackResponse, model: 'fallback' };
 		}
@@ -138,7 +142,10 @@ STYLE:
 		await ctx.runMutation(api.chat.addMessage, {
 			sessionId: args.sessionId,
 			role: 'assistant',
-			content: assistantMessage
+			content: assistantMessage,
+			locale: args.locale,
+			propertySlug: args.propertySlug,
+			replyToMessageId: userMessageId
 		});
 
 		return { response: assistantMessage, model: selectedModel };

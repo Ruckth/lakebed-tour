@@ -5,6 +5,7 @@ import {
   Clock,
   ExternalLink,
   Globe2,
+  HelpCircle,
   Loader2,
   Mail,
   MapPin,
@@ -26,6 +27,7 @@ import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
+type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
   _id: Id<"chatMessages">;
@@ -69,6 +71,22 @@ type SessionListResult = {
 type TranscriptResult = {
   session: AdminSession;
   messages: AdminMessage[];
+};
+
+type AdminSuggestedQuestion = {
+  _id: Id<"chatSuggestedQuestions">;
+  sessionId: Id<"chatSessions">;
+  question: string;
+  locale: string;
+  propertySlug?: string;
+  topic: string;
+  score: number;
+  status: "active" | "clicked" | "archived";
+  shownAt?: number;
+  clickedAt?: number;
+  createdAt: number;
+  visitorId?: string;
+  currentPath?: string;
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
@@ -290,6 +308,7 @@ export function AdminChatDashboard() {
 
 function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const now = usePresenceClock();
+  const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
   const [propertySlug, setPropertySlug] = useState("");
   const [selectedSessionId, setSelectedSessionId] =
@@ -308,6 +327,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     api.adminChat.getTranscript,
     selectedSessionId ? { sessionId: selectedSessionId, now } : "skip",
   ) as TranscriptResult | undefined;
+  const liveQuestions = useQuery(
+    api.chatSuggestions.adminList,
+    view === "questions" ? { limit: 100 } : "skip",
+  ) as AdminSuggestedQuestion[] | undefined;
   const transcript = useLatestDefined(liveTranscript, selectedSessionId ?? "none");
   const loadingSessions = liveSessionsResult === undefined && sessionsResult === undefined;
   const loadingTranscript =
@@ -343,6 +366,23 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             <h1 className="mt-2 font-serif text-4xl font-semibold text-foreground">
               Admin
             </h1>
+            <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
+              {(["chats", "questions"] satisfies AdminDashboardView[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setView(option)}
+                  className={cn(
+                    "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
+                    view === option
+                      ? "bg-navy text-white shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{userEmail}</span>
@@ -351,6 +391,9 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
         </div>
       </header>
 
+      {view === "questions" ? (
+        <AdminQuestionsView questions={liveQuestions} />
+      ) : (
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <aside className="min-h-[calc(100vh-132px)] border border-border bg-card">
           <div className="border-b border-border p-3">
@@ -575,6 +618,124 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           )}
         </section>
       </main>
+      )}
     </div>
+  );
+}
+
+function AdminQuestionsView({
+  questions,
+}: {
+  questions: AdminSuggestedQuestion[] | undefined;
+}) {
+  const loading = questions === undefined;
+  const rows = questions ?? [];
+
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+      <section className="border border-border bg-card">
+        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
+              <HelpCircle className="h-4 w-4" />
+              Generated question ranking
+            </div>
+            <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">
+              Suggested Questions
+            </h2>
+          </div>
+          <Badge variant="secondary" className="w-fit rounded-full">
+            Read only
+          </Badge>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading generated questions
+          </div>
+        ) : null}
+
+        {!loading && rows.length === 0 ? (
+          <div className="p-5 text-sm leading-6 text-muted-foreground">
+            No generated questions yet. They will appear after visitors receive concierge
+            replies from a Convex-backed chat session.
+          </div>
+        ) : null}
+
+        {rows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Question</th>
+                  <th className="px-4 py-3 font-semibold">Score</th>
+                  <th className="px-4 py-3 font-semibold">Topic</th>
+                  <th className="px-4 py-3 font-semibold">Locale</th>
+                  <th className="px-4 py-3 font-semibold">Property</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((question) => (
+                  <tr key={question._id} className="border-b border-border last:border-b-0">
+                    <td className="max-w-[360px] px-4 py-3">
+                      <p className="font-medium text-foreground">
+                        {question.question}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {truncate(question.currentPath, 72) ||
+                          truncate(question.visitorId, 32) ||
+                          String(question.sessionId).slice(-8)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-foreground">
+                      {question.score}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className="rounded-full">
+                        {question.topic}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{question.locale}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {question.propertySlug ?? "General"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge
+                          className={cn(
+                            "rounded-full",
+                            question.status === "clicked"
+                              ? "bg-emerald-600 text-white"
+                              : "bg-navy text-white",
+                          )}
+                        >
+                          {question.status}
+                        </Badge>
+                        {question.shownAt ? (
+                          <Badge variant="secondary" className="rounded-full">
+                            shown
+                          </Badge>
+                        ) : null}
+                        {question.clickedAt ? (
+                          <Badge variant="secondary" className="rounded-full">
+                            clicked
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatDateTime(question.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+    </main>
   );
 }

@@ -1,5 +1,6 @@
 import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import { internal } from './_generated/api';
 import {
 	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
 	isReusableChatMessageCount
@@ -207,18 +208,33 @@ export const addMessage = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
-		content: v.string()
+		content: v.string(),
+		locale: v.optional(v.string()),
+		propertySlug: v.optional(v.string()),
+		replyToMessageId: v.optional(v.id('chatMessages'))
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
-		await ctx.db.insert('chatMessages', {
+		const messageId = await ctx.db.insert('chatMessages', {
 			sessionId: args.sessionId,
 			role: args.role,
 			content: args.content,
 			timestamp: Date.now()
 		});
+
+		if (args.role === 'assistant') {
+			await ctx.scheduler.runAfter(0, internal.chatSuggestions.generateForAssistant, {
+				sessionId: args.sessionId,
+				assistantMessageId: messageId,
+				userMessageId: args.replyToMessageId,
+				locale: args.locale,
+				propertySlug: args.propertySlug ?? session.propertySlug
+			});
+		}
+
+		return messageId;
 	}
 });
 

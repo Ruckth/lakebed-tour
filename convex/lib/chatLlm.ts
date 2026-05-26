@@ -38,20 +38,32 @@ export async function callAI(
 	messages: ChatMessage[],
 	tools: ToolDef[]
 ): Promise<LlmResponse> {
+	const body: {
+		model: string;
+		messages: ChatMessage[];
+		temperature: number;
+		max_tokens: number;
+		tools?: ToolDef[];
+		tool_choice?: 'auto';
+	} = {
+		model,
+		messages,
+		temperature: 0.7,
+		max_tokens: 500
+	};
+
+	if (tools.length > 0) {
+		body.tools = tools;
+		body.tool_choice = 'auto';
+	}
+
 	const res = await fetch(`${apiBase}/chat/completions`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${apiKey}`
 		},
-		body: JSON.stringify({
-			model,
-			messages,
-			tools,
-			tool_choice: 'auto',
-			temperature: 0.7,
-			max_tokens: 500
-		})
+		body: JSON.stringify(body)
 	});
 
 	if (!res.ok) {

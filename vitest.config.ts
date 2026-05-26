@@ -6,12 +6,15 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
-    include: ["tests/unit/**/*.test.ts"],
+    include: ["tests/unit/**/*.test.ts", "convex/**/*.test.ts"],
   },
   resolve: {
-    alias: {
-      "@": path.resolve(dirname, "src"),
-      convex: path.resolve(dirname, "convex"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(dirname, "src") },
+      {
+        find: /^convex\/(?!server$|values$|react$|react-clerk$)(.*)$/,
+        replacement: path.resolve(dirname, "convex/$1"),
+      },
+    ],
   },
 });

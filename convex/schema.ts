@@ -252,6 +252,27 @@ export default defineSchema({
 		timestamp: v.number()
 	}).index('by_session', ['sessionId', 'timestamp']),
 
+	chatSuggestedQuestions: defineTable({
+		sessionId: v.id('chatSessions'),
+		assistantMessageId: v.id('chatMessages'),
+		userMessageId: v.optional(v.id('chatMessages')),
+		question: v.string(),
+		normalizedQuestion: v.string(),
+		locale: v.string(),
+		propertySlug: v.optional(v.string()),
+		topic: v.string(),
+		score: v.number(),
+		status: v.union(v.literal('active'), v.literal('clicked'), v.literal('archived')),
+		shownAt: v.optional(v.number()),
+		clickedAt: v.optional(v.number()),
+		createdAt: v.number()
+	})
+		.index('by_session_and_status', ['sessionId', 'status'])
+		.index('by_session_status_score', ['sessionId', 'status', 'score'])
+		.index('by_session_and_assistant', ['sessionId', 'assistantMessageId'])
+		.index('by_created_at', ['createdAt'])
+		.index('by_status_and_created_at', ['status', 'createdAt']),
+
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),
 		category: v.union(

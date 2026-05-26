@@ -65,6 +65,18 @@ export type ChatTranscriptMessage = {
   timestamp?: number;
 };
 
+export type RankedChatSuggestion = {
+  _id: string;
+  question: string;
+  topic: string;
+  score: number;
+  locale: string;
+  status: "active" | "clicked" | "archived";
+  createdAt: number;
+  shownAt?: number;
+  clickedAt?: number;
+};
+
 export type ReusableChatSession = {
   _id: string;
   visitorId?: string;
@@ -212,12 +224,19 @@ export async function closeChatSession(
 
 export async function addChatMessage(
   client: ConvexReactClient,
-  args: { sessionId: string; role: "user" | "assistant"; content: string },
+  args: {
+    sessionId: string;
+    role: "user" | "assistant";
+    content: string;
+    locale?: string;
+    propertySlug?: string;
+    replyToMessageId?: string;
+  },
 ) {
-  return await withConvexTimeout(
+  return (await withConvexTimeout(
     client.mutation(api.chat.addMessage, args as never),
     "Saving chat message",
-  );
+  )) as string;
 }
 
 export async function getChatMessages(
@@ -256,4 +275,34 @@ export async function askConcierge(
     "Asking concierge",
     AI_CONVEX_TIMEOUT_MS,
   )) as { response?: string };
+}
+
+export async function getNextChatSuggestions(
+  client: ConvexReactClient,
+  args: { sessionId: string; limit?: number },
+) {
+  return (await withConvexTimeout(
+    client.query(api.chatSuggestions.nextForSession, args as never),
+    "Loading suggested questions",
+  )) as RankedChatSuggestion[];
+}
+
+export async function markChatSuggestionsShown(
+  client: ConvexReactClient,
+  args: { sessionId: string; suggestionIds: string[] },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chatSuggestions.markShown, args as never),
+    "Marking suggested questions shown",
+  );
+}
+
+export async function markChatSuggestionClicked(
+  client: ConvexReactClient,
+  args: { sessionId: string; suggestionId: string },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chatSuggestions.markClicked, args as never),
+    "Marking suggested question clicked",
+  );
 }

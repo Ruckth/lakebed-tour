@@ -30,8 +30,12 @@ import {
   createChatSession,
   getReusableChatSession,
   getChatMessages,
+  getNextChatSuggestions,
   identifyChatVisitor,
+  markChatSuggestionClicked,
+  markChatSuggestionsShown,
   touchChatSession,
+  type RankedChatSuggestion,
 } from "@/lib/react/convex-api";
 import {
   selectChatSuggestions,
@@ -46,7 +50,15 @@ import { cn } from "@/lib/utils";
 type Message = { role: "user" | "assistant"; content: string };
 type ContactApp = "whatsapp" | "line";
 type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
-type ChatSuggestion = ChatSuggestionCandidate & { answer: string };
+type StaticChatSuggestion = ChatSuggestionCandidate & { answer: string; source: "static" };
+type RankedVisibleSuggestion = {
+  id: string;
+  text: string;
+  source: "ranked";
+  suggestionId: string;
+  score: number;
+};
+type ChatSuggestion = StaticChatSuggestion | RankedVisibleSuggestion;
 type ChatExperienceMode = "overlay" | "page";
 type FooterFocusScope = "composer" | "contact" | null;
 type LatestExchange = {
@@ -408,7 +420,7 @@ function SuggestionChips({
   disabled = false,
 }: {
   suggestions: ChatSuggestion[];
-  onSelect: (text: string) => void;
+  onSelect: (suggestion: ChatSuggestion) => void;
   disabled?: boolean;
 }) {
   if (!suggestions.length) return null;
@@ -422,7 +434,7 @@ function SuggestionChips({
           data-suggestion-id={item.id}
           disabled={disabled}
           onClick={() => {
-            if (!disabled) onSelect(item.text);
+            if (!disabled) onSelect(item);
           }}
           className="rounded-full border border-border bg-background/85 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white"
         >
@@ -470,6 +482,8 @@ function ChatExperience({
   propertyName,
   whatsappNumber,
   lineId,
+  lineUrl,
+  lineQrImage,
 }: {
   mode: ChatExperienceMode;
   propertySlug?: string;
@@ -477,6 +491,8 @@ function ChatExperience({
   contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
+  lineUrl?: string;
+  lineQrImage?: string;
 }) {
   const isPageMode = mode === "page";
   const t = useTranslations("Chat");
@@ -497,6 +513,7 @@ function ChatExperience({
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(null);
+  const [rankedSuggestions, setRankedSuggestions] = useState<RankedChatSuggestion[]>([]);
   const [contactForm, setContactForm] = useState<ContactForm>({
     email: "",
     preferredApp: "whatsapp",
@@ -529,26 +546,29 @@ function ChatExperience({
     ? t("propertyTitle", { propertyName: activePropertyName })
     : t("defaultTitle");
   const suggestions = useMemo(
-    (): ChatSuggestion[] => [
+    (): StaticChatSuggestion[] => [
       {
         id: "couple",
         text: t("suggestionCouple"),
         answer: t("answerCouple"),
+        source: "static",
       },
       {
         id: "direct",
         text: t("suggestionDirect"),
         answer: t("answerDirect"),
+        source: "static",
       },
       {
         id: "tour",
         text: t("suggestion360"),
         answer: t("answer360"),
+        source: "static",
       },
     ],
     [t],
   );
-  const visibleSuggestions = useMemo(
+  const staticVisibleSuggestions = useMemo(
     () =>
       selectChatSuggestions({
         candidates: suggestions,
@@ -556,9 +576,23 @@ function ChatExperience({
         latestUserMessage: latestExchange?.userMessage,
         latestAssistantMessage: latestExchange?.assistantMessage,
         clickedSuggestionId: latestExchange?.clickedSuggestionId,
-      }) as ChatSuggestion[],
+      }) as StaticChatSuggestion[],
     [activePropertySlug, latestExchange, suggestions],
   );
+  const rankedVisibleSuggestions = useMemo(
+    (): RankedVisibleSuggestion[] =>
+      rankedSuggestions.map((suggestion) => ({
+        id: suggestion._id,
+        text: suggestion.question,
+        source: "ranked",
+        suggestionId: suggestion._id,
+        score: suggestion.score,
+      })),
+    [rankedSuggestions],
+  );
+  const visibleSuggestions = rankedVisibleSuggestions.length >= 2
+    ? rankedVisibleSuggestions
+    : staticVisibleSuggestions;
   const latestAssistantIndex = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "assistant") return index;
@@ -784,7 +818,49 @@ function ChatExperience({
     if (previousPropertySlugRef.current === activePropertySlug) return;
     previousPropertySlugRef.current = activePropertySlug;
     setLatestExchange(null);
+    setRankedSuggestions([]);
   }, [activePropertySlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRankedSuggestions() {
+      setRankedSuggestions([]);
+      if (!convex || !sessionId || !latestExchange?.assistantMessage) return;
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        if (attempt > 0) await wait(750);
+        try {
+          const nextSuggestions = await getNextChatSuggestions(convex, {
+            sessionId,
+            limit: 2,
+          });
+          if (cancelled) return;
+          if (nextSuggestions.length >= 2) {
+            await markChatSuggestionsShown(convex, {
+              sessionId,
+              suggestionIds: nextSuggestions.map((suggestion) => suggestion._id),
+            }).catch(() => null);
+            if (cancelled) return;
+            setRankedSuggestions(nextSuggestions);
+            return;
+          }
+        } catch {
+          if (cancelled) return;
+        }
+      }
+    }
+
+    void loadRankedSuggestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    convex,
+    latestExchange?.assistantMessage,
+    latestExchange?.userMessage,
+    sessionId,
+  ]);
 
   const createFreshSession = useCallback(async () => {
     if (!convex) return null;
@@ -944,6 +1020,7 @@ function ChatExperience({
       setSessionId(null);
       setMessages([]);
       setLatestExchange(null);
+      setRankedSuggestions([]);
       setInput("");
       setIsTyping(false);
       setContactStatus("idle");
@@ -957,6 +1034,7 @@ function ChatExperience({
       if (!id) throw new Error("No chat session");
       setMessages([]);
       setLatestExchange(null);
+      setRankedSuggestions([]);
       setInput("");
       setIsTyping(false);
       setContactStatus("idle");
@@ -1233,14 +1311,23 @@ function ChatExperience({
     }
   }
 
-  async function sendMessage(text: string) {
+  async function sendMessage(inputOrSuggestion: string | ChatSuggestion) {
+    const selectedSuggestion =
+      typeof inputOrSuggestion === "string" ? null : inputOrSuggestion;
+    const text =
+      typeof inputOrSuggestion === "string"
+        ? inputOrSuggestion
+        : inputOrSuggestion.text;
     const clean = text.trim();
     if (!clean || chatInputDisabled) return;
     setInput("");
     setLatestExchange(null);
+    setRankedSuggestions([]);
     setMessages((items) => [...items, { role: "user", content: clean }]);
 
-    const preset = suggestions.find((item) => item.text === clean);
+    const rankedSuggestion =
+      selectedSuggestion?.source === "ranked" ? selectedSuggestion : null;
+    const preset = rankedSuggestion ? undefined : suggestions.find((item) => item.text === clean);
     if (preset) {
       const assistantMessage = preset.answer;
       setMessages((items) => [...items, { role: "assistant", content: assistantMessage }]);
@@ -1253,11 +1340,18 @@ function ChatExperience({
         try {
           const id = await ensureSession({ markOpen: true });
           if (id) {
-            await addChatMessage(convex, { sessionId: id, role: "user", content: clean });
+            const userMessageId = await addChatMessage(convex, {
+              sessionId: id,
+              role: "user",
+              content: clean,
+            });
             await addChatMessage(convex, {
               sessionId: id,
               role: "assistant",
               content: preset.answer,
+              locale,
+              propertySlug: activePropertySlug || undefined,
+              replyToMessageId: userMessageId,
             });
           }
         } catch {
@@ -1295,6 +1389,12 @@ function ChatExperience({
     try {
       id = await ensureSession({ markOpen: true });
       if (!id) throw new Error("No chat session");
+      if (rankedSuggestion) {
+        await markChatSuggestionClicked(convex, {
+          sessionId: id,
+          suggestionId: rankedSuggestion.suggestionId,
+        }).catch(() => null);
+      }
       const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,
@@ -1453,6 +1553,8 @@ function ChatExperience({
                 contactEmail={contactEmail}
                 whatsappNumber={whatsappNumber}
                 lineId={lineId}
+                lineUrl={lineUrl}
+                lineQrImage={lineQrImage}
                 quiet={canShowBookingCard}
               />
             </div>
@@ -1659,6 +1761,8 @@ export function AIChatWidget(props: {
   contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
+  lineUrl?: string;
+  lineQrImage?: string;
 }) {
   return <ChatExperience {...props} mode="overlay" />;
 }
@@ -1669,6 +1773,8 @@ export function AIChatPage(props: {
   contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
+  lineUrl?: string;
+  lineQrImage?: string;
 }) {
   return <ChatExperience {...props} mode="page" />;
 }

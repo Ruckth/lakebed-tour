@@ -87,6 +87,9 @@ importers:
         specifier: ^0.175.0
         version: 0.175.0
     devDependencies:
+      '@edge-runtime/vm':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.4
@@ -114,6 +117,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^8.58.2
         version: 8.58.2(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      convex-test:
+        specifier: ^0.0.53
+        version: 0.0.53(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))
       eslint:
         specifier: ^9.39.1
         version: 9.39.4(jiti@2.6.1)
@@ -134,7 +140,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.6
-        version: 4.1.6(@types/node@24.12.2)(vite@8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1))
+        version: 4.1.6(@edge-runtime/vm@5.0.0)(@types/node@24.12.2)(vite@8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1))
 
 packages:
 
@@ -268,6 +274,14 @@ packages:
 
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
+
+  '@edge-runtime/primitives@6.0.0':
+    resolution: {integrity: sha512-FqoxaBT+prPBHBwE1WXS1ocnu/VLTQyZ6NMUBAdbP7N2hsFTTxMC/jMu2D/8GAlMQfxeuppcPuCUk/HO3fpIvA==}
+    engines: {node: '>=18'}
+
+  '@edge-runtime/vm@5.0.0':
+    resolution: {integrity: sha512-NKBGBSIKUG584qrS1tyxVpX/AKJKQw5HgjYEnPLC0QsTw79JrGn+qUr8CXFb955Iy7GUdiiUv1rJ6JBGvaKb6w==}
+    engines: {node: '>=18'}
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -2027,6 +2041,11 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  convex-test@0.0.53:
+    resolution: {integrity: sha512-bouZQTnTvZi8IHljHL++yClj1vcV+/9ZxEcd8JZz7RDxOfPkRKrkMgkk/xlX4M1EAiwcEJPNiQE7VJFvDM3lCQ==}
+    peerDependencies:
+      convex: ^1.32.0
 
   convex@1.34.1:
     resolution: {integrity: sha512-ooyFnZVVq0u6b5zt0Ptq8QB2ixhf/2vXe+PIcUtdtrs0lq/TwpkmmruHdqkFmWgMd6N+Tmfy8AGkz6QnZUYZBA==}
@@ -3926,6 +3945,12 @@ snapshots:
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 
+  '@edge-runtime/primitives@6.0.0': {}
+
+  '@edge-runtime/vm@5.0.0':
+    dependencies:
+      '@edge-runtime/primitives': 6.0.0
+
   '@emnapi/core@1.10.0':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -5452,6 +5477,10 @@ snapshots:
   concat-map@0.0.1: {}
 
   convert-source-map@2.0.0: {}
+
+  convex-test@0.0.53(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)):
+    dependencies:
+      convex: 1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
 
   convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6):
     dependencies:
@@ -7209,7 +7238,7 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.6.1
 
-  vitest@4.1.6(@types/node@24.12.2)(vite@8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1)):
+  vitest@4.1.6(@edge-runtime/vm@5.0.0)(@types/node@24.12.2)(vite@8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1)):
     dependencies:
       '@vitest/expect': 4.1.6
       '@vitest/mocker': 4.1.6(vite@8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1))
@@ -7232,6 +7261,7 @@ snapshots:
       vite: 8.0.13(@types/node@24.12.2)(esbuild@0.27.0)(jiti@2.6.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@edge-runtime/vm': 5.0.0
       '@types/node': 24.12.2
     transitivePeerDependencies:
       - msw
