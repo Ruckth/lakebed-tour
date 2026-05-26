@@ -16,7 +16,9 @@ import {
   UserRound,
 } from "lucide-react";
 import { api } from "convex/_generated/api";
-import { useEffect, useMemo, useState } from "react";
+import type { Id } from "convex/_generated/dataModel";
+import { useQuery } from "convex/react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,14 +28,14 @@ import { cn } from "@/lib/utils";
 type SessionStatus = "all" | "active" | "inactive";
 
 type AdminMessage = {
-  _id: string;
+  _id: Id<"chatMessages">;
   role: "user" | "assistant";
   content: string;
   timestamp: number;
 };
 
 type AdminSession = {
-  _id: string;
+  _id: Id<"chatSessions">;
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
@@ -70,6 +72,7 @@ type TranscriptResult = {
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
+const PRESENCE_CLOCK_MS = 10_000;
 
 function visitorLabel(session?: AdminSession | null) {
   if (!session) return "Visitor";
@@ -78,9 +81,9 @@ function visitorLabel(session?: AdminSession | null) {
   return `Visitor ${session.visitorId?.slice(0, 8) ?? session._id.slice(-6)}`;
 }
 
-function relativeTime(timestamp?: number) {
+function relativeTime(timestamp?: number, now = Date.now()) {
   if (!timestamp) return "Unknown";
-  const seconds = Math.max(1, Math.floor((Date.now() - timestamp) / 1000));
+  const seconds = Math.max(1, Math.floor((now - timestamp) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -115,92 +118,100 @@ function contactLabel(session: AdminSession) {
       : "No contact app";
 }
 
+function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const interval = window.setInterval(update, intervalMs);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") update();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [intervalMs]);
+
+  return now;
+}
+
+function useLatestDefined<T>(value: T | undefined, resetKey: string) {
+  const [latest, setLatest] = useState<{ resetKey: string; value: T } | null>(
+    value === undefined ? null : { resetKey, value },
+  );
+
+  useEffect(() => {
+    setLatest(null);
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (value !== undefined) setLatest({ resetKey, value });
+  }, [resetKey, value]);
+
+  if (value !== undefined) return value;
+  return latest?.resetKey === resetKey ? latest.value : undefined;
+}
+
+function AdminQueryError({ error }: { error: Error }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-5">
+      <section className="max-w-lg border border-border bg-card p-7 shadow-xl">
+        <Shield className="mb-5 h-8 w-8 text-gold" />
+        <h1 className="font-serif text-3xl font-semibold">
+          Unable to load admin chat
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {error.message || "Check admin authorization and try again."}
+        </p>
+      </section>
+    </div>
+  );
+}
+
+type AdminChatQueryBoundaryProps = {
+  children: ReactNode;
+  resetKey: string;
+};
+
+type AdminChatQueryBoundaryState = {
+  error: Error | null;
+};
+
+class AdminChatQueryBoundary extends Component<
+  AdminChatQueryBoundaryProps,
+  AdminChatQueryBoundaryState
+> {
+  state: AdminChatQueryBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: unknown): AdminChatQueryBoundaryState {
+    return {
+      error:
+        error instanceof Error
+          ? error
+          : new Error("Unable to load admin chat."),
+    };
+  }
+
+  componentDidUpdate(previousProps: AdminChatQueryBoundaryProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) return <AdminQueryError error={this.state.error} />;
+    return this.props.children;
+  }
+}
+
 export function AdminChatDashboard() {
   const convex = useOptionalConvex();
   const convexAuth = useOptionalConvexAuth();
   const { isLoaded, isSignedIn, user } = useUser();
-  const [status, setStatus] = useState<SessionStatus>("active");
-  const [propertySlug, setPropertySlug] = useState("");
-  const [sessionsResult, setSessionsResult] = useState<SessionListResult | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [loadingTranscript, setLoadingTranscript] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const sessions = useMemo(() => sessionsResult?.sessions ?? [], [sessionsResult]);
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session._id === selectedSessionId) ?? transcript?.session ?? null,
-    [selectedSessionId, sessions, transcript],
-  );
-  const canQueryAdmin =
-    Boolean(convex && isSignedIn) &&
-    (!convexAuth.isAuthEnabled || convexAuth.isAuthenticated);
-
-  useEffect(() => {
-    if (!convex || !canQueryAdmin) return;
-
-    let active = true;
-    setLoadingSessions(true);
-    setError(null);
-
-    convex
-      .query(api.adminChat.listSessions, {
-        status,
-        propertySlug: propertySlug.trim() || undefined,
-        limit: 30,
-      } as never)
-      .then((result) => {
-        if (!active) return;
-        const typed = result as SessionListResult;
-        setSessionsResult(typed);
-        setSelectedSessionId((current) => current ?? typed.sessions[0]?._id ?? null);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Unable to load admin chat sessions.");
-      })
-      .finally(() => {
-        if (active) setLoadingSessions(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [canQueryAdmin, convex, propertySlug, refreshKey, status]);
-
-  useEffect(() => {
-    if (!convex || !canQueryAdmin || !selectedSessionId) {
-      setTranscript(null);
-      return;
-    }
-
-    let active = true;
-    setLoadingTranscript(true);
-
-    convex
-      .query(api.adminChat.getTranscript, { sessionId: selectedSessionId } as never)
-      .then((result) => {
-        if (active) setTranscript(result as TranscriptResult);
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Unable to load transcript.");
-      })
-      .finally(() => {
-        if (active) setLoadingTranscript(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [canQueryAdmin, convex, refreshKey, selectedSessionId]);
-
-  useEffect(() => {
-    if (!isSignedIn) return;
-    const interval = window.setInterval(() => setRefreshKey((key) => key + 1), 15_000);
-    return () => window.clearInterval(interval);
-  }, [isSignedIn]);
 
   if (!isLoaded) {
     return (
@@ -271,6 +282,56 @@ export function AdminChatDashboard() {
   }
 
   return (
+    <AdminChatQueryBoundary resetKey={user.id ?? "admin"}>
+      <AdminChatLiveDashboard userEmail={user.primaryEmailAddress?.emailAddress} />
+    </AdminChatQueryBoundary>
+  );
+}
+
+function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
+  const now = usePresenceClock();
+  const [status, setStatus] = useState<SessionStatus>("active");
+  const [propertySlug, setPropertySlug] = useState("");
+  const [selectedSessionId, setSelectedSessionId] =
+    useState<Id<"chatSessions"> | null>(null);
+  const trimmedPropertySlug = propertySlug.trim();
+  const sessionsResetKey = `${status}:${trimmedPropertySlug}`;
+  const liveSessionsResult = useQuery(api.adminChat.listSessions, {
+    status,
+    propertySlug: trimmedPropertySlug || undefined,
+    limit: 30,
+    now,
+  }) as SessionListResult | undefined;
+  const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
+  const sessions = useMemo(() => sessionsResult?.sessions ?? [], [sessionsResult]);
+  const liveTranscript = useQuery(
+    api.adminChat.getTranscript,
+    selectedSessionId ? { sessionId: selectedSessionId, now } : "skip",
+  ) as TranscriptResult | undefined;
+  const transcript = useLatestDefined(liveTranscript, selectedSessionId ?? "none");
+  const loadingSessions = liveSessionsResult === undefined && sessionsResult === undefined;
+  const loadingTranscript =
+    Boolean(selectedSessionId) && liveTranscript === undefined && transcript === undefined;
+  const selectedSession = useMemo(
+    () =>
+      sessions.find((session) => session._id === selectedSessionId) ??
+      transcript?.session ??
+      null,
+    [selectedSessionId, sessions, transcript],
+  );
+
+  useEffect(() => {
+    if (!sessionsResult) return;
+
+    setSelectedSessionId((current) => {
+      if (current && sessionsResult.sessions.some((session) => session._id === current)) {
+        return current;
+      }
+      return sessionsResult.sessions[0]?._id ?? null;
+    });
+  }, [sessionsResult]);
+
+  return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/95">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
@@ -284,7 +345,7 @@ export function AdminChatDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{user.primaryEmailAddress?.emailAddress}</span>
+            <span>{userEmail}</span>
             <UserButton />
           </div>
         </div>
@@ -323,14 +384,6 @@ export function AdminChatDashboard() {
                   placeholder="Filter by property slug"
                 />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRefreshKey((key) => key + 1)}
-                className="h-10 rounded-lg"
-              >
-                Refresh
-              </Button>
             </div>
           </div>
 
@@ -341,12 +394,7 @@ export function AdminChatDashboard() {
                 Loading sessions
               </div>
             ) : null}
-            {error ? (
-              <div className="m-3 border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            ) : null}
-            {!loadingSessions && sessions.length === 0 && !error ? (
+            {!loadingSessions && sessions.length === 0 ? (
               <div className="p-5 text-sm leading-6 text-muted-foreground">
                 No chat sessions match this filter yet.
               </div>
@@ -377,7 +425,7 @@ export function AdminChatDashboard() {
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {relativeTime(session.lastSeenAt ?? session.createdAt)}
+                    {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
                   </span>
                 </div>
                 {session.latestMessage ? (
@@ -415,7 +463,7 @@ export function AdminChatDashboard() {
                       )}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt)}
+                      Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}
                     </p>
                   </div>
                   <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]">

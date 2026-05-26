@@ -8,7 +8,8 @@ export const listSessions = query({
 		status: v.optional(v.union(v.literal('all'), v.literal('active'), v.literal('inactive'))),
 		propertySlug: v.optional(v.string()),
 		limit: v.optional(v.number()),
-		cursor: v.optional(v.number())
+		cursor: v.optional(v.number()),
+		now: v.number()
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
@@ -25,7 +26,7 @@ export const listSessions = query({
 
 		const filtered = rows.filter((session) => {
 			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
-			const active = isChatSessionActive(session);
+			const active = isChatSessionActive(session, args.now);
 			if (args.status === 'active') return active;
 			if (args.status === 'inactive') return !active;
 			return true;
@@ -47,7 +48,7 @@ export const listSessions = query({
 					...session,
 					propertyName: property?.name,
 					latestMessage,
-					isActive: isChatSessionActive(session)
+					isActive: isChatSessionActive(session, args.now)
 				};
 			})
 		);
@@ -61,7 +62,7 @@ export const listSessions = query({
 });
 
 export const getTranscript = query({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), now: v.number() },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
@@ -81,7 +82,7 @@ export const getTranscript = query({
 			session: {
 				...session,
 				propertyName: property?.name,
-				isActive: isChatSessionActive(session)
+				isActive: isChatSessionActive(session, args.now)
 			},
 			messages
 		};
