@@ -79,6 +79,7 @@ type RankedVisibleSuggestion = {
 type ChatSuggestion = StaticChatSuggestion | RankedVisibleSuggestion;
 type ChatExperienceMode = "overlay" | "page";
 type FooterFocusScope = "composer" | "contact" | null;
+type KeyboardLayoutMode = "none" | "resizedViewport" | "overlayInset" | "overlayFallback";
 type LatestExchange = {
   userMessage: string;
   assistantMessage: string;
@@ -239,7 +240,7 @@ function clampKeyboardInset(inset: number) {
   return Math.min(Math.max(0, Math.ceil(inset)), maxInset);
 }
 
-function getMeasuredKeyboardInset({
+function getKeyboardLayoutMeasurement({
   fallbackAllowed,
   focusedInputIsActive,
   footerNode,
@@ -253,8 +254,8 @@ function getMeasuredKeyboardInset({
   inputNode: HTMLElement | null;
   mode: ChatExperienceMode;
   viewportBaselineHeight: number | null;
-}) {
-  if (typeof window === "undefined") return 0;
+}): { inset: number; layoutMode: KeyboardLayoutMode } {
+  if (typeof window === "undefined") return { inset: 0, layoutMode: "none" };
 
   const visualViewport = window.visualViewport;
   const visualViewportHeight = getVisualViewportHeight();
@@ -269,8 +270,21 @@ function getMeasuredKeyboardInset({
     : 0;
   const viewportResizedByKeyboard = viewportShrink > MOBILE_KEYBOARD_THRESHOLD;
 
-  if (mode !== "page" || !focusedInputIsActive) return realInset;
-  if (viewportResizedByKeyboard) return 0;
+  if (!focusedInputIsActive) {
+    return realInset > MOBILE_KEYBOARD_THRESHOLD
+      ? { inset: clampKeyboardInset(realInset), layoutMode: "overlayInset" }
+      : { inset: 0, layoutMode: "none" };
+  }
+
+  if (mode === "page" && viewportResizedByKeyboard) {
+    return { inset: 0, layoutMode: "resizedViewport" };
+  }
+
+  if (mode !== "page") {
+    return realInset > MOBILE_KEYBOARD_THRESHOLD
+      ? { inset: clampKeyboardInset(realInset), layoutMode: "overlayInset" }
+      : { inset: 0, layoutMode: "none" };
+  }
 
   const inputBottom = inputNode?.getBoundingClientRect().bottom ?? 0;
   const footerBottom = footerNode?.getBoundingClientRect().bottom ?? 0;
@@ -280,8 +294,15 @@ function getMeasuredKeyboardInset({
   );
   const overlayFallback = realInset <= MOBILE_KEYBOARD_THRESHOLD && fallbackAllowed;
   const estimatedInset = overlayFallback ? getKeyboardOverlayFallbackInset() : 0;
+  const inset = clampKeyboardInset(Math.max(realInset, requiredLift, estimatedInset));
 
-  return clampKeyboardInset(Math.max(realInset, requiredLift, estimatedInset));
+  if (inset <= MOBILE_KEYBOARD_THRESHOLD) return { inset: 0, layoutMode: "none" };
+  return {
+    inset,
+    layoutMode: overlayFallback && estimatedInset >= Math.max(realInset, requiredLift)
+      ? "overlayFallback"
+      : "overlayInset",
+  };
 }
 
 function getStoredSessionId() {
@@ -610,6 +631,7 @@ function ChatExperience({
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
+  const [keyboardLayoutMode, setKeyboardLayoutMode] = useState<KeyboardLayoutMode>("none");
   const [footerFocusScope, setFooterFocusScope] = useState<FooterFocusScope>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [chatPageViewportHeight, setChatPageViewportHeight] = useState(CHAT_PAGE_VIEWPORT_FALLBACK);
@@ -736,16 +758,18 @@ function ChatExperience({
     open &&
     typeof window !== "undefined" &&
     !window.matchMedia("(min-width: 768px)").matches;
-  const keyboardInsetActive = mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
+  const keyboardInsetActive =
+    keyboardLayoutMode === "overlayInset" || keyboardLayoutMode === "overlayFallback";
   const contactFocused = footerFocusScope === "contact";
   const mobileKeyboardActive =
-    isMobileViewport && (footerFocusScope !== null || keyboardInsetActive);
+    isMobileViewport && (footerFocusScope !== null || keyboardLayoutMode !== "none");
   const hideAuxiliaryControls = mobileKeyboardActive;
   const hideContactDetails = mobileKeyboardActive && !contactFocused;
   const hideMainComposer = isMobileViewport && contactFocused;
   const overlayComposerDocked =
     mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
-  const pageComposerDocked = mode === "page" && mobileKeyboardActive;
+  const pageComposerDocked =
+    mode === "page" && mobileKeyboardActive && keyboardInsetActive;
   const footerReserveHeight = Math.max(
     composerReserveHeight,
     PAGE_COMPOSER_RESERVE_FALLBACK,
@@ -830,18 +854,29 @@ function ChatExperience({
     [mode],
   );
 
+  const isTranscriptNearEnd = useCallback(() => {
+    const messagesNode = chatMessagesRef.current;
+    if (!messagesNode) return true;
+
+    const remainingScroll =
+      messagesNode.scrollHeight - messagesNode.scrollTop - messagesNode.clientHeight;
+    return remainingScroll < 96;
+  }, []);
+
   const refreshChatPageAfterKeyboardChange = useCallback(() => {
     if (mode !== "page" || typeof window === "undefined") return;
 
+    const shouldKeepTranscriptPinned = isTranscriptNearEnd();
     updateChatPageViewportHeight();
-    scrollTranscriptToEnd();
+    if (shouldKeepTranscriptPinned) scrollTranscriptToEnd();
     KEYBOARD_PROBE_DELAYS_MS.forEach((delay) => {
       window.setTimeout(() => {
         updateChatPageViewportHeight();
-        scrollTranscriptToEnd();
+        inputRef.current?.scrollIntoView({ block: "nearest" });
+        if (shouldKeepTranscriptPinned) scrollTranscriptToEnd();
       }, delay);
     });
-  }, [mode, scrollTranscriptToEnd, updateChatPageViewportHeight]);
+  }, [isTranscriptNearEnd, mode, scrollTranscriptToEnd, updateChatPageViewportHeight]);
 
   const focusFooterInput = useCallback(
     (scope: Exclude<FooterFocusScope, null>) => {
@@ -1329,6 +1364,7 @@ function ChatExperience({
       keyboardInsetRef.current = 0;
       keyboardViewportBaselineRef.current = null;
       setMobileKeyboardInset(0);
+      setKeyboardLayoutMode("none");
       setFooterFocusScope(null);
       return;
     }
@@ -1344,6 +1380,7 @@ function ChatExperience({
         keyboardInsetRef.current = 0;
         keyboardViewportBaselineRef.current = null;
         setMobileKeyboardInset(0);
+        setKeyboardLayoutMode("none");
         return;
       }
 
@@ -1365,24 +1402,27 @@ function ChatExperience({
         keyboardViewportBaselineRef.current = null;
       }
       const fallbackAllowed = isKeyboardOverlayBrowser();
-      const effectiveInset = getMeasuredKeyboardInset({
-        fallbackAllowed,
-        focusedInputIsActive,
-        footerNode: chatFooterRef.current,
-        inputNode: focusedInput,
-        mode,
-        viewportBaselineHeight: keyboardViewportBaselineRef.current,
-      });
+      const { inset: effectiveInset, layoutMode: nextKeyboardLayoutMode } =
+        getKeyboardLayoutMeasurement({
+          fallbackAllowed,
+          focusedInputIsActive,
+          footerNode: chatFooterRef.current,
+          inputNode: focusedInput,
+          mode,
+          viewportBaselineHeight: keyboardViewportBaselineRef.current,
+        });
       const previousInset = keyboardInsetRef.current;
       if (
         Math.abs(effectiveInset - previousInset) < KEYBOARD_INSET_EPSILON &&
-        effectiveInset !== 0
+        effectiveInset !== 0 &&
+        nextKeyboardLayoutMode === keyboardLayoutMode
       ) {
         return;
       }
 
       keyboardInsetRef.current = effectiveInset;
       setMobileKeyboardInset(effectiveInset);
+      setKeyboardLayoutMode(nextKeyboardLayoutMode);
       if (effectiveInset <= MOBILE_KEYBOARD_THRESHOLD && !focusedInputIsActive) {
         setFooterFocusScope(null);
       }
@@ -1412,7 +1452,7 @@ function ChatExperience({
       window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
-  }, [footerFocusScope, mode, open, updateChatPageViewportHeight]);
+  }, [footerFocusScope, keyboardLayoutMode, mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
     const node = chatFooterRef.current;
@@ -1703,6 +1743,7 @@ function ChatExperience({
   const panel = (
     <div
       data-testid="chat-panel"
+      data-keyboard-layout={keyboardLayoutMode}
       className={cn(
         mode === "overlay"
           ? "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border"

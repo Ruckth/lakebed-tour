@@ -400,7 +400,7 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await input.focus();
   await input.fill("Hello from mobile");
 
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(chatMessages).toHaveCSS("overflow-y", "auto");
   await expect(floatingContactActions).toBeHidden();
   await expect(chatFooter.getByText("Share contact details")).toBeHidden();
@@ -481,11 +481,16 @@ test("mobile Chrome keeps Thai contact details typable while the viewport resize
   });
   await emailInput.fill("visitor@example.com");
 
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(page.getByTestId("chat-panel")).toHaveAttribute("data-keyboard-layout", "resizedViewport");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(page.getByText("ฝากข้อมูลติดต่อ")).toBeVisible();
   await expect(emailInput).toBeVisible();
   await expect(emailInput).toHaveValue("visitor@example.com");
   await expect(chatInput).toBeHidden();
+
+  const emailBox = await emailInput.boundingBox();
+  expect(emailBox).not.toBeNull();
+  expect(emailBox!.y + emailBox!.height).toBeLessThanOrEqual(500);
 });
 
 test("instagram in-app browser shows the external browser chat gate", async ({ page }) => {
@@ -628,7 +633,94 @@ test("instagram in-app browser keeps Thai contact details above the keyboard fal
   expect(emailBox!.y + emailBox!.height).toBeLessThan(520);
 });
 
-test("LINE/Safari resized viewport keeps the composer near the keyboard", async ({ page }) => {
+for (const browserCase of [
+  {
+    name: "Android Chrome",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36",
+  },
+  {
+    name: "Mobile Safari",
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1",
+  },
+]) {
+  test(`${browserCase.name} resized viewport keeps messages scrollable above the docked composer`, async ({
+    page,
+  }) => {
+    const sessionId = `resized-keyboard-${browserCase.name.toLowerCase().replace(/\s+/g, "-")}`;
+    const seededMessages = Array.from({ length: 8 }).flatMap((_, index) => [
+      {
+        role: "user" as const,
+        content: `Keyboard scroll question ${index + 1}`,
+      },
+      {
+        role: "assistant" as const,
+        content: `Assistant keyboard answer ${index + 1} with enough text to create a scrollable transcript on mobile.`,
+      },
+    ]);
+
+    await page.setViewportSize({ width: 390, height: 760 });
+    await installMockVisualViewport(page, browserCase.userAgent);
+    await seedChatMessageCache(page, sessionId, seededMessages);
+    await page.goto("/chat");
+
+    const chatPanel = page.getByTestId("chat-panel");
+    const chatFooter = page.getByTestId("chat-footer");
+    const chatMessages = page.getByTestId("chat-messages");
+    const input = page.getByPlaceholder("Ask a question");
+
+    await expect(page.getByText("Assistant keyboard answer 8")).toBeVisible();
+
+    await input.focus();
+    await page.evaluate(() => {
+      (
+        window as unknown as {
+          __setTestVisualViewportHeight: (height: number) => void;
+        }
+      ).__setTestVisualViewportHeight(500);
+    });
+    await input.fill(`Hello from ${browserCase.name}`);
+
+    await expect(chatPanel).toHaveAttribute("data-keyboard-layout", "resizedViewport");
+    await expect(chatFooter).toHaveCSS("position", "static");
+    await expect(chatMessages).toHaveCSS("overflow-y", "auto");
+    await expect
+      .poll(async () =>
+        chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
+      )
+      .toBeGreaterThan(450);
+    await expect
+      .poll(async () =>
+        chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
+      )
+      .toBeLessThan(530);
+
+    const metrics = await chatMessages.evaluate((node) => {
+      const originalScrollTop = node.scrollTop;
+      node.scrollTop = 0;
+      const topScrollTop = node.scrollTop;
+      node.scrollTop = node.scrollHeight;
+      const bottomScrollTop = node.scrollTop;
+      const result = {
+        bottomScrollTop,
+        clientHeight: node.clientHeight,
+        scrollHeight: node.scrollHeight,
+        topScrollTop,
+      };
+      node.scrollTop = originalScrollTop;
+      return result;
+    });
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+    expect(metrics.bottomScrollTop).toBeGreaterThan(metrics.topScrollTop);
+
+    const inputBox = await input.boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(500);
+  });
+}
+
+test("LINE/Safari resized viewport uses docked page layout instead of overlay fallback", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await installMockVisualViewport(
     page,
@@ -651,20 +743,9 @@ test("LINE/Safari resized viewport keeps the composer near the keyboard", async 
   });
   await input.fill("Hello from LINE");
 
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatPanel).toHaveAttribute("data-keyboard-layout", "resizedViewport");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(chatMessages).toHaveCSS("overflow-y", "auto");
-  await expect
-    .poll(async () =>
-      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
-    )
-    .toBeLessThan(80);
-  await expect
-    .poll(async () =>
-      chatFooter.evaluate((node) =>
-        Number.parseFloat(window.getComputedStyle(node).getPropertyValue("--chat-keyboard-inset")),
-      ),
-    )
-    .toBeLessThan(80);
   await expect
     .poll(async () =>
       chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
@@ -678,8 +759,7 @@ test("LINE/Safari resized viewport keeps the composer near the keyboard", async 
 
   const inputBox = await input.boundingBox();
   expect(inputBox).not.toBeNull();
-  expect(inputBox!.y).toBeGreaterThan(600);
-  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(760);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(500);
 });
 
 test("unknown mobile browser with zero inset avoids synthetic overlay fallback", async ({ page }) => {
@@ -698,12 +778,8 @@ test("unknown mobile browser with zero inset avoids synthetic overlay fallback",
   await input.focus();
   await input.fill("Hello from a WebView");
 
-  await expect(chatFooter).toHaveCSS("position", "fixed");
-  await expect
-    .poll(async () =>
-      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
-    )
-    .toBeLessThan(80);
+  await expect(page.getByTestId("chat-panel")).toHaveAttribute("data-keyboard-layout", "none");
+  await expect(chatFooter).toHaveCSS("position", "static");
 
   const inputBox = await input.boundingBox();
   expect(inputBox).not.toBeNull();
@@ -818,7 +894,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   const input = page.getByPlaceholder("Ask a question");
   await expect(bookingCard).toBeVisible();
   await input.focus();
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(input).toBeVisible();
   await expect(floatingContactActions).toBeHidden();
   await expect(
