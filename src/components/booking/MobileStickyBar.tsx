@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { localizeHref } from "@/i18n/routing";
+import { buildChatHref } from "@/lib/chat/navigation";
 
 export function MobileStickyBar({
   propertyId,
@@ -12,18 +13,16 @@ export function MobileStickyBar({
   propertyId: string;
 }) {
   const locale = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useTranslations("Nav");
   const chatT = useTranslations("Chat");
-  const currentSearch = searchParams.toString();
-  const returnTo = currentSearch ? `${pathname}?${currentSearch}` : pathname;
-  const chatParams = new URLSearchParams({
-    property: propertyId,
-    returnTo,
+  const chatHref = buildChatHref({
+    locale,
+    pathname,
+    propertySlug: propertyId,
+    search: searchParams,
   });
-  const chatHref = localizeHref(`/chat?${chatParams.toString()}`, locale);
 
   return (
     <div className="fixed inset-x-4 bottom-3 z-40 md:hidden">
@@ -36,10 +35,6 @@ export function MobileStickyBar({
         </Link>
         <Link
           href={chatHref}
-          onClick={(event) => {
-            event.preventDefault();
-            router.push(chatHref);
-          }}
           className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           aria-label={chatT("open")}
         >

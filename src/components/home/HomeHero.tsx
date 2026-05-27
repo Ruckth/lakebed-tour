@@ -34,6 +34,10 @@ const mobileSlides = [
   },
 ];
 
+function shouldRenderMobileSlide(index: number, activeIndex: number) {
+  return index === activeIndex || index === wrapIndex(activeIndex + 1, mobileSlides.length);
+}
+
 export function HomeHero() {
   const t = useTranslations("Home");
   const a11y = useTranslations("A11y");
@@ -43,6 +47,7 @@ export function HomeHero() {
   const [loaded, setLoaded] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
+  const [videosEnabled, setVideosEnabled] = useState(false);
   const [mobileSlide, setMobileSlide] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const [isMobileAutoPaused, setIsMobileAutoPaused] = useState(false);
@@ -63,13 +68,24 @@ export function HomeHero() {
   }, []);
 
   useEffect(() => {
+    if (!isDesktop) {
+      setVideosEnabled(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setVideosEnabled(true), 900);
+    return () => window.clearTimeout(timer);
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (!videosEnabled) return;
     if (!isDesktop) return;
     if (desktopStep === 0) video0.current?.play().catch(() => {});
     if (desktopStep === 2) video1.current?.play().catch(() => {});
     if (desktopStep !== 1) return;
     const timer = window.setTimeout(() => setDesktopStep(2), 6000);
     return () => window.clearTimeout(timer);
-  }, [desktopStep, isDesktop]);
+  }, [desktopStep, isDesktop, videosEnabled]);
 
   useEffect(() => {
     if (isDesktop) return;
@@ -126,12 +142,12 @@ export function HomeHero() {
                 ref={video0}
                 muted
                 playsInline
-                preload="auto"
+                preload={videosEnabled ? "metadata" : "none"}
                 poster={desktopImages.left}
                 onEnded={() => setDesktopStep(1)}
                 className="h-full w-full object-cover"
               >
-                <source src="/videos/hero-left.mp4" type="video/mp4" />
+                {videosEnabled ? <source src="/videos/hero-left.mp4" type="video/mp4" /> : null}
               </video>
             </div>
             <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 1 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
@@ -161,12 +177,12 @@ export function HomeHero() {
                 ref={video1}
                 muted
                 playsInline
-                preload="auto"
+                preload={videosEnabled ? "metadata" : "none"}
                 poster={desktopImages.right}
                 onEnded={() => setDesktopStep(0)}
                 className="h-full w-full object-cover"
               >
-                <source src="/videos/hero-right.mp4" type="video/mp4" />
+                {videosEnabled ? <source src="/videos/hero-right.mp4" type="video/mp4" /> : null}
               </video>
             </div>
           </>
@@ -188,13 +204,16 @@ export function HomeHero() {
                       mobileSlide === index ? "opacity-100" : "opacity-0",
                     )}
                   >
-                    <Image
-                      src={slot === "top" ? slide.top : slide.bottom}
-                      alt=""
-                      fill
-                      sizes="100vw"
-                      className="object-cover"
-                    />
+                    {shouldRenderMobileSlide(index, mobileSlide) ? (
+                      <Image
+                        src={slot === "top" ? slide.top : slide.bottom}
+                        alt=""
+                        fill
+                        priority={index === 0}
+                        sizes="100vw"
+                        className="object-cover"
+                      />
+                    ) : null}
                   </div>
                 ))}
                 <div className={cn("absolute inset-0", slot === "top" ? "bg-gradient-to-b from-black/20 via-transparent to-black/30" : "bg-gradient-to-t from-black/40 via-transparent to-black/20")} />

@@ -31,11 +31,17 @@ export function PropertyImage({
   );
   const candidateKey = candidates.join("\u0000");
   const [index, setIndex] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const currentSrc = candidates[index];
 
   useEffect(() => {
     setIndex(0);
+    setLoaded(false);
   }, [candidateKey]);
+
+  useEffect(() => {
+    setLoaded(false);
+  }, [currentSrc]);
 
   return (
     <div className={cn("relative h-full w-full overflow-hidden bg-muted", className)}>
@@ -45,8 +51,14 @@ export function PropertyImage({
           alt={alt}
           fill
           priority={priority}
+          quality={priority ? 82 : 72}
           sizes={sizes}
-          className={cn("object-cover", imgClassName)}
+          className={cn(
+            "object-cover opacity-0 transition-opacity duration-500",
+            loaded && "opacity-100",
+            imgClassName,
+          )}
+          onLoad={() => setLoaded(true)}
           onError={() => setIndex((current) => Math.min(current + 1, candidates.length))}
         />
       ) : (

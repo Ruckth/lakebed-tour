@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -11,9 +12,11 @@ import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
 export function PriceComparison({
   propertyId,
   onOpen360,
+  onPreload360,
 }: {
   propertyId: string;
   onOpen360?: () => void;
+  onPreload360?: () => void;
 }) {
   const locale = useLocale();
   const t = useTranslations("Villa");
@@ -51,14 +54,22 @@ export function PriceComparison({
         ))}
       </div>
       <div className="mt-5 grid gap-2">
-        <a
+        <Link
           href={localizeHref(`/booking?unit=${propertyId}`, locale)}
           className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
         >
           {t("bookDirect")}
-        </a>
+        </Link>
         {onOpen360 ? (
-          <Button variant="outline" size="lg" onClick={onOpen360} className="w-full bg-card">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={onOpen360}
+            onFocus={onPreload360}
+            onPointerEnter={onPreload360}
+            onTouchStart={onPreload360}
+            className="w-full bg-card"
+          >
             <Globe2 className="h-4 w-4" />
             {t("explore360First")}
           </Button>

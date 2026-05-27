@@ -13,12 +13,17 @@ import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
 import type { PropertySocialProof } from "@/lib/data/reviews";
 import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
+import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 import { cn } from "@/lib/utils";
 
 const TourViewer = dynamic(
-  () => import("@/components/tour/TourViewer").then((mod) => mod.TourViewer),
+  loadTourViewer,
   { ssr: false },
 );
+
+function shouldRenderGalleryImage(imageIndex: number, activeIndex: number, total: number) {
+  return Math.abs(imageIndex - activeIndex) <= 1 || total <= 2;
+}
 
 export function VillaCard({
   property,
@@ -64,13 +69,15 @@ export function VillaCard({
         >
           {images.map((src, imageIndex) => (
             <div key={src} className="relative h-full w-full flex-shrink-0">
-              <PropertyImage
-                src={src}
-                fallbackImages={images}
-                alt={`${property.name} photo ${imageIndex + 1}`}
-                imgClassName="transition-transform duration-700 group-hover:scale-105"
-                sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
-              />
+              {shouldRenderGalleryImage(imageIndex, index, images.length) ? (
+                <PropertyImage
+                  src={src}
+                  fallbackImages={images}
+                  alt={`${property.name} photo ${imageIndex + 1}`}
+                  imgClassName="transition-transform duration-700 group-hover:scale-105"
+                  sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+                />
+              ) : null}
             </div>
           ))}
         </div>
@@ -158,7 +165,14 @@ export function VillaCard({
         </div>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <Button type="button" onClick={() => setShowTour(true)} className="w-full sm:flex-1">
+          <Button
+            type="button"
+            onClick={() => setShowTour(true)}
+            onFocus={preloadTourViewer}
+            onPointerEnter={preloadTourViewer}
+            onTouchStart={preloadTourViewer}
+            className="w-full sm:flex-1"
+          >
             <Globe2 className="h-4 w-4" />
             {t("explore360")}
           </Button>

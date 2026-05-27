@@ -20,9 +20,10 @@ import {
   getLocalizedResort,
   getLocalizedSocialProofByPropertyId,
 } from "@/lib/i18n/public-content";
+import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 
 const TourViewer = dynamic(
-  () => import("@/components/tour/TourViewer").then((mod) => mod.TourViewer),
+  loadTourViewer,
   { ssr: false },
 );
 
@@ -98,6 +99,9 @@ export function RoomDetailClient({ property }: { property: Property }) {
               <button
                 type="button"
                 onClick={openTour}
+                onFocus={preloadTourViewer}
+                onPointerEnter={preloadTourViewer}
+                onTouchStart={preloadTourViewer}
                 className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-navy shadow-lg backdrop-blur-sm"
               >
                 <Globe2 className="h-4 w-4" />
@@ -125,7 +129,14 @@ export function RoomDetailClient({ property }: { property: Property }) {
               ) : null}
             </div>
 
-            <Button variant="outline" className="mt-3 w-full bg-card py-3 md:hidden" onClick={openTour}>
+            <Button
+              variant="outline"
+              className="mt-3 w-full bg-card py-3 md:hidden"
+              onClick={openTour}
+              onFocus={preloadTourViewer}
+              onPointerEnter={preloadTourViewer}
+              onTouchStart={preloadTourViewer}
+            >
               <Globe2 className="h-4 w-4" />
               {t("exploreIn360")}
             </Button>
@@ -191,7 +202,11 @@ export function RoomDetailClient({ property }: { property: Property }) {
           </div>
 
           <div className="min-w-0 space-y-3 lg:sticky lg:top-24 lg:self-start">
-            <PriceComparison propertyId={property.id} onOpen360={openTour} />
+            <PriceComparison
+              propertyId={property.id}
+              onOpen360={openTour}
+              onPreload360={preloadTourViewer}
+            />
           </div>
         </div>
       </div>

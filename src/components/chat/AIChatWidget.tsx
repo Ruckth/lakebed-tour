@@ -56,6 +56,12 @@ import {
   stripChatHandoffParam,
   type ExternalBrowserTarget,
 } from "@/lib/chat/external-browser";
+import {
+  buildChatHref,
+  CHAT_RETURN_TO_PARAM,
+  getPathWithSearch,
+  getSafeChatReturnTo,
+} from "@/lib/chat/navigation";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
@@ -97,7 +103,6 @@ const MESSAGE_CACHE_STORAGE_PREFIX = "sv_chat_messages:";
 const LOCAL_MESSAGE_CACHE_ID = "local";
 const MESSAGE_CACHE_VERSION = 1;
 const MAX_CACHED_MESSAGES = 100;
-const CHAT_RETURN_TO_PARAM = "returnTo";
 const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
 const HEARTBEAT_MS = 30_000;
 const contactApps: ContactApp[] = ["whatsapp", "line"];
@@ -413,19 +418,6 @@ function localBookingReplyKey(context: ChatBookingContext) {
   return getBookingPromptKey(context);
 }
 
-function getSafeChatReturnTo(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
-
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
-    if (stripLocalePrefix(url.pathname) === "/chat") return null;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
-}
-
 function SuggestionChips({
   suggestions,
   onSelect,
@@ -644,10 +636,14 @@ function ChatExperience({
   const searchParams = useSearchParams();
   const normalizedPathname = stripLocalePrefix(pathname);
   const currentSearch = searchParams.toString();
-  const currentPathWithSearch = currentSearch ? `${pathname}?${currentSearch}` : pathname;
+  const currentPathWithSearch = getPathWithSearch(pathname, currentSearch);
   const returnToParam = searchParams.get(CHAT_RETURN_TO_PARAM);
   const browserHandoffToken = searchParams.get(CHAT_HANDOFF_PARAM);
   const browserGateBypassed = shouldBypassChatBrowserGate(searchParams);
+  const chatReturnHref = useMemo(
+    () => getSafeChatReturnTo(returnToParam) ?? localizeHref("/", locale),
+    [locale, returnToParam],
+  );
 
   const title = activePropertyName
     ? t("propertyTitle", { propertyName: activePropertyName })
@@ -728,14 +724,13 @@ function ChatExperience({
     (isHydratingSession && messages.length === 0);
   const hideFloatingTriggerOnMobileRoom = normalizedPathname.startsWith("/rooms/");
   const chatHref = useMemo(() => {
-    const params = new URLSearchParams();
-    if (activePropertySlug) params.set("property", activePropertySlug);
-    if (normalizedPathname !== "/chat") {
-      params.set(CHAT_RETURN_TO_PARAM, currentPathWithSearch);
-    }
-    const query = params.toString();
-    return localizeHref(`/chat${query ? `?${query}` : ""}`, locale);
-  }, [activePropertySlug, currentPathWithSearch, locale, normalizedPathname]);
+    return buildChatHref({
+      locale,
+      pathname,
+      propertySlug: activePropertySlug,
+      search: currentSearch,
+    });
+  }, [activePropertySlug, currentSearch, locale, pathname]);
   const shouldLockScroll =
     mode === "overlay" &&
     open &&
@@ -1270,10 +1265,11 @@ function ChatExperience({
 
   const closeChat = useCallback(() => {
     if (mode === "page") {
+      setOpen(false);
       if (convex && sessionId) {
         void closeChatSession(convex, { sessionId }).catch(() => undefined);
       }
-      router.push(getSafeChatReturnTo(returnToParam) ?? localizeHref("/", locale));
+      router.replace(chatReturnHref);
       return;
     }
 
@@ -1281,7 +1277,12 @@ function ChatExperience({
     if (convex && sessionId) {
       void closeChatSession(convex, { sessionId }).catch(() => undefined);
     }
-  }, [convex, locale, mode, returnToParam, router, sessionId]);
+  }, [chatReturnHref, convex, mode, router, sessionId]);
+
+  useEffect(() => {
+    if (mode !== "page" || !hydrated || browserGateVisible) return;
+    router.prefetch(chatReturnHref);
+  }, [browserGateVisible, chatReturnHref, hydrated, mode, router]);
 
   useEffect(() => {
     if (mode !== "page") return;
@@ -1684,6 +1685,21 @@ function ChatExperience({
     );
   }
 
+  if (mode === "page" && !open) {
+    return (
+      <div
+        data-testid="chat-closing"
+        className="flex h-[100dvh] items-center justify-center bg-background text-foreground"
+      >
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-gold"
+          role="status"
+          aria-label="Loading"
+        />
+      </div>
+    );
+  }
+
   const panel = (
     <div
       data-testid="chat-panel"
@@ -1968,10 +1984,6 @@ function ChatExperience({
           {!hideFloatingTriggerOnMobileRoom ? (
             <Link
               href={chatHref}
-              onClick={(event) => {
-                event.preventDefault();
-                router.push(chatHref);
-              }}
               className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden"
               aria-label={t("open")}
             >

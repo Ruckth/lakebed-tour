@@ -23,6 +23,10 @@ export function PayClient({
   const t = useTranslations("Booking");
   const convex = useOptionalConvex();
   const isDemo = bookingId === "demo";
+  const successHref = localizeHref(
+    `/booking/success?bookingId=${encodeURIComponent(bookingId)}${accessToken ? `&token=${encodeURIComponent(accessToken)}` : ""}`,
+    locale,
+  );
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(Boolean(convex && !isDemo));
   const [booking, setBooking] = useState<PublicBooking | null>(null);
@@ -71,6 +75,12 @@ export function PayClient({
     };
   }, [accessToken, bookingId, convex, isDemo, t]);
 
+  useEffect(() => {
+    if (isDemo) {
+      router.prefetch(successHref);
+    }
+  }, [isDemo, router, successHref]);
+
   async function confirmPayment() {
     setLoading(true);
     setError("");
@@ -78,10 +88,7 @@ export function PayClient({
       if (!isDemo) {
         throw new Error(t("secureCheckoutOnly"));
       }
-      const tokenParam = accessToken ? `&token=${encodeURIComponent(accessToken)}` : "";
-      router.push(
-        localizeHref(`/booking/success?bookingId=${encodeURIComponent(bookingId)}${tokenParam}`, locale),
-      );
+      router.push(successHref);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("paymentCouldNotConfirm"));
     } finally {

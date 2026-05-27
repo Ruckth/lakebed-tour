@@ -1,10 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
-import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
 import { BookingPriceSummary } from "@/components/booking/BookingPriceSummary";
 import {
   DateStatus,
@@ -33,6 +33,10 @@ import {
   rangeIntersectsDates,
   todayIsoLocal,
 } from "@/lib/booking/dates";
+import {
+  readBookingInventoryCache,
+  writeBookingInventoryCache,
+} from "@/lib/booking/inventory-cache";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import { resort } from "@/lib/data/resort-config";
 import {
@@ -47,6 +51,26 @@ import {
 } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { localizeHref } from "@/i18n/routing";
+
+const BookingDatePicker = dynamic(
+  () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingDatePicker),
+  {
+    ssr: false,
+    loading: () => <BookingDatePickerSkeleton />,
+  },
+);
+
+function BookingDatePickerSkeleton() {
+  return (
+    <div className="space-y-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="h-12 animate-pulse rounded-lg bg-muted" />
+        <div className="h-12 animate-pulse rounded-lg bg-muted" />
+      </div>
+      <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+    </div>
+  );
+}
 
 function getDemoInventory(locale: string): BookingProperty[] {
   return getLocalizedProperties(locale).map((property) => ({
@@ -82,6 +106,7 @@ export function BookingFunnel({
   const demoInventory = useMemo(() => getDemoInventory(locale), [locale]);
   const convex = useOptionalConvex();
   const todayIso = todayIsoLocal();
+  const demoPayHref = localizeHref("/booking/pay?bookingId=demo", locale);
   const parsedInitialGuests = Number(initialGuests);
   const parsedInitialNights = Number(initialNights);
   const parsedInitialAdults = Number(initialAdults);
@@ -121,6 +146,10 @@ export function BookingFunnel({
   const [dateWarning, setDateWarning] = useState("");
 
   useEffect(() => {
+    router.prefetch(demoPayHref);
+  }, [demoPayHref, router]);
+
+  useEffect(() => {
     if (!convex) {
       setBookingMode("demo");
       setLoadingInventory(false);
@@ -128,9 +157,25 @@ export function BookingFunnel({
     }
     const client = convex;
     let active = true;
+    const cachedInventory = readBookingInventoryCache(locale, todayIso);
+
+    if (cachedInventory) {
+      setPropertyList(cachedInventory.propertyList);
+      setSelectedId((current) =>
+        cachedInventory.propertyList.some((item) => item.slug === current)
+          ? current
+          : cachedInventory.propertyList[0].slug,
+      );
+      setBlockedByProperty(cachedInventory.blockedByProperty);
+      setBookingMode("live");
+      setNotice("");
+      setLoadingInventory(false);
+    }
 
     async function load() {
-      setLoadingInventory(true);
+      if (!cachedInventory) {
+        setLoadingInventory(true);
+      }
       try {
         const [rows, blocked] = await Promise.all([
           listLiveProperties(client),
@@ -171,6 +216,12 @@ export function BookingFunnel({
           setSelectedId((current) => liveInventory.some((item) => item.slug === current) ? current : liveInventory[0].slug);
           setBookingMode("live");
           setNotice("");
+          writeBookingInventoryCache(
+            locale,
+            todayIso,
+            liveInventory,
+            (blocked ?? {}) as Record<string, string[]>,
+          );
         } else {
           setPropertyList(demoInventory);
           setBookingMode("demo");
@@ -179,6 +230,10 @@ export function BookingFunnel({
         setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
         if (!active) return;
+        if (cachedInventory) {
+          setLoadingInventory(false);
+          return;
+        }
         setPropertyList(demoInventory);
         setBlockedByProperty({});
         setBookingMode("demo");
@@ -300,7 +355,7 @@ export function BookingFunnel({
     setSubmitting(true);
     try {
       if (bookingMode !== "live" || !convex) {
-        router.push(localizeHref("/booking/pay?bookingId=demo", locale));
+        router.push(demoPayHref);
         return;
       }
 
