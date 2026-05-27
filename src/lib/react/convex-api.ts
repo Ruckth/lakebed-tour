@@ -245,14 +245,7 @@ export async function claimChatBrowserHandoff(
 
 export async function addChatMessage(
   client: ConvexReactClient,
-  args: {
-    sessionId: string;
-    role: "user" | "assistant";
-    content: string;
-    locale?: string;
-    propertySlug?: string;
-    replyToMessageId?: string;
-  },
+  args: { sessionId: string; role: "user" | "assistant"; content: string },
 ) {
   return (await withConvexTimeout(
     client.mutation(api.chat.addMessage, args as never),

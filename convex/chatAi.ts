@@ -85,9 +85,8 @@ STYLE:
 
 		if (!apiKey) {
 			const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale);
-			await ctx.runMutation(api.chat.addMessage, {
+			await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 				sessionId: args.sessionId,
-				role: 'assistant',
 				content: fallbackResponse,
 				locale: args.locale,
 				propertySlug: args.propertySlug,
@@ -139,9 +138,8 @@ STYLE:
 		const assistantMessage =
 			response.content || "I'm sorry, I couldn't process that. Please try again.";
 
-		await ctx.runMutation(api.chat.addMessage, {
+		await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
-			role: 'assistant',
 			content: assistantMessage,
 			locale: args.locale,
 			propertySlug: args.propertySlug,

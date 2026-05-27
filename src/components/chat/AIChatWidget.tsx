@@ -1564,7 +1564,7 @@ function ChatExperience({
         try {
           const id = await ensureSession({ markOpen: true });
           if (id) {
-            const userMessageId = await addChatMessage(convex, {
+            await addChatMessage(convex, {
               sessionId: id,
               role: "user",
               content: clean,
@@ -1573,9 +1573,6 @@ function ChatExperience({
               sessionId: id,
               role: "assistant",
               content: preset.answer,
-              locale,
-              propertySlug: activePropertySlug || undefined,
-              replyToMessageId: userMessageId,
             });
           }
         } catch {

@@ -1,8 +1,8 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import { normalizeSuggestedQuestion } from "./lib/chatSuggestions";
 import schema from "./schema";
 
@@ -13,6 +13,10 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+
+async function finishScheduledWork(t: ReturnType<typeof convexTest>) {
+  await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+}
 
 describe("chatSuggestions.nextForSession", () => {
   it("excludes previously asked questions and returns the top two scores", async () => {
@@ -197,5 +201,74 @@ describe("chatSuggestions.nextForSession", () => {
     expect(selected.map((question) => question.question)).toEqual([
       "Which villa fits my group best?",
     ]);
+  });
+
+  it("does not generate ranked suggestions from public assistant messages", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await t.mutation(api.chat.createSession, {
+        channel: "web",
+        visitorId: "visitor-public-assistant",
+      });
+      const userMessageId = await t.mutation(api.chat.addMessage, {
+        sessionId,
+        role: "user",
+        content: "What's included when booking direct?",
+      });
+      expect(userMessageId).toBeTruthy();
+
+      await t.mutation(api.chat.addMessage, {
+        sessionId,
+        role: "assistant",
+        content: "Direct booking includes host support and better pricing.",
+      });
+      await finishScheduledWork(t);
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        limit: 5,
+      });
+      expect(selected).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("generates ranked suggestions from trusted internal assistant messages", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("AI_API_KEY", "");
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await t.mutation(api.chat.createSession, {
+        channel: "web",
+        visitorId: "visitor-internal-assistant",
+      });
+      const userMessageId = await t.mutation(api.chat.addMessage, {
+        sessionId,
+        role: "user",
+        content: "What's included when booking direct?",
+      });
+
+      await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+        sessionId,
+        content: "Direct booking includes host support and better pricing.",
+        locale: "en",
+        replyToMessageId: userMessageId,
+      });
+      await finishScheduledWork(t);
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        limit: 2,
+      });
+      expect(selected.map((question) => question.question)).toEqual([
+        "Can I check availability for my dates?",
+        "Can I message the host on WhatsApp?",
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
   });
 });
