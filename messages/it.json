@@ -149,7 +149,7 @@
     "exploreMoreVillas": "Esplora altre ville"
   },
   "Chat": {
-    "defaultTitle": "Concierge Seaview",
+    "defaultTitle": "Concierge Auralis",
     "propertyTitle": "Concierge {propertyName}",
     "open": "Apri chat concierge",
     "close": "Chiudi chat",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "Ci siamo quasi. Scegli la data di check-in nella scheda sotto.",
     "bookingPromptMissingCheckOut": "Ci siamo quasi. Scegli la data di checkout nella scheda sotto.",
     "suggestionCouple": "Quale villa è migliore per una coppia?",
-    "answerCouple": "Garden Suite è il rifugio più tranquillo per coppie. Se vuoi più spazio e una piscina privata, Pool Villa è l’opzione più lussuosa.",
+    "answerCouple": "Mossbell Garden Suite è il rifugio più tranquillo per coppie. Se vuoi più spazio e una piscina privata, Tideglass Pool Residence è l’opzione più lussuosa.",
     "suggestionDirect": "Cosa include la prenotazione diretta?",
     "answerDirect": "La prenotazione diretta fa risparmiare circa il 15% rispetto ai prezzi OTA e mantiene il supporto con l’host. Transfer aeroportuale, amenità di benvenuto e aiuto diretto via WhatsApp sono i vantaggi principali.",
     "suggestion360": "Posso vedere la villa in 360°?",
@@ -219,12 +219,12 @@
     "close": "Chiudi avviso del sito demo"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Ville di lusso a Koh Samui, Thailand",
+    "rootTitle": "Auralis Cove Retreat - Ville di lusso a Koh Samui, Thailand",
     "rootDescription": "Una collezione boutique di ville di lusso sulle colline di Koh Samui, con viste sul Golfo di Thailandia, piscine private e servizio rilassato.",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "Prenota diretto - Seaview Residence",
-    "payTitle": "Pagamento sicuro - Seaview Residence",
-    "successTitle": "Conferma prenotazione - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "Prenota diretto - Auralis Cove Retreat",
+    "payTitle": "Pagamento sicuro - Auralis Cove Retreat",
+    "successTitle": "Conferma prenotazione - Auralis Cove Retreat",
     "villaFallback": "Villa"
   },
   "A11y": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "Paradiso privato con piscina infinity",
-      "description": "Vivi il lusso nella spaziosa Pool Villa con piscina infinity privata, zona living aperta e giardino tropicale. Le vetrate a tutta altezza portano il panorama dentro ogni stanza.",
+      "description": "Vivi il lusso nella spaziosa Tideglass Pool Residence con piscina infinity privata, zona living aperta e giardino tropicale. Le vetrate a tutta altezza portano il panorama dentro ogni stanza.",
       "storyTagline": "Mattine che iniziano con un tuffo privato sotto il cielo aperto",
       "amenities": {
         "privatePool": "Piscina privata",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "Rifugio sereno immerso nella natura",
-      "description": "Immersa nei giardini tropicali, la Garden Suite offre una fuga tranquilla con camera spaziosa, bagno moderno e terrazza privata. Svegliati con il canto degli uccelli e il profumo del frangipani.",
+      "description": "Immersa nei giardini tropicali, la Mossbell Garden Suite offre una fuga tranquilla con camera spaziosa, bagno moderno e terrazza privata. Svegliati con il canto degli uccelli e il profumo del frangipani.",
       "storyTagline": "Un angolo quieto dell’isola, avvolto nel verde",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "Vita loft boho incorniciata dagli alberi",
-      "description": "Canopy Loft Penthouse è una villa luminosa in stile loft con alte finestre, legno caldo, tessuti neutri e dettagli boho. Pedana letto, lounge e angolo cottura creano un rifugio intimo sopra gli alberi.",
+      "description": "Canopy Halo Loft è una villa luminosa in stile loft con alte finestre, legno caldo, tessuti neutri e dettagli boho. Pedana letto, lounge e angolo cottura creano un rifugio intimo sopra gli alberi.",
       "storyTagline": "Svegliarsi tra luce morbida, legno caldo e finestre sugli alberi",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Vista 360° del Canopy Loft",
+      "name": "Vista 360° del Canopy Halo Loft",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "Il tuo rifugio ti aspetta",
-      "summary": "Avvolta dai giardini tropicali, la Garden Suite rallenta il ritmo della vita al suono delle palme. Ogni dettaglio invita a restare.",
+      "summary": "Avvolta dai giardini tropicali, la Mossbell Garden Suite rallenta il ritmo della vita al suono delle palme. Ogni dettaglio invita a restare.",
       "highlights": {
         "one": "Terrazza privata con vista sul giardino",
         "two": "Doccia a pioggia immersa nella natura",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "Il tuo loft ti aspetta",
-      "summary": "Canopy Loft Penthouse sembra uno studio privato sopra gli alberi: finestre luminose, travi nere, legno caldo e texture morbide in un rifugio quieto.",
+      "summary": "Canopy Halo Loft sembra uno studio privato sopra gli alberi: finestre luminose, travi nere, legno caldo e texture morbide in un rifugio quieto.",
       "highlights": {
         "one": "Alte finestre sugli alberi con panca integrata",
         "two": "Pedana notte accogliente",
@@ -431,43 +431,43 @@
     },
     "gs-r1": {
       "title": "Vista giardino magica al tramonto",
-      "body": "La Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
+      "body": "La Mossbell Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
     },
     "gs-r2": {
       "title": "Perfetta per coppie",
-      "body": "La Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
+      "body": "La Mossbell Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
     },
     "gs-r3": {
       "title": "Affascinante e ben posizionata",
-      "body": "La Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
+      "body": "La Mossbell Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
     },
     "gs-r4": {
       "title": "Ottimo valore per Koh Tao",
-      "body": "La Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
+      "body": "La Mossbell Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
     },
     "gs-r5": {
       "title": "Fuga tranquilla sull’isola",
-      "body": "La Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
+      "body": "La Mossbell Garden Suite era calma, intima e immersa nel verde. La terrazza, la doccia a pioggia e i suoni del giardino hanno reso il soggiorno davvero rilassante."
     },
     "ph-r1": {
       "title": "Un loft pieno di luce morbida",
-      "body": "Canopy Loft Penthouse è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
+      "body": "Canopy Halo Loft è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
     },
     "ph-r2": {
       "title": "Vale ogni baht",
-      "body": "Canopy Loft Penthouse è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
+      "body": "Canopy Halo Loft è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
     },
     "ph-r3": {
       "title": "Il miglior alloggio a Koh Tao",
-      "body": "Canopy Loft Penthouse è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
+      "body": "Canopy Halo Loft è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
     },
     "ph-r4": {
       "title": "Lusso elevato su un’isola tropicale",
-      "body": "Canopy Loft Penthouse è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
+      "body": "Canopy Halo Loft è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
     },
     "ph-r5": {
       "title": "Soggiorno indimenticabile",
-      "body": "Canopy Loft Penthouse è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
+      "body": "Canopy Halo Loft è luminoso, caldo e curato. Le finestre alte, il lounge e l’angolo cottura creano l’atmosfera di uno studio privato tra gli alberi."
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "Numero fattura",
     "demoInvoice": "Fattura demo",
     "issueDate": "Data di emissione",
-    "demoInvoiceNotice": "Questa fattura demo è stata generata da Seaview Residence solo per dimostrazione del prodotto.",
+    "demoInvoiceNotice": "Questa fattura demo è stata generata da Auralis Cove Retreat solo per dimostrazione del prodotto.",
     "receiptNumber": "Numero ricevuta",
     "demoReceipt": "Ricevuta demo",
     "confirmationCode": "Codice di conferma",

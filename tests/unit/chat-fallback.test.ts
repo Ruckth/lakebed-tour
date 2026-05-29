@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getFallbackResponse } from "../../convex/lib/chatFallback";
 
 const property = {
-  name: "Pool Villa",
+  name: "Tideglass Pool Residence",
   pricePerNight: 8500,
   directDiscountPercent: 15,
   amenities: ["Private Pool", "WiFi"],
@@ -21,7 +21,7 @@ describe("localized chat fallback responses", () => {
   it("matches Thai intent text and keeps facts unchanged", () => {
     const response = getFallbackResponse("ราคาเท่าไหร่", property, "th");
 
-    expect(response).toContain("Pool Villa");
+    expect(response).toContain("Tideglass Pool Residence");
     expect(response).toContain("฿7,225");
     expect(response).toContain("คืน");
   });

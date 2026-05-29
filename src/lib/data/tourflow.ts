@@ -22,7 +22,7 @@ export const tourConclusions: TourConclusion[] = [
 	{
 		propertyId: 'garden-suite',
 		headline: 'Your Retreat Awaits',
-		summary: 'Wrapped in tropical gardens, the Garden Suite is where the pace of life slows to the rhythm of rustling palms. Every detail invites you to stay a little longer.',
+		summary: 'Wrapped in tropical gardens, the Mossbell Garden Suite is where the pace of life slows to the rhythm of rustling palms. Every detail invites you to stay a little longer.',
 		highlights: [
 			'Private terrace overlooking the gardens',
 			'Rainfall shower surrounded by nature',
@@ -34,7 +34,7 @@ export const tourConclusions: TourConclusion[] = [
 	{
 		propertyId: 'penthouse',
 		headline: 'Your Loft Awaits',
-		summary: 'The Canopy Loft Penthouse feels like a private studio above the trees: bright grid windows, black beams, warm wood, and soft woven textures pulled together into one calm hideaway.',
+		summary: 'The Canopy Halo Loft feels like a private studio above the trees: bright grid windows, black beams, warm wood, and soft woven textures pulled together into one calm hideaway.',
 		highlights: [
 			'Tall treetop windows with a built-in ledge',
 			'Cozy loft sleeping platform',

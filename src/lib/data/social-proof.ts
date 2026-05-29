@@ -47,7 +47,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Perfect honeymoon getaway',
-				body: 'My wife and I chose the Pool Villa for our honeymoon and it exceeded every expectation. The private pool area is so peaceful, and the open-plan living space feels incredibly luxurious. The tropical garden surrounding the villa gives you complete privacy. We will definitely be back.',
+				body: 'My wife and I chose the Tideglass Pool Residence for our honeymoon and it exceeded every expectation. The private pool area is so peaceful, and the open-plan living space feels incredibly luxurious. The tropical garden surrounding the villa gives you complete privacy. We will definitely be back.',
 				date: '2026-03-02',
 				verified: true
 			},
@@ -189,7 +189,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Perfect for couples',
-				body: 'The Garden Suite is exactly what you need for a romantic getaway. Cosy but not cramped, beautifully designed, and the garden setting feels very private. We loved having breakfast on the terrace every morning. The bed is extremely comfortable.',
+				body: 'The Mossbell Garden Suite is exactly what you need for a romantic getaway. Cosy but not cramped, beautifully designed, and the garden setting feels very private. We loved having breakfast on the terrace every morning. The bed is extremely comfortable.',
 				date: '2026-03-08',
 				verified: true
 			},
@@ -293,7 +293,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'A loft hideaway full of soft light',
-				body: 'The tall windows alone are worth the stay. We had slow mornings on the window ledge, coffee in hand, with the trees just outside. The Canopy Loft Penthouse is beautifully styled with warm wood, woven details, and a kitchenette that made it easy to settle in.',
+				body: 'The tall windows alone are worth the stay. We had slow mornings on the window ledge, coffee in hand, with the trees just outside. The Canopy Halo Loft is beautifully styled with warm wood, woven details, and a kitchenette that made it easy to settle in.',
 				date: '2026-03-22',
 				verified: true,
 				photos: [
@@ -313,7 +313,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Worth every penny',
-				body: 'We celebrated our anniversary at the Canopy Loft Penthouse and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere. The host arranged flowers and champagne for our arrival. Truly special.',
+				body: 'We celebrated our anniversary at the Canopy Halo Loft and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere. The host arranged flowers and champagne for our arrival. Truly special.',
 				date: '2026-03-10',
 				verified: true
 			},
@@ -329,7 +329,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'The best accommodation in Koh Tao',
-				body: 'We have stayed at many places on the island but nothing compares to the Canopy Loft Penthouse. The loft feels airy without losing warmth, the designer details are gorgeous, and the treetop windows make every morning feel cinematic.',
+				body: 'We have stayed at many places on the island but nothing compares to the Canopy Halo Loft. The loft feels airy without losing warmth, the designer details are gorgeous, and the treetop windows make every morning feel cinematic.',
 				date: '2026-02-20',
 				verified: true,
 				photos: [
@@ -348,7 +348,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Elevated luxury on a tropical island',
-				body: 'The attention to detail in the Canopy Loft Penthouse is remarkable. From the quality of the mattress to the kitchenette styling, everything feels intentional. We spent our evenings in the lounge with the string lights on and did not want to leave.',
+				body: 'The attention to detail in the Canopy Halo Loft is remarkable. From the quality of the mattress to the kitchenette styling, everything feels intentional. We spent our evenings in the lounge with the string lights on and did not want to leave.',
 				date: '2026-02-05',
 				verified: true
 			},
@@ -364,7 +364,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Unforgettable stay',
-				body: 'Traveling with friends, the Canopy Loft Penthouse gave us the space and comfort we needed. The lounge, kitchenette, and sleeping area flow together beautifully, and the treetop light is genuinely stunning. Photos do not do it justice.',
+				body: 'Traveling with friends, the Canopy Halo Loft gave us the space and comfort we needed. The lounge, kitchenette, and sleeping area flow together beautifully, and the treetop light is genuinely stunning. Photos do not do it justice.',
 				date: '2026-01-18',
 				verified: true
 			}

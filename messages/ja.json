@@ -149,7 +149,7 @@
     "exploreMoreVillas": "他のヴィラを見る"
   },
   "Chat": {
-    "defaultTitle": "Seaview コンシェルジュ",
+    "defaultTitle": "Auralis コンシェルジュ",
     "propertyTitle": "{propertyName} コンシェルジュ",
     "open": "コンシェルジュチャットを開く",
     "close": "チャットを閉じる",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "あと少しです。下の予約カードでチェックイン日を選んでください。",
     "bookingPromptMissingCheckOut": "あと少しです。下の予約カードでチェックアウト日を選んでください。",
     "suggestionCouple": "カップルに最適なヴィラは？",
-    "answerCouple": "Garden Suite は最も静かなカップル向けの滞在先です。より広い空間と専用プールを望むなら、Pool Villa が贅沢な選択です。",
+    "answerCouple": "Mossbell Garden Suite は最も静かなカップル向けの滞在先です。より広い空間と専用プールを望むなら、Tideglass Pool Residence が贅沢な選択です。",
     "suggestionDirect": "直接予約には何が含まれますか？",
     "answerDirect": "直接予約では OTA 価格より約 15% お得で、ホストの直接サポートを受けられます。空港送迎、ウェルカムアメニティ、WhatsApp での直接サポートが大きな利点です。",
     "suggestion360": "ヴィラを 360°で見られますか？",
@@ -219,12 +219,12 @@
     "close": "デモサイトのお知らせを閉じる"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Koh Samui, Thailand のラグジュアリーヴィラ",
+    "rootTitle": "Auralis Cove Retreat - Koh Samui, Thailand のラグジュアリーヴィラ",
     "rootDescription": "Koh Samui の丘に佇むブティックヴィラ。タイ湾の眺望、プライベートプール、ゆったりした島のサービスをお楽しみください。",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "直接予約 - Seaview Residence",
-    "payTitle": "安全な決済 - Seaview Residence",
-    "successTitle": "予約確認 - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "直接予約 - Auralis Cove Retreat",
+    "payTitle": "安全な決済 - Auralis Cove Retreat",
+    "successTitle": "予約確認 - Auralis Cove Retreat",
     "villaFallback": "ヴィラ"
   },
   "A11y": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "インフィニティプール付きのプライベートな楽園",
-      "description": "広々とした Pool Villa で、専用インフィニティプール、開放的なリビング、緑豊かなトロピカルガーデンをお楽しみください。床から天井までの窓が景色を室内へ招きます。",
+      "description": "広々とした Tideglass Pool Residence で、専用インフィニティプール、開放的なリビング、緑豊かなトロピカルガーデンをお楽しみください。床から天井までの窓が景色を室内へ招きます。",
       "storyTagline": "開放的な空の下、専用プールから始まる朝",
       "amenities": {
         "privatePool": "プライベートプール",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "自然に包まれた静かな隠れ家",
-      "description": "Garden Suite はトロピカルガーデンに囲まれ、広いベッドルーム、モダンなバスルーム、専用テラスを備えています。鳥の声とフランジパニの香りで目覚めます。",
+      "description": "Mossbell Garden Suite はトロピカルガーデンに囲まれ、広いベッドルーム、モダンなバスルーム、専用テラスを備えています。鳥の声とフランジパニの香りで目覚めます。",
       "storyTagline": "緑に包まれた島の静かな一角",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "木々の窓に囲まれたボーホーなロフト滞在",
-      "description": "Canopy Loft Penthouse は高い格子窓、温かな木、柔らかなニュートラルの布地、ボーホーなディテールに包まれた明るいロフトヴィラです。",
+      "description": "Canopy Halo Loft は高い格子窓、温かな木、柔らかなニュートラルの布地、ボーホーなディテールに包まれた明るいロフトヴィラです。",
       "storyTagline": "柔らかな光、温かな木、木々の窓のそばで目覚める",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Canopy Loft 360°ビュー",
+      "name": "Canopy Halo Loft 360°ビュー",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "静かな隠れ家が待っています",
-      "summary": "トロピカルガーデンに包まれた Garden Suite では、暮らしの速度が椰子の葉音に合わせてゆっくりになります。",
+      "summary": "トロピカルガーデンに包まれた Mossbell Garden Suite では、暮らしの速度が椰子の葉音に合わせてゆっくりになります。",
       "highlights": {
         "one": "庭を望む専用テラス",
         "two": "自然に包まれたレインシャワー",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "ロフトがあなたを待っています",
-      "summary": "Canopy Loft Penthouse は木々の上のプライベートスタジオのよう。明るい窓、黒い梁、温かな木、柔らかな素材が静かな隠れ家を作ります。",
+      "summary": "Canopy Halo Loft は木々の上のプライベートスタジオのよう。明るい窓、黒い梁、温かな木、柔らかな素材が静かな隠れ家を作ります。",
       "highlights": {
         "one": "造り付けベンチのある高い木々の窓",
         "two": "居心地のよいロフト寝台",
@@ -431,43 +431,43 @@
     },
     "gs-r1": {
       "title": "夕暮れの庭の眺めが魔法のよう",
-      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+      "body": "Mossbell Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
     },
     "gs-r2": {
       "title": "カップルにぴったり",
-      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+      "body": "Mossbell Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
     },
     "gs-r3": {
       "title": "魅力的で便利な立地",
-      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+      "body": "Mossbell Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
     },
     "gs-r4": {
       "title": "Koh Tao でとても良い価値",
-      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+      "body": "Mossbell Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
     },
     "gs-r5": {
       "title": "静かな島の逃避先",
-      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+      "body": "Mossbell Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
     },
     "ph-r1": {
       "title": "柔らかな光に満ちたロフト",
-      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+      "body": "Canopy Halo Loft は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
     },
     "ph-r2": {
       "title": "価格以上の価値",
-      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+      "body": "Canopy Halo Loft は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
     },
     "ph-r3": {
       "title": "Koh Tao で最高の宿",
-      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+      "body": "Canopy Halo Loft は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
     },
     "ph-r4": {
       "title": "南国の島で味わう上質な贅沢",
-      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+      "body": "Canopy Halo Loft は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
     },
     "ph-r5": {
       "title": "忘れられない滞在",
-      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+      "body": "Canopy Halo Loft は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "請求書番号",
     "demoInvoice": "デモ請求書",
     "issueDate": "発行日",
-    "demoInvoiceNotice": "このデモ請求書は Seaview Residence の製品デモ用に生成されました。",
+    "demoInvoiceNotice": "このデモ請求書は Auralis Cove Retreat の製品デモ用に生成されました。",
     "receiptNumber": "領収書番号",
     "demoReceipt": "デモ領収書",
     "confirmationCode": "確認コード",

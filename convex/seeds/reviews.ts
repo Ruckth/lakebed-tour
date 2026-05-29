@@ -28,7 +28,7 @@ const REVIEWS_DATA = [
 			'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face',
 		rating: 5,
 		title: 'Perfect honeymoon getaway',
-		body: 'My wife and I chose the Pool Villa for our honeymoon and it exceeded every expectation. The private pool area is so peaceful.',
+		body: 'My wife and I chose the Tideglass Pool Residence for our honeymoon and it exceeded every expectation. The private pool area is so peaceful.',
 		date: '2026-03-02',
 		verified: true
 	},
@@ -73,7 +73,7 @@ const REVIEWS_DATA = [
 			'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=80&h=80&fit=crop&crop=face',
 		rating: 5,
 		title: 'Perfect for couples',
-		body: 'The Garden Suite is exactly what you need for a romantic getaway. Cosy but not cramped, beautifully designed.',
+		body: 'The Mossbell Garden Suite is exactly what you need for a romantic getaway. Cosy but not cramped, beautifully designed.',
 		date: '2026-03-08',
 		verified: true
 	},
@@ -103,7 +103,7 @@ const REVIEWS_DATA = [
 			'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=80&h=80&fit=crop&crop=face',
 		rating: 5,
 		title: 'Worth every penny',
-		body: 'We celebrated our anniversary at the Canopy Loft Penthouse and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere.',
+		body: 'We celebrated our anniversary at the Canopy Halo Loft and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere.',
 		date: '2026-03-10',
 		verified: true
 	}

@@ -28,7 +28,7 @@ describe("selectChatSuggestions", () => {
       selectChatSuggestions({
         candidates,
         latestUserMessage: "Which villa is best for a couple?",
-        latestAssistantMessage: "The Garden Suite is the quietest couples' retreat.",
+        latestAssistantMessage: "The Mossbell Garden Suite is the quietest couples' retreat.",
         clickedSuggestionId: "couple",
       }).map((item) => item.id),
     ).toEqual(["direct", "tour"]);

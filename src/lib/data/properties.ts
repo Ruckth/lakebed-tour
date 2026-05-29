@@ -22,10 +22,10 @@ export function getTourHref(propertyId = defaultTourPropertyId): string {
 export const properties: Property[] = [
 	{
 		id: 'pool-villa',
-		name: 'Pool Villa',
+		name: 'Tideglass Pool Residence',
 		tagline: 'Private paradise with infinity pool',
 		description:
-			'Experience ultimate luxury in our spacious Pool Villa featuring a private infinity pool, open-plan living area, and lush tropical garden. Floor-to-ceiling windows bring the outside in, with stunning views from every room.',
+			'Experience ultimate luxury in our spacious Tideglass Pool Residence featuring a private infinity pool, open-plan living area, and lush tropical garden. Floor-to-ceiling windows bring the outside in, with stunning views from every room.',
 		pricePerNight: 8500,
 		maxGuests: 4,
 		bedrooms: 2,
@@ -43,10 +43,10 @@ export const properties: Property[] = [
 	},
 	{
 		id: 'garden-suite',
-		name: 'Garden Suite',
+		name: 'Mossbell Garden Suite',
 		tagline: 'Serene retreat surrounded by nature',
 		description:
-			'Nestled among tropical gardens, the Garden Suite offers a tranquil escape with a spacious bedroom, modern bathroom, and private terrace. Wake up to birdsong and the scent of frangipani.',
+			'Nestled among tropical gardens, the Mossbell Garden Suite offers a tranquil escape with a spacious bedroom, modern bathroom, and private terrace. Wake up to birdsong and the scent of frangipani.',
 		pricePerNight: 4500,
 		maxGuests: 2,
 		bedrooms: 1,
@@ -61,10 +61,10 @@ export const properties: Property[] = [
 	},
 	{
 		id: 'penthouse',
-		name: 'Canopy Loft Penthouse',
+		name: 'Canopy Halo Loft',
 		tagline: 'Boho loft living framed by treetop windows',
 		description:
-			'Our Canopy Loft Penthouse is a bright, loft-style villa wrapped in tall grid windows, warm wood ledges, soft neutral textiles, and relaxed boho details. A cozy sleeping platform, lounge corner, and kitchenette create an intimate hideaway above the trees.',
+			'Our Canopy Halo Loft is a bright, loft-style villa wrapped in tall grid windows, warm wood ledges, soft neutral textiles, and relaxed boho details. A cozy sleeping platform, lounge corner, and kitchenette create an intimate hideaway above the trees.',
 		pricePerNight: 12000,
 		maxGuests: 6,
 		bedrooms: 2,

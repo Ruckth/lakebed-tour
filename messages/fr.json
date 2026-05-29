@@ -149,7 +149,7 @@
     "exploreMoreVillas": "Explorer plus de villas"
   },
   "Chat": {
-    "defaultTitle": "Conciergerie Seaview",
+    "defaultTitle": "Conciergerie Auralis",
     "propertyTitle": "Conciergerie {propertyName}",
     "open": "Ouvrir le chat concierge",
     "close": "Fermer le chat",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "Presque terminé. Choisissez la date d’arrivée dans la carte ci-dessous.",
     "bookingPromptMissingCheckOut": "Presque terminé. Choisissez la date de départ dans la carte ci-dessous.",
     "suggestionCouple": "Quelle villa est idéale pour un couple ?",
-    "answerCouple": "Garden Suite est le refuge le plus calme pour les couples. Si vous souhaitez plus d’espace et une piscine privée, Pool Villa est l’option la plus luxueuse.",
+    "answerCouple": "Mossbell Garden Suite est le refuge le plus calme pour les couples. Si vous souhaitez plus d’espace et une piscine privée, Tideglass Pool Residence est l’option la plus luxueuse.",
     "suggestionDirect": "Qu’est-ce qui est inclus en réservant en direct ?",
     "answerDirect": "La réservation directe économise environ 15% par rapport aux OTA et garde l’assistance avec l’hôte. Transfert aéroport, attentions de bienvenue et aide WhatsApp directe sont les grands avantages.",
     "suggestion360": "Puis-je voir la villa en 360° ?",
@@ -219,12 +219,12 @@
     "close": "Fermer l’avertissement du site de démonstration"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Villas de luxe à Koh Samui, Thailand",
+    "rootTitle": "Auralis Cove Retreat - Villas de luxe à Koh Samui, Thailand",
     "rootDescription": "Une collection boutique de villas de luxe sur les hauteurs de Koh Samui, avec vues panoramiques sur le golfe de Thaïlande, piscines privées et service insulaire paisible.",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "Réserver en direct - Seaview Residence",
-    "payTitle": "Paiement sécurisé - Seaview Residence",
-    "successTitle": "Confirmation de réservation - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "Réserver en direct - Auralis Cove Retreat",
+    "payTitle": "Paiement sécurisé - Auralis Cove Retreat",
+    "successTitle": "Confirmation de réservation - Auralis Cove Retreat",
     "villaFallback": "Villa"
   },
   "A11y": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "Paradis privé avec piscine à débordement",
-      "description": "Découvrez le luxe dans notre spacieuse Pool Villa avec piscine à débordement privée, séjour ouvert et jardin tropical luxuriant. Les baies vitrées du sol au plafond font entrer l’extérieur dans chaque pièce.",
+      "description": "Découvrez le luxe dans notre spacieuse Tideglass Pool Residence avec piscine à débordement privée, séjour ouvert et jardin tropical luxuriant. Les baies vitrées du sol au plafond font entrer l’extérieur dans chaque pièce.",
       "storyTagline": "Des matins qui commencent par un bain privé sous le ciel ouvert",
       "amenities": {
         "privatePool": "Piscine privée",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "Retraite paisible entourée de nature",
-      "description": "Nichée dans les jardins tropicaux, la Garden Suite offre une échappée tranquille avec chambre spacieuse, salle de bain moderne et terrasse privée. Réveillez-vous au chant des oiseaux et au parfum du frangipanier.",
+      "description": "Nichée dans les jardins tropicaux, la Mossbell Garden Suite offre une échappée tranquille avec chambre spacieuse, salle de bain moderne et terrasse privée. Réveillez-vous au chant des oiseaux et au parfum du frangipanier.",
       "storyTagline": "Un coin calme de l’île, enveloppé de verdure",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "Vie de loft bohème encadrée par les fenêtres des arbres",
-      "description": "Le Canopy Loft Penthouse est une villa lumineuse de style loft, enveloppée de hautes fenêtres quadrillées, de bois chaleureux, de textiles neutres et de détails bohèmes. Plateforme de couchage, coin lounge et kitchenette créent une cachette intime au-dessus des arbres.",
+      "description": "Le Canopy Halo Loft est une villa lumineuse de style loft, enveloppée de hautes fenêtres quadrillées, de bois chaleureux, de textiles neutres et de détails bohèmes. Plateforme de couchage, coin lounge et kitchenette créent une cachette intime au-dessus des arbres.",
       "storyTagline": "Se réveiller entre lumière douce, bois chaleureux et fenêtres sur la canopée",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Vue 360° du Canopy Loft",
+      "name": "Vue 360° du Canopy Halo Loft",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "Votre retraite vous attend",
-      "summary": "Entourée de jardins tropicaux, la Garden Suite ralentit le rythme de la vie au son des palmes. Chaque détail invite à rester plus longtemps.",
+      "summary": "Entourée de jardins tropicaux, la Mossbell Garden Suite ralentit le rythme de la vie au son des palmes. Chaque détail invite à rester plus longtemps.",
       "highlights": {
         "one": "Terrasse privée sur les jardins",
         "two": "Douche pluie dans une ambiance naturelle",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "Votre loft vous attend",
-      "summary": "Le Canopy Loft Penthouse ressemble à un studio privé au-dessus des arbres : fenêtres lumineuses, poutres noires, bois chaud et textures tissées dans une cachette calme.",
+      "summary": "Le Canopy Halo Loft ressemble à un studio privé au-dessus des arbres : fenêtres lumineuses, poutres noires, bois chaud et textures tissées dans une cachette calme.",
       "highlights": {
         "one": "Hautes fenêtres dans les arbres avec banquette intégrée",
         "two": "Plateforme de couchage cosy",
@@ -431,43 +431,43 @@
     },
     "gs-r1": {
       "title": "La vue jardin au coucher du soleil était magique",
-      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+      "body": "La Mossbell Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
     },
     "gs-r2": {
       "title": "Parfait pour les couples",
-      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+      "body": "La Mossbell Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
     },
     "gs-r3": {
       "title": "Charmant et très bien situé",
-      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+      "body": "La Mossbell Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
     },
     "gs-r4": {
       "title": "Excellent rapport qualité-prix pour Koh Tao",
-      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+      "body": "La Mossbell Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
     },
     "gs-r5": {
       "title": "Échappée paisible sur l’île",
-      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+      "body": "La Mossbell Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
     },
     "ph-r1": {
       "title": "Un refuge loft rempli de lumière douce",
-      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+      "body": "Le Canopy Halo Loft est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
     },
     "ph-r2": {
       "title": "Vaut chaque baht",
-      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+      "body": "Le Canopy Halo Loft est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
     },
     "ph-r3": {
       "title": "Le meilleur hébergement de Koh Tao",
-      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+      "body": "Le Canopy Halo Loft est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
     },
     "ph-r4": {
       "title": "Luxe élevé sur une île tropicale",
-      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+      "body": "Le Canopy Halo Loft est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
     },
     "ph-r5": {
       "title": "Séjour inoubliable",
-      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+      "body": "Le Canopy Halo Loft est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "Numéro de facture",
     "demoInvoice": "Facture démo",
     "issueDate": "Date d’émission",
-    "demoInvoiceNotice": "Cette facture démo a été générée par Seaview Residence uniquement pour une démonstration produit.",
+    "demoInvoiceNotice": "Cette facture démo a été générée par Auralis Cove Retreat uniquement pour une démonstration produit.",
     "receiptNumber": "Numéro de reçu",
     "demoReceipt": "Reçu démo",
     "confirmationCode": "Code de confirmation",

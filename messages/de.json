@@ -149,7 +149,7 @@
     "exploreMoreVillas": "Weitere Villen ansehen"
   },
   "Chat": {
-    "defaultTitle": "Seaview Concierge",
+    "defaultTitle": "Auralis Concierge",
     "propertyTitle": "{propertyName} Concierge",
     "open": "Concierge-Chat öffnen",
     "close": "Chat schließen",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "Fast fertig. Wählen Sie das Check-in-Datum in der Buchungskarte unten.",
     "bookingPromptMissingCheckOut": "Fast fertig. Wählen Sie das Checkout-Datum in der Buchungskarte unten.",
     "suggestionCouple": "Welche Villa ist am besten für ein Paar?",
-    "answerCouple": "Garden Suite ist der ruhigste Rückzugsort für Paare. Wenn Sie mehr Platz und einen eigenen Pool wünschen, ist Pool Villa die luxuriösere Wahl.",
+    "answerCouple": "Mossbell Garden Suite ist der ruhigste Rückzugsort für Paare. Wenn Sie mehr Platz und einen eigenen Pool wünschen, ist Tideglass Pool Residence die luxuriösere Wahl.",
     "suggestionDirect": "Was ist bei Direktbuchung enthalten?",
     "answerDirect": "Direktbuchung spart etwa 15% gegenüber OTA-Preisen und hält den Support direkt beim Host. Flughafentransfer, Willkommens-Annehmlichkeiten und direkte WhatsApp-Hilfe sind die großen Vorteile.",
     "suggestion360": "Kann ich die Villa in 360° sehen?",
@@ -219,12 +219,12 @@
     "close": "Hinweis zur Demo-Website schließen"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Luxusvillen in Koh Samui, Thailand",
+    "rootTitle": "Auralis Cove Retreat - Luxusvillen in Koh Samui, Thailand",
     "rootDescription": "Eine Boutique-Kollektion von Luxusvillen am Hang von Koh Samui mit Panoramablick auf den Golf von Thailand, privaten Pools und entspannter Inselgastlichkeit.",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "Direkt buchen - Seaview Residence",
-    "payTitle": "Sicherer Checkout - Seaview Residence",
-    "successTitle": "Buchungsbestätigung - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "Direkt buchen - Auralis Cove Retreat",
+    "payTitle": "Sicherer Checkout - Auralis Cove Retreat",
+    "successTitle": "Buchungsbestätigung - Auralis Cove Retreat",
     "villaFallback": "Villa"
   },
   "A11y": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "Privates Paradies mit Infinity-Pool",
-      "description": "Erleben Sie höchsten Luxus in unserer großzügigen Pool Villa mit privatem Infinity-Pool, offenem Wohnbereich und üppigem tropischem Garten. Bodentiefe Fenster holen die Natur in jeden Raum.",
+      "description": "Erleben Sie höchsten Luxus in unserer großzügigen Tideglass Pool Residence mit privatem Infinity-Pool, offenem Wohnbereich und üppigem tropischem Garten. Bodentiefe Fenster holen die Natur in jeden Raum.",
       "storyTagline": "Wo Morgen mit einem privaten Bad unter offenem Himmel beginnen",
       "amenities": {
         "privatePool": "Privater Pool",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "Ruhiger Rückzugsort mitten in der Natur",
-      "description": "Eingebettet in tropische Gärten bietet die Garden Suite einen stillen Rückzugsort mit großzügigem Schlafzimmer, modernem Bad und privater Terrasse. Wachen Sie mit Vogelgesang und Frangipani-Duft auf.",
+      "description": "Eingebettet in tropische Gärten bietet die Mossbell Garden Suite einen stillen Rückzugsort mit großzügigem Schlafzimmer, modernem Bad und privater Terrasse. Wachen Sie mit Vogelgesang und Frangipani-Duft auf.",
       "storyTagline": "Eine ruhige Ecke der Insel, in Grün gehüllt",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "Boho-Loftleben mit Fenstern in die Baumwipfel",
-      "description": "Das Canopy Loft Penthouse ist eine helle Villa im Loftstil mit hohen Rasterfenstern, warmem Holz, weichen neutralen Textilien und entspannten Boho-Details. Schlafpodest, Lounge-Ecke und Kitchenette schaffen ein intimes Refugium über den Bäumen.",
+      "description": "Das Canopy Halo Loft ist eine helle Villa im Loftstil mit hohen Rasterfenstern, warmem Holz, weichen neutralen Textilien und entspannten Boho-Details. Schlafpodest, Lounge-Ecke und Kitchenette schaffen ein intimes Refugium über den Bäumen.",
       "storyTagline": "Aufwachen zwischen weichem Licht, warmem Holz und Baumwipfelfenstern",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Canopy Loft 360°-Blick",
+      "name": "Canopy Halo Loft 360°-Blick",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "Ihr Rückzugsort wartet",
-      "summary": "Umgeben von tropischen Gärten verlangsamt die Garden Suite das Leben auf den Rhythmus raschelnder Palmen. Jedes Detail lädt ein, länger zu bleiben.",
+      "summary": "Umgeben von tropischen Gärten verlangsamt die Mossbell Garden Suite das Leben auf den Rhythmus raschelnder Palmen. Jedes Detail lädt ein, länger zu bleiben.",
       "highlights": {
         "one": "Private Terrasse mit Gartenblick",
         "two": "Regendusche mitten im Naturgefühl",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "Ihr Loft wartet",
-      "summary": "Das Canopy Loft Penthouse fühlt sich an wie ein privates Studio über den Bäumen: helle Rasterfenster, schwarze Balken, warmes Holz und weiche Webstrukturen in einem ruhigen Hideaway.",
+      "summary": "Das Canopy Halo Loft fühlt sich an wie ein privates Studio über den Bäumen: helle Rasterfenster, schwarze Balken, warmes Holz und weiche Webstrukturen in einem ruhigen Hideaway.",
       "highlights": {
         "one": "Hohe Baumwipfelfenster mit eingebauter Bank",
         "two": "Gemütliches Schlafpodest",
@@ -411,7 +411,7 @@
     },
     "pv-r2": {
       "title": "Perfekter Honeymoon-Rückzugsort",
-      "body": "Meine Frau und ich wählten die Pool Villa für unsere Flitterwochen und sie übertraf jede Erwartung. Der private Poolbereich ist wunderbar ruhig, der offene Wohnraum fühlt sich luxuriös an und der tropische Garten bietet vollständige Privatsphäre."
+      "body": "Meine Frau und ich wählten die Tideglass Pool Residence für unsere Flitterwochen und sie übertraf jede Erwartung. Der private Poolbereich ist wunderbar ruhig, der offene Wohnraum fühlt sich luxuriös an und der tropische Garten bietet vollständige Privatsphäre."
     },
     "pv-r3": {
       "title": "Fühlte sich wie ein Fünf-Sterne-Resort an",
@@ -423,7 +423,7 @@
     },
     "pv-r5": {
       "title": "Bester Aufenthalt in Thailand",
-      "body": "Nach drei Wochen Reise durch Thailand war dies unsere liebste Unterkunft. Die Pool Villa ist ein Paradies. Aufwachen, die Schiebetüren öffnen und direkt in den Pool springen - unschlagbar. Der Host organisierte einen privaten Koch für einen unvergesslichen Abend."
+      "body": "Nach drei Wochen Reise durch Thailand war dies unsere liebste Unterkunft. Die Tideglass Pool Residence ist ein Paradies. Aufwachen, die Schiebetüren öffnen und direkt in den Pool springen - unschlagbar. Der Host organisierte einen privaten Koch für einen unvergesslichen Abend."
     },
     "pv-r6": {
       "title": "Superhost aus gutem Grund",
@@ -435,7 +435,7 @@
     },
     "gs-r2": {
       "title": "Perfekt für Paare",
-      "body": "Die Garden Suite ist genau richtig für einen romantischen Aufenthalt. Gemütlich, aber nicht eng, schön gestaltet und durch den Garten sehr privat. Frühstück auf der Terrasse jeden Morgen war wunderbar, das Bett extrem bequem."
+      "body": "Die Mossbell Garden Suite ist genau richtig für einen romantischen Aufenthalt. Gemütlich, aber nicht eng, schön gestaltet und durch den Garten sehr privat. Frühstück auf der Terrasse jeden Morgen war wunderbar, das Bett extrem bequem."
     },
     "gs-r3": {
       "title": "Charmant und gut gelegen",
@@ -451,23 +451,23 @@
     },
     "ph-r1": {
       "title": "Ein Loft-Hideaway voller weichem Licht",
-      "body": "Allein die hohen Fenster sind den Aufenthalt wert. Wir hatten langsame Morgen auf der Fensterbank mit Kaffee und Bäumen direkt davor. Das Canopy Loft Penthouse ist wunderschön mit warmem Holz, gewebten Details und einer praktischen Kitchenette gestaltet."
+      "body": "Allein die hohen Fenster sind den Aufenthalt wert. Wir hatten langsame Morgen auf der Fensterbank mit Kaffee und Bäumen direkt davor. Das Canopy Halo Loft ist wunderschön mit warmem Holz, gewebten Details und einer praktischen Kitchenette gestaltet."
     },
     "ph-r2": {
       "title": "Jeden Cent wert",
-      "body": "Wir feierten unseren Jahrestag im Canopy Loft Penthouse und es war perfekt. Die Schlafnische ist gemütlich, die Lounge intim und der ganze Raum hat eine ruhige Studio-Atmosphäre. Blumen und Champagner warteten bei Ankunft."
+      "body": "Wir feierten unseren Jahrestag im Canopy Halo Loft und es war perfekt. Die Schlafnische ist gemütlich, die Lounge intim und der ganze Raum hat eine ruhige Studio-Atmosphäre. Blumen und Champagner warteten bei Ankunft."
     },
     "ph-r3": {
       "title": "Die beste Unterkunft auf Koh Tao",
-      "body": "Wir haben an vielen Orten auf der Insel übernachtet, aber nichts kommt an das Canopy Loft Penthouse heran. Das Loft ist luftig ohne kühl zu wirken, die Designdetails sind wunderschön und die Baumwipfelfenster machen jeden Morgen filmreif."
+      "body": "Wir haben an vielen Orten auf der Insel übernachtet, aber nichts kommt an das Canopy Halo Loft heran. Das Loft ist luftig ohne kühl zu wirken, die Designdetails sind wunderschön und die Baumwipfelfenster machen jeden Morgen filmreif."
     },
     "ph-r4": {
       "title": "Gehobener Luxus auf einer tropischen Insel",
-      "body": "Die Liebe zum Detail im Canopy Loft Penthouse ist bemerkenswert. Von der Matratze bis zur Kitchenette wirkt alles bewusst gewählt. Abends saßen wir mit Lichterketten in der Lounge und wollten nicht gehen."
+      "body": "Die Liebe zum Detail im Canopy Halo Loft ist bemerkenswert. Von der Matratze bis zur Kitchenette wirkt alles bewusst gewählt. Abends saßen wir mit Lichterketten in der Lounge und wollten nicht gehen."
     },
     "ph-r5": {
       "title": "Unvergesslicher Aufenthalt",
-      "body": "Mit Freunden unterwegs gab uns das Canopy Loft Penthouse genau den Raum und Komfort, den wir brauchten. Lounge, Kitchenette und Schlafbereich gehen schön ineinander über, und das Licht in den Baumwipfeln ist wirklich beeindruckend."
+      "body": "Mit Freunden unterwegs gab uns das Canopy Halo Loft genau den Raum und Komfort, den wir brauchten. Lounge, Kitchenette und Schlafbereich gehen schön ineinander über, und das Licht in den Baumwipfeln ist wirklich beeindruckend."
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "Rechnungsnummer",
     "demoInvoice": "Demo-Rechnung",
     "issueDate": "Ausstellungsdatum",
-    "demoInvoiceNotice": "Diese Demo-Rechnung wurde von Seaview Residence nur zur Produktdemonstration erstellt.",
+    "demoInvoiceNotice": "Diese Demo-Rechnung wurde von Auralis Cove Retreat nur zur Produktdemonstration erstellt.",
     "receiptNumber": "Quittungsnummer",
     "demoReceipt": "Demo-Quittung",
     "confirmationCode": "Bestätigungscode",

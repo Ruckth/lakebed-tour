@@ -149,7 +149,7 @@
     "exploreMoreVillas": "और विला देखें"
   },
   "Chat": {
-    "defaultTitle": "Seaview कंसीयर्ज",
+    "defaultTitle": "Auralis कंसीयर्ज",
     "propertyTitle": "{propertyName} कंसीयर्ज",
     "open": "कंसीयर्ज चैट खोलें",
     "close": "चैट बंद करें",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "लगभग पूरा है। नीचे बुकिंग कार्ड में चेक-इन तारीख चुनें।",
     "bookingPromptMissingCheckOut": "लगभग पूरा है। नीचे बुकिंग कार्ड में चेकआउट तारीख चुनें।",
     "suggestionCouple": "कपल के लिए कौन सा विला सबसे अच्छा है?",
-    "answerCouple": "Garden Suite कपल्स के लिए सबसे शांत रिट्रीट है। यदि आपको अधिक जगह और निजी पूल चाहिए, तो Pool Villa अधिक शानदार विकल्प है।",
+    "answerCouple": "Mossbell Garden Suite कपल्स के लिए सबसे शांत रिट्रीट है। यदि आपको अधिक जगह और निजी पूल चाहिए, तो Tideglass Pool Residence अधिक शानदार विकल्प है।",
     "suggestionDirect": "सीधे बुक करने पर क्या शामिल है?",
     "answerDirect": "सीधी बुकिंग OTA कीमतों की तुलना में लगभग 15% बचाती है और सपोर्ट सीधे होस्ट से रहता है। एयरपोर्ट पिकअप, स्वागत सुविधाएँ और WhatsApp सहायता मुख्य लाभ हैं।",
     "suggestion360": "क्या मैं विला 360° में देख सकता हूँ?",
@@ -219,12 +219,12 @@
     "close": "डेमो वेबसाइट सूचना बंद करें"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Koh Samui, Thailand में लक्जरी विला",
+    "rootTitle": "Auralis Cove Retreat - Koh Samui, Thailand में लक्जरी विला",
     "rootDescription": "Koh Samui की पहाड़ी पर लक्जरी विला का बुटीक संग्रह, थाईलैंड की खाड़ी के दृश्य, निजी पूल और शांत द्वीपीय सेवा के साथ।",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "सीधे बुक करें - Seaview Residence",
-    "payTitle": "सुरक्षित checkout - Seaview Residence",
-    "successTitle": "बुकिंग पुष्टि - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "सीधे बुक करें - Auralis Cove Retreat",
+    "payTitle": "सुरक्षित checkout - Auralis Cove Retreat",
+    "successTitle": "बुकिंग पुष्टि - Auralis Cove Retreat",
     "villaFallback": "विला"
   },
   "A11y": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "infinity pool के साथ private paradise",
-      "description": "Pool Villa में private infinity pool, खुला living area और tropical garden है। floor-to-ceiling windows हर कमरे में बाहर का सुंदर view लाती हैं।",
+      "description": "Tideglass Pool Residence में private infinity pool, खुला living area और tropical garden है। floor-to-ceiling windows हर कमरे में बाहर का सुंदर view लाती हैं।",
       "storyTagline": "खुले आसमान के नीचे private pool से शुरू होने वाली सुबहें",
       "amenities": {
         "privatePool": "निजी पूल",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "प्रकृति से घिरा शांत retreat",
-      "description": "Garden Suite tropical gardens के बीच है, जिसमें spacious bedroom, modern bathroom और private terrace है। पक्षियों की आवाज़ और frangipani की खुशबू के साथ जागें।",
+      "description": "Mossbell Garden Suite tropical gardens के बीच है, जिसमें spacious bedroom, modern bathroom और private terrace है। पक्षियों की आवाज़ और frangipani की खुशबू के साथ जागें।",
       "storyTagline": "हरियाली में लिपटा island का शांत कोना",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "treetop windows से घिरा boho loft living",
-      "description": "Canopy Loft Penthouse एक bright loft-style villa है, जिसमें ऊँची grid windows, warm wood, soft neutral textiles और relaxed boho details हैं। sleeping platform, lounge और kitchenette इसे trees के ऊपर intimate hideaway बनाते हैं।",
+      "description": "Canopy Halo Loft एक bright loft-style villa है, जिसमें ऊँची grid windows, warm wood, soft neutral textiles और relaxed boho details हैं। sleeping platform, lounge और kitchenette इसे trees के ऊपर intimate hideaway बनाते हैं।",
       "storyTagline": "soft light, warm wood और treetop windows के बीच जागना",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Canopy Loft 360° व्यू",
+      "name": "Canopy Halo Loft 360° व्यू",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "आपका retreat इंतज़ार कर रहा है",
-      "summary": "tropical gardens से घिरा Garden Suite life की pace को palms की आवाज़ के साथ धीमा कर देता है।",
+      "summary": "tropical gardens से घिरा Mossbell Garden Suite life की pace को palms की आवाज़ के साथ धीमा कर देता है।",
       "highlights": {
         "one": "garden view वाला private terrace",
         "two": "nature के बीच rainfall shower",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "आपका loft इंतज़ार कर रहा है",
-      "summary": "Canopy Loft Penthouse trees के ऊपर private studio जैसा लगता है: bright windows, black beams, warm wood और soft textures।",
+      "summary": "Canopy Halo Loft trees के ऊपर private studio जैसा लगता है: bright windows, black beams, warm wood और soft textures।",
       "highlights": {
         "one": "built-in ledge वाली tall treetop windows",
         "two": "cozy loft sleeping platform",
@@ -431,43 +431,43 @@
     },
     "gs-r1": {
       "title": "सूर्यास्त पर garden view जादुई था",
-      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+      "body": "Mossbell Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
     },
     "gs-r2": {
       "title": "couples के लिए perfect",
-      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+      "body": "Mossbell Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
     },
     "gs-r3": {
       "title": "आकर्षक और अच्छी location",
-      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+      "body": "Mossbell Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
     },
     "gs-r4": {
       "title": "Koh Tao के लिए बढ़िया value",
-      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+      "body": "Mossbell Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
     },
     "gs-r5": {
       "title": "शांत island escape",
-      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+      "body": "Mossbell Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
     },
     "ph-r1": {
       "title": "नरम रोशनी से भरा loft",
-      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+      "body": "Canopy Halo Loft bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
     },
     "ph-r2": {
       "title": "हर baht के लायक",
-      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+      "body": "Canopy Halo Loft bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
     },
     "ph-r3": {
       "title": "Koh Tao में सबसे अच्छा accommodation",
-      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+      "body": "Canopy Halo Loft bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
     },
     "ph-r4": {
       "title": "tropical island पर elevated luxury",
-      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+      "body": "Canopy Halo Loft bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
     },
     "ph-r5": {
       "title": "यादगार stay",
-      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+      "body": "Canopy Halo Loft bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "इनवॉइस नंबर",
     "demoInvoice": "डेमो इनवॉइस",
     "issueDate": "जारी तारीख",
-    "demoInvoiceNotice": "यह demo invoice Seaview Residence ने product demo के लिए बनाया है।",
+    "demoInvoiceNotice": "यह demo invoice Auralis Cove Retreat ने product demo के लिए बनाया है।",
     "receiptNumber": "रसीद नंबर",
     "demoReceipt": "डेमो रसीद",
     "confirmationCode": "confirmation code",

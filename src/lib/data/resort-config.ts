@@ -1,5 +1,5 @@
 export const resort = {
-	name: 'Seaview Residence',
+	name: 'Auralis Cove Retreat',
 	tagline: 'Where the ocean meets serenity',
 	description:
 		'A boutique collection of luxury villas perched on the hillside of Koh Samui, offering panoramic Gulf of Thailand views, private pools, and the kind of unhurried service that turns a stay into a memory.',

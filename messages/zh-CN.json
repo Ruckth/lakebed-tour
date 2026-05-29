@@ -149,7 +149,7 @@
     "exploreMoreVillas": "探索更多别墅"
   },
   "Chat": {
-    "defaultTitle": "Seaview 礼宾",
+    "defaultTitle": "Auralis 礼宾",
     "propertyTitle": "{propertyName} 礼宾",
     "open": "打开礼宾聊天",
     "close": "关闭聊天",
@@ -189,7 +189,7 @@
     "bookingPromptMissingCheckIn": "快完成了。请使用下方预订卡选择入住日期。",
     "bookingPromptMissingCheckOut": "快完成了。请使用下方预订卡选择退房日期。",
     "suggestionCouple": "哪间别墅最适合情侣？",
-    "answerCouple": "Garden Suite 是最安静的情侣度假选择。如果您想要更多空间和私人泳池，Pool Villa 会更奢华。",
+    "answerCouple": "Mossbell Garden Suite 是最安静的情侣度假选择。如果您想要更多空间和私人泳池，Tideglass Pool Residence 会更奢华。",
     "suggestionDirect": "直接预订包含什么？",
     "answerDirect": "直接预订相比 OTA 价格约省 15%，并可直接获得房东支持。机场接送、欢迎礼遇和 WhatsApp 直接协助是主要优势。",
     "suggestion360": "可以用 360° 看别墅吗？",
@@ -219,12 +219,12 @@
     "close": "关闭演示网站提示"
   },
   "SEO": {
-    "rootTitle": "Seaview Residence - Koh Samui, Thailand 豪华别墅",
+    "rootTitle": "Auralis Cove Retreat - Koh Samui, Thailand 豪华别墅",
     "rootDescription": "位于 Koh Samui 山坡上的精品豪华别墅，享有泰国湾全景、私人泳池和从容的海岛服务。",
-    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
-    "bookingTitle": "直接预订 - Seaview Residence",
-    "payTitle": "安全结账 - Seaview Residence",
-    "successTitle": "预订确认 - Seaview Residence",
+    "rootOgTitle": "Auralis Cove Retreat - Koh Samui, Thailand",
+    "bookingTitle": "直接预订 - Auralis Cove Retreat",
+    "payTitle": "安全结账 - Auralis Cove Retreat",
+    "successTitle": "预订确认 - Auralis Cove Retreat",
     "villaFallback": "别墅"
   },
   "A11y": {
@@ -244,7 +244,7 @@
   },
   "Resort": {
     "tagline": "海洋与宁静相遇之处",
-    "description": "Seaview Residence 是 Koh Samui 山坡上的精品豪华别墅系列，拥有泰国湾全景、私人泳池，以及让假期成为回忆的从容服务。",
+    "description": "Auralis Cove Retreat 是 Koh Samui 山坡上的精品豪华别墅系列，拥有泰国湾全景、私人泳池，以及让假期成为回忆的从容服务。",
     "location": "Koh Samui, Thailand",
     "locationImageAlt": "Koh Samui, Thailand 航拍景观",
     "amenities": {
@@ -273,7 +273,7 @@
   "Properties": {
     "pool-villa": {
       "tagline": "带无边泳池的私人天堂",
-      "description": "宽敞的 Pool Villa 配有私人无边泳池、开放式起居区和葱郁热带花园。落地窗将户外景致引入室内，每个房间都有迷人视野。",
+      "description": "宽敞的 Tideglass Pool Residence 配有私人无边泳池、开放式起居区和葱郁热带花园。落地窗将户外景致引入室内，每个房间都有迷人视野。",
       "storyTagline": "清晨从露天私人泳池开始",
       "amenities": {
         "privatePool": "私人泳池",
@@ -286,7 +286,7 @@
     },
     "garden-suite": {
       "tagline": "被自然环绕的宁静休憩地",
-      "description": "Garden Suite 隐于热带花园之中，拥有宽敞卧室、现代浴室和私人露台。伴着鸟鸣和鸡蛋花香醒来。",
+      "description": "Mossbell Garden Suite 隐于热带花园之中，拥有宽敞卧室、现代浴室和私人露台。伴着鸟鸣和鸡蛋花香醒来。",
       "storyTagline": "岛上一处被绿意包围的安静角落",
       "amenities": {
         "wifi": "WiFi",
@@ -298,7 +298,7 @@
     },
     "penthouse": {
       "tagline": "被树梢窗景包围的波西米亚阁楼",
-      "description": "Canopy Loft Penthouse 是明亮的阁楼式别墅，拥有高大的格窗、温暖木质、柔和中性色织物和轻松的波西米亚细节。睡眠平台、休闲角和小厨房构成树上隐居感。",
+      "description": "Canopy Halo Loft 是明亮的阁楼式别墅，拥有高大的格窗、温暖木质、柔和中性色织物和轻松的波西米亚细节。睡眠平台、休闲角和小厨房构成树上隐居感。",
       "storyTagline": "在柔光、温木与树梢窗边醒来",
       "amenities": {
         "wifi": "WiFi",
@@ -344,7 +344,7 @@
       }
     },
     "ph-bedroom": {
-      "name": "Canopy Loft 360° 景观",
+      "name": "Canopy Halo Loft 360° 景观",
       "hotspots": {}
     }
   },
@@ -373,7 +373,7 @@
     },
     "garden-suite": {
       "headline": "您的静居正在等待",
-      "summary": "Garden Suite 被热带花园包围，让生活节奏随着棕榈叶声慢下来。每个细节都邀请您多停留一会儿。",
+      "summary": "Mossbell Garden Suite 被热带花园包围，让生活节奏随着棕榈叶声慢下来。每个细节都邀请您多停留一会儿。",
       "highlights": {
         "one": "俯瞰花园的私人露台",
         "two": "自然氛围中的雨淋花洒",
@@ -384,7 +384,7 @@
     },
     "penthouse": {
       "headline": "您的阁楼正在等待",
-      "summary": "Canopy Loft Penthouse 像树梢上的私人工作室：明亮格窗、黑色横梁、温暖木质和柔软织物，共同构成平静的隐居处。",
+      "summary": "Canopy Halo Loft 像树梢上的私人工作室：明亮格窗、黑色横梁、温暖木质和柔软织物，共同构成平静的隐居处。",
       "highlights": {
         "one": "带内置窗台的高大树梢窗",
         "two": "舒适的阁楼睡眠平台",
@@ -431,43 +431,43 @@
     },
     "gs-r1": {
       "title": "日落时的花园景观很梦幻",
-      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+      "body": "Mossbell Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
     },
     "gs-r2": {
       "title": "非常适合情侣",
-      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+      "body": "Mossbell Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
     },
     "gs-r3": {
       "title": "迷人且位置便利",
-      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+      "body": "Mossbell Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
     },
     "gs-r4": {
       "title": "Koh Tao 性价比很高",
-      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+      "body": "Mossbell Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
     },
     "gs-r5": {
       "title": "安静的海岛假期",
-      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+      "body": "Mossbell Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
     },
     "ph-r1": {
       "title": "充满柔光的阁楼隐居处",
-      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+      "body": "Canopy Halo Loft 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
     },
     "ph-r2": {
       "title": "物有所值",
-      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+      "body": "Canopy Halo Loft 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
     },
     "ph-r3": {
       "title": "Koh Tao 最好的住宿",
-      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+      "body": "Canopy Halo Loft 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
     },
     "ph-r4": {
       "title": "热带岛屿上的高级奢华",
-      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+      "body": "Canopy Halo Loft 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
     },
     "ph-r5": {
       "title": "难忘的住宿",
-      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+      "body": "Canopy Halo Loft 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
     }
   },
   "TourSnippets": {
@@ -505,7 +505,7 @@
     "invoiceNumber": "发票编号",
     "demoInvoice": "演示发票",
     "issueDate": "开具日期",
-    "demoInvoiceNotice": "此演示发票仅由 Seaview Residence 用于产品展示。",
+    "demoInvoiceNotice": "此演示发票仅由 Auralis Cove Retreat 用于产品展示。",
     "receiptNumber": "收据编号",
     "demoReceipt": "演示收据",
     "confirmationCode": "确认码",
