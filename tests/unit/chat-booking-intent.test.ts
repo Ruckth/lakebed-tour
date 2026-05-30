@@ -14,7 +14,7 @@ const now = new Date(2026, 4, 21);
 describe("chat booking intent helpers", () => {
   it("detects booking intent in English and Thai text", () => {
     expect(hasChatBookingIntent("Can I book these dates?")).toBe(true);
-    expect(hasChatBookingIntent("Pool Villa ยังว่างไหม")).toBe(true);
+    expect(hasChatBookingIntent("Tideglass Pool Residence ยังว่างไหม")).toBe(true);
     expect(hasChatBookingIntent("Which villa has the nicest view?")).toBe(false);
   });
 
@@ -33,7 +33,7 @@ describe("chat booking intent helpers", () => {
   });
 
   it("parses English day-month ranges and infers nearest future year", () => {
-    expect(parseChatDateRange("Pool Villa from 30 October to 3 November", now)).toEqual({
+    expect(parseChatDateRange("Tideglass Pool Residence from 30 October to 3 November", now)).toEqual({
       checkIn: "2026-10-30",
       checkOut: "2026-11-03",
     });
@@ -72,8 +72,8 @@ describe("chat booking intent helpers", () => {
   });
 
   it("infers property from active context or text", () => {
-    expect(inferChatPropertySlug("Can I book Garden Suite?")).toBe("garden-suite");
-    expect(inferChatPropertySlug("Can I book Pool Villa?", "penthouse")).toBe("penthouse");
+    expect(inferChatPropertySlug("Can I book Mossbell Garden Suite?")).toBe("garden-suite");
+    expect(inferChatPropertySlug("Can I book Tideglass Pool Residence?", "penthouse")).toBe("penthouse");
   });
 
   it("infers guest count near guest wording", () => {
@@ -85,8 +85,8 @@ describe("chat booking intent helpers", () => {
   it("returns a complete context for Thai booking messages", () => {
     expect(
       extractChatBookingContext({
-        latestUserMessage: "Pool Villa สำหรับ 4 คน 30 ตุลาคม ถึง 3 พฤศจิกายน จองเลยครับ",
-        latestAssistantMessage: "Pool Villa ว่างสำหรับเช็คอิน 30 ตุลาคม ถึงเช็คเอาท์ 3 พฤศจิกายน",
+        latestUserMessage: "Tideglass Pool Residence สำหรับ 4 คน 30 ตุลาคม ถึง 3 พฤศจิกายน จองเลยครับ",
+        latestAssistantMessage: "Tideglass Pool Residence ว่างสำหรับเช็คอิน 30 ตุลาคม ถึงเช็คเอาท์ 3 พฤศจิกายน",
         now,
       }),
     ).toEqual({
@@ -102,7 +102,7 @@ describe("chat booking intent helpers", () => {
     expect(
       extractChatBookingContext({
         latestUserMessage: "Which villa is best for a couple?",
-        latestAssistantMessage: "The Garden Suite is quiet and romantic.",
+        latestAssistantMessage: "The Mossbell Garden Suite is quiet and romantic.",
         now,
       }),
     ).toMatchObject({ hasBookingIntent: false, checkIn: "", checkOut: "" });

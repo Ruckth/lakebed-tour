@@ -61,7 +61,7 @@ const ROOMS = [
 	{
 		propertyKey: 'penthouse' as const,
 		slug: 'ph-bedroom',
-		name: 'Canopy Loft 360 View',
+		name: 'Canopy Halo Loft 360 View',
 		imagePath: '/penthouse-bedroom.webp',
 		hotspots: []
 	}

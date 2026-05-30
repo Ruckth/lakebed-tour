@@ -168,7 +168,7 @@ async function seedChatMessageCache(
 test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("Seaview Residence").first()).toBeVisible();
+  await expect(page.getByText("Auralis Cove Retreat").first()).toBeVisible();
   await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
 
   await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
@@ -184,7 +184,7 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   ).toHaveCount(0);
 
   await page.getByRole("button", { name: /Which villa is best for a couple/i }).click();
-  await expect(page.getByText(/The Garden Suite is the quietest couples/i)).toBeVisible();
+  await expect(page.getByText(/The Mossbell Garden Suite is the quietest couples/i)).toBeVisible();
   await expect(
     chatMessages.getByRole("button", { name: /What's included when booking direct/i }),
   ).toBeVisible();
@@ -207,7 +207,7 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await expect(page.getByText("Do you have airport pickup?")).toBeVisible();
   await expect(
     page.getByText(
-      /live chat will connect once Convex is configured|Welcome to Seaview Residence|trouble connecting/i,
+      /live chat will connect once Convex is configured|Welcome to Auralis Cove Retreat|trouble connecting/i,
     ),
   ).toBeVisible();
 
@@ -793,7 +793,7 @@ test("thai booking chat shows a prefilled booking handoff", async ({ page }) => 
   await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
   await page
     .getByPlaceholder("พิมพ์คำถาม")
-    .fill("Pool Villa สำหรับ 4 คน 30 ตุลาคม ถึง 3 พฤศจิกายน จองเลยครับ");
+    .fill("Tideglass Pool Residence สำหรับ 4 คน 30 ตุลาคม ถึง 3 พฤศจิกายน จองเลยครับ");
   await page.getByRole("button", { name: "ส่งข้อความ" }).click();
 
   const bookingCard = page.getByTestId("chat-booking-card");
@@ -938,7 +938,7 @@ test("german chat suggestions float under assistant messages and update", async 
   ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }).click();
-  await expect(page.getByText(/Garden Suite ist der ruhigste Rückzugsort/i)).toBeVisible();
+  await expect(page.getByText(/Mossbell Garden Suite ist der ruhigste Rückzugsort/i)).toBeVisible();
   await expect(
     chatMessages.getByRole("button", { name: "Was ist bei Direktbuchung enthalten?" }),
   ).toBeVisible();

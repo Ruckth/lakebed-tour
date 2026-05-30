@@ -109,7 +109,7 @@
 </script>
 
 <svelte:head>
-	<title>Booking {status === 'confirmed' ? 'Confirmed' : 'Processing'} — Seaview Residence</title>
+	<title>Booking {status === 'confirmed' ? 'Confirmed' : 'Processing'} — Auralis Cove Retreat</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background px-4 pt-20 pb-12 md:pt-24">

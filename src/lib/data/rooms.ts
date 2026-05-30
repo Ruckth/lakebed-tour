@@ -13,7 +13,7 @@ export interface Room {
 }
 
 export const rooms: Room[] = [
-	// Pool Villa rooms
+	// Tideglass Pool Residence rooms
 	{
 		id: 'pv-living',
 		name: 'Living Area',
@@ -31,7 +31,7 @@ export const rooms: Room[] = [
 		]
 	},
 
-	// Garden Suite rooms
+	// Mossbell Garden Suite rooms
 	{
 		id: 'gs-lounge',
 		name: 'Lounge',
@@ -60,7 +60,7 @@ export const rooms: Room[] = [
 	// Penthouse rooms
 	{
 		id: 'ph-bedroom',
-		name: 'Canopy Loft 360 View',
+		name: 'Canopy Halo Loft 360 View',
 		imagePath: '/penthouse-bedroom.webp',
 		hotspots: []
 	}

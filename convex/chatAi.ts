@@ -39,7 +39,7 @@ export const respond = action({
 			? properties.find((p) => p.slug === args.propertySlug) ?? null
 			: null;
 
-		const systemPrompt = `You are a helpful, friendly AI concierge for Seaview Residence, a boutique luxury villa resort in Koh Samui, Thailand. You help guests find the perfect villa and answer questions about pricing and availability.
+		const systemPrompt = `You are a helpful, friendly AI concierge for Auralis Cove Retreat, a boutique luxury villa resort in Koh Samui, Thailand. You help guests find the perfect villa and answer questions about pricing and availability.
 
 PROPERTIES:
 ${propertyContext}

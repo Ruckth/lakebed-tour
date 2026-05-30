@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 test("villa detail page renders gallery, 360 entry, and chat trigger", async ({ page }) => {
   await page.goto("/rooms/pool-villa");
 
-  await expect(page.getByRole("heading", { name: "Pool Villa" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tideglass Pool Residence" })).toBeVisible();
   await expect(page.getByText("Private paradise with infinity pool")).toBeVisible();
   await expect(page.getByRole("button", { name: /Explore 360|Explore in 360/i }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Explore in 360" })).toHaveCount(0);
@@ -20,11 +20,11 @@ test("home villa 360 opens the tour overlay without leaving home", async ({ page
 
   const poolCard = page
     .getByRole("article")
-    .filter({ has: page.getByRole("heading", { name: "Pool Villa" }) });
+    .filter({ has: page.getByRole("heading", { name: "Tideglass Pool Residence" }) });
   await poolCard.getByRole("button", { name: "Explore 360" }).click();
 
   await expect(page).toHaveURL((url) => url.pathname === "/");
-  await expect(page.getByTestId("tour-viewer")).toContainText("Pool Villa");
+  await expect(page.getByTestId("tour-viewer")).toContainText("Tideglass Pool Residence");
   await expect(page.getByRole("button", { name: "Close" })).toBeVisible();
 
   const viewerBox = await page.getByTestId("tour-viewer").boundingBox();
@@ -55,5 +55,5 @@ test("mobile villa chat trigger targets the property chat page", async ({ page }
     expect(url.searchParams.get("returnTo")).toBe("/rooms/pool-villa");
     return true;
   });
-  await expect(page.getByRole("button", { name: /Restart chat - Pool Villa concierge/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Restart chat - Tideglass Pool Residence concierge/i })).toBeVisible();
 });

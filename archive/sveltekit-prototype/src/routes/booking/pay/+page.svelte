@@ -85,7 +85,7 @@
 </script>
 
 <svelte:head>
-	<title>Demo Payment — Seaview Residence</title>
+	<title>Demo Payment — Auralis Cove Retreat</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background pt-20 pb-12 md:pt-24">

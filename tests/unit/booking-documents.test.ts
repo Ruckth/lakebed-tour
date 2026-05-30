@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { buildInvoicePdf, buildReceiptPdf, type BookingDocumentData } from "@/lib/utils/booking-documents";
 
 const documentData: BookingDocumentData = {
-  resortName: "Seaview Residence",
+  resortName: "Auralis Cove Retreat",
   resortAddress: "88/8 Moo 3, Bophut, Koh Samui, Surat Thani 84320",
   resortEmail: "stay@seaviewresidence.com",
   resortPhone: "+66 77 123 456",
-  propertyName: "Pool Villa",
+  propertyName: "Tideglass Pool Residence",
   guestName: "Maya Chen",
   guestEmail: "maya@example.com",
   guestPhone: "+66 81 234 5678",

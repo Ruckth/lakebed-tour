@@ -17,18 +17,18 @@
         {
           text: "What villa types do you have?",
           answer:
-            'We offer **3 villa types**: Pool Villa (2BR, private infinity pool), Garden Suite (1BR, ocean view), and Penthouse (2BR, panoramic stay). Scroll up to "Our Villas" to compare the feel, size, and nightly rate.',
+            'We offer **3 villa types**: Tideglass Pool Residence (2BR, private infinity pool), Mossbell Garden Suite (1BR, ocean view), and Canopy Halo Loft (2BR, panoramic stay). Scroll up to "Our Villas" to compare the feel, size, and nightly rate.',
         },
         {
           text: "Which villa is best for a couple?",
-          answer: `The **Garden Suite** is our couples' favorite for a quieter, more intimate stay. If you want more space and your own pool, the **Pool Villa** is the step-up choice.`,
+          answer: `The **Mossbell Garden Suite** is our couples' favorite for a quieter, more intimate stay. If you want more space and your own pool, the **Tideglass Pool Residence** is the step-up choice.`,
         },
       ],
       1: [
         {
           text: "What's the nightly rate?",
           answer:
-            "Rates currently start from **฿4,500/night** for Garden Suite, **฿8,500/night** for Pool Villa, and **฿12,000/night** for the Penthouse before direct-booking savings. Open any villa card for details and the next best step.",
+            "Rates currently start from **฿4,500/night** for Mossbell Garden Suite, **฿8,500/night** for Tideglass Pool Residence, and **฿12,000/night** for Canopy Halo Loft before direct-booking savings. Open any villa card for details and the next best step.",
         },
         {
           text: "Which villa is available next week?",
@@ -350,7 +350,7 @@
                 >{propertyName}</strong
               > — availability, pricing, amenities, or local recommendations.
             {:else}
-              Welcome to Seaview Residence. I can help you find the perfect
+              Welcome to Auralis Cove Retreat. I can help you find the perfect
               villa for your stay. Ask about our villas, pricing, or
               availability.
             {/if}

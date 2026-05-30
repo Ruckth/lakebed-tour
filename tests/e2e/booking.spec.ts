@@ -33,10 +33,10 @@ test("booking flow validates steps and reaches demo payment", async ({ page }) =
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Review and pay" })).toBeVisible();
-  await expect(page.getByTestId("booking-review-property")).toContainText("Garden Suite");
+  await expect(page.getByTestId("booking-review-property")).toContainText("Mossbell Garden Suite");
   await expect(page.getByTestId("booking-review-dates")).toContainText("2 nights");
   await expect(page.getByTestId("booking-review-guests")).toHaveText("2 guests");
-  await expect(page.getByText(/Garden Suite, 2 guests, 2 nights/i)).toHaveCount(0);
+  await expect(page.getByText(/Mossbell Garden Suite, 2 guests, 2 nights/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Continue to Pay" }).click();
 
   await expect(page).toHaveURL(/\/booking\/pay\?bookingId=demo/);
