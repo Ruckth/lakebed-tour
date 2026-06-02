@@ -96,6 +96,7 @@ type EnsureSessionOptions = {
   markOpen?: boolean;
   validateForReuse?: boolean;
   hydrateMessages?: boolean;
+  generation?: number;
 };
 
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
@@ -663,6 +664,8 @@ function ChatExperience({
   const keyboardInsetRef = useRef(0);
   const keyboardFocusStartedAtRef = useRef(0);
   const keyboardViewportBaselineRef = useRef<number | null>(null);
+  const chatGenerationRef = useRef(0);
+  const isRestartingChatRef = useRef(false);
   const restoredMessageCacheRef = useRef(false);
   const previousPropertySlugRef = useRef(activePropertySlug);
   const browserGateAttemptedRef = useRef(false);
@@ -990,6 +993,7 @@ function ChatExperience({
 
   useEffect(() => {
     if (!messageCacheReady) return;
+    if (isRestartingChatRef.current) return;
     if (!messages.length) return;
 
     writeCachedChatMessages(
@@ -1055,7 +1059,7 @@ function ChatExperience({
     sessionId,
   ]);
 
-  const createFreshSession = useCallback(async () => {
+  const createFreshSession = useCallback(async (generation = chatGenerationRef.current) => {
     if (!convex) return null;
     const id = await createChatSession(convex, {
       propertySlug: activePropertySlug || undefined,
@@ -1063,6 +1067,7 @@ function ChatExperience({
       visitorId: getOrCreateVisitorId(),
       ...getBrowserChatMetadata(),
     });
+    if (generation !== chatGenerationRef.current) return null;
     setStoredSessionId(id);
     setSessionId(id);
     return id;
@@ -1074,6 +1079,7 @@ function ChatExperience({
       markOpen = false,
       hydrateMessages = true,
       enforceReusableLimit = true,
+      generation = chatGenerationRef.current,
     ) => {
       if (!convex) return null;
       await touchChatSession(convex, {
@@ -1083,6 +1089,7 @@ function ChatExperience({
         isOpen: markOpen,
       });
 
+      if (generation !== chatGenerationRef.current) return null;
       setStoredSessionId(id);
       setSessionId(id);
 
@@ -1098,6 +1105,7 @@ function ChatExperience({
         throw new Error("Chat session has reached the reusable message limit.");
       }
 
+      if (generation !== chatGenerationRef.current) return null;
       const restoredMessages = normalizeTranscriptMessages(transcript);
       setMessages(restoredMessages);
       setLatestExchange(latestExchangeFromMessages(restoredMessages));
@@ -1111,6 +1119,7 @@ function ChatExperience({
       markOpen = false,
       validateForReuse = false,
       hydrateMessages = false,
+      generation = chatGenerationRef.current,
     }: EnsureSessionOptions = {}) => {
       if (!convex) return null;
       if (
@@ -1129,6 +1138,7 @@ function ChatExperience({
               markOpen,
               hydrateMessages,
               false,
+              generation,
             );
           }
         } catch {
@@ -1139,9 +1149,11 @@ function ChatExperience({
       if (sessionId) {
         if (validateForReuse) {
           try {
-            await hydrateExistingSession(sessionId, markOpen, hydrateMessages);
+            await hydrateExistingSession(sessionId, markOpen, hydrateMessages, true, generation);
+            if (generation !== chatGenerationRef.current) return null;
             return sessionId;
           } catch {
+            if (generation !== chatGenerationRef.current) return null;
             clearStoredSessionId();
             clearCachedChatMessages(sessionId);
             setSessionId(null);
@@ -1149,7 +1161,7 @@ function ChatExperience({
               setMessages([]);
               setLatestExchange(null);
             }
-            return await createFreshSession();
+            return await createFreshSession(generation);
           }
         }
 
@@ -1161,15 +1173,18 @@ function ChatExperience({
             isOpen: true,
           });
         }
+        if (generation !== chatGenerationRef.current) return null;
         return sessionId;
       }
 
       const storedId = getStoredSessionId();
       if (storedId) {
         try {
-          await hydrateExistingSession(storedId, markOpen, hydrateMessages);
+          await hydrateExistingSession(storedId, markOpen, hydrateMessages, true, generation);
+          if (generation !== chatGenerationRef.current) return null;
           return storedId;
         } catch {
+          if (generation !== chatGenerationRef.current) return null;
           clearStoredSessionId();
           clearCachedChatMessages(storedId);
         }
@@ -1187,6 +1202,8 @@ function ChatExperience({
               reusableSession._id,
               markOpen,
               hydrateMessages,
+              true,
+              generation,
             );
           }
         } catch {
@@ -1194,7 +1211,7 @@ function ChatExperience({
         }
       }
 
-      return await createFreshSession();
+      return await createFreshSession(generation);
     },
     [
       activePropertySlug,
@@ -1262,6 +1279,7 @@ function ChatExperience({
   ]);
 
   const primeSessionForOpen = useCallback(async () => {
+    const generation = chatGenerationRef.current;
     if (!convex || !messageCacheReady) {
       setSessionReady(true);
       return;
@@ -1274,10 +1292,12 @@ function ChatExperience({
         markOpen: true,
         validateForReuse: true,
         hydrateMessages: shouldHydrateMessages,
+        generation,
       });
     } catch {
       // Chat can still operate from the local transcript if the session touch fails.
     } finally {
+      if (generation !== chatGenerationRef.current) return;
       setSessionReady(true);
       setIsHydratingSession(false);
     }
@@ -1293,39 +1313,46 @@ function ChatExperience({
 
   const restartChat = useCallback(async () => {
     const previousSessionId = sessionId ?? getStoredSessionId();
+    const generation = chatGenerationRef.current + 1;
+    chatGenerationRef.current = generation;
+    isRestartingChatRef.current = true;
     clearKnownChatMessageCaches(previousSessionId);
     clearStoredSessionId();
     restoredMessageCacheRef.current = false;
     setSessionReady(false);
     setIsHydratingSession(false);
+    setSessionId(null);
+    setMessages([]);
+    setLatestExchange(null);
+    setRankedSuggestions([]);
+    setInput("");
+    setIsTyping(false);
+    setContactStatus("idle");
+    setOpen(true);
 
     if (!convex) {
-      setSessionId(null);
-      setMessages([]);
-      setLatestExchange(null);
-      setRankedSuggestions([]);
-      setInput("");
-      setIsTyping(false);
-      setContactStatus("idle");
+      isRestartingChatRef.current = false;
       setSessionReady(true);
-      setOpen(true);
       return;
     }
 
     try {
-      const id = await createFreshSession();
+      if (previousSessionId) {
+        await closeChatSession(convex, { sessionId: previousSessionId }).catch(() => undefined);
+      }
+      if (generation !== chatGenerationRef.current) return;
+      const id = await createFreshSession(generation);
+      if (generation !== chatGenerationRef.current) return;
       if (!id) throw new Error("No chat session");
-      setMessages([]);
-      setLatestExchange(null);
-      setRankedSuggestions([]);
-      setInput("");
-      setIsTyping(false);
-      setContactStatus("idle");
       setSessionReady(true);
-      setOpen(true);
     } catch {
+      if (generation !== chatGenerationRef.current) return;
       setSessionReady(true);
       setContactStatus("error");
+    } finally {
+      if (generation === chatGenerationRef.current) {
+        isRestartingChatRef.current = false;
+      }
     }
   }, [convex, createFreshSession, sessionId]);
 
@@ -1556,12 +1583,19 @@ function ChatExperience({
     }
   }
 
-  async function recoverPersistedAssistantMessage(sessionId: string, userMessage: string) {
+  async function recoverPersistedAssistantMessage(
+    sessionId: string,
+    userMessage: string,
+    generation = chatGenerationRef.current,
+  ) {
     for (let attempt = 0; attempt < TRANSCRIPT_RECOVERY_ATTEMPTS; attempt += 1) {
+      if (generation !== chatGenerationRef.current) return null;
       if (attempt > 0) await wait(TRANSCRIPT_RECOVERY_DELAY_MS);
+      if (generation !== chatGenerationRef.current) return null;
 
       try {
         const transcript = await getChatMessages(convex!, { sessionId, limit: 25 });
+        if (generation !== chatGenerationRef.current) return null;
         const matchingUserIndex = transcript.findLastIndex(
           (message) => message.role === "user" && message.content.trim() === userMessage,
         );
@@ -1583,11 +1617,18 @@ function ChatExperience({
     sessionId: string,
     userMessage: string,
     placeholderMessage: string,
+    generation = chatGenerationRef.current,
   ) {
     for (let attempt = 0; attempt < BACKGROUND_RECONCILE_ATTEMPTS; attempt += 1) {
       await wait(BACKGROUND_RECONCILE_DELAY_MS);
-      const recoveredMessage = await recoverPersistedAssistantMessage(sessionId, userMessage);
+      if (generation !== chatGenerationRef.current) return;
+      const recoveredMessage = await recoverPersistedAssistantMessage(
+        sessionId,
+        userMessage,
+        generation,
+      );
       if (!recoveredMessage || recoveredMessage === placeholderMessage) continue;
+      if (generation !== chatGenerationRef.current) return;
 
       setMessages((items) => {
         const next = [...items];
@@ -1608,6 +1649,7 @@ function ChatExperience({
   }
 
   async function sendMessage(inputOrSuggestion: string | ChatSuggestion) {
+    const generation = chatGenerationRef.current;
     const selectedSuggestion =
       typeof inputOrSuggestion === "string" ? null : inputOrSuggestion;
     const text =
@@ -1634,13 +1676,15 @@ function ChatExperience({
       });
       if (convex) {
         try {
-          const id = await ensureSession({ markOpen: true });
+          const id = await ensureSession({ markOpen: true, generation });
+          if (generation !== chatGenerationRef.current) return;
           if (id) {
             await addChatMessage(convex, {
               sessionId: id,
               role: "user",
               content: clean,
             });
+            if (generation !== chatGenerationRef.current) return;
             await addChatMessage(convex, {
               sessionId: id,
               role: "assistant",
@@ -1680,7 +1724,8 @@ function ChatExperience({
     setIsTyping(true);
     let id: string | null = null;
     try {
-      id = await ensureSession({ markOpen: true });
+      id = await ensureSession({ markOpen: true, generation });
+      if (generation !== chatGenerationRef.current) return;
       if (!id) throw new Error("No chat session");
       if (rankedSuggestion) {
         await markChatSuggestionClicked(convex, {
@@ -1688,12 +1733,14 @@ function ChatExperience({
           suggestionId: rankedSuggestion.suggestionId,
         }).catch(() => null);
       }
+      if (generation !== chatGenerationRef.current) return;
       const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,
         propertySlug: activePropertySlug || undefined,
         locale,
       });
+      if (generation !== chatGenerationRef.current) return;
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)
@@ -1704,7 +1751,11 @@ function ChatExperience({
         assistantMessage: response,
       });
     } catch {
-      const recoveredMessage = id ? await recoverPersistedAssistantMessage(id, clean) : null;
+      if (generation !== chatGenerationRef.current) return;
+      const recoveredMessage = id
+        ? await recoverPersistedAssistantMessage(id, clean, generation)
+        : null;
+      if (generation !== chatGenerationRef.current) return;
       const assistantMessage = recoveredMessage ?? t("fallback");
       setMessages((items) => [
         ...items,
@@ -1718,9 +1769,10 @@ function ChatExperience({
         assistantMessage,
       });
       if (!recoveredMessage && id) {
-        void reconcilePersistedAssistantMessage(id, clean, assistantMessage);
+        void reconcilePersistedAssistantMessage(id, clean, assistantMessage, generation);
       }
     } finally {
+      if (generation !== chatGenerationRef.current) return;
       setIsTyping(false);
     }
   }
