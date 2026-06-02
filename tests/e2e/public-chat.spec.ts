@@ -345,11 +345,21 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
 
   await expect(page.getByText("Cached restart question")).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  const chatMessages = page.getByTestId("chat-messages");
 
   await expect(page.getByText("Cached restart question")).toHaveCount(0);
   await expect(page.getByText("Cached restart answer")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(page.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(6);
+
+  await chatMessages.evaluate((node) => {
+    const element = node as HTMLElement;
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(page.getByText("Cached restart question")).toHaveCount(0);
+  await expect(page.getByText("Cached restart answer")).toHaveCount(0);
+
   await expect
     .poll(async () =>
       page.evaluate(
@@ -360,8 +370,25 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
     )
     .toBeNull();
   await expect
-    .poll(async () => page.evaluate((sessionKey) => window.localStorage.getItem(sessionKey), CHAT_SESSION_STORAGE_KEY))
-    .toBeNull();
+    .poll(async () =>
+      page.evaluate((sessionKey) => window.localStorage.getItem(sessionKey), CHAT_SESSION_STORAGE_KEY),
+    )
+    .not.toBe(sessionId);
+
+  const newSessionCache = await page.evaluate(
+    ({ cachePrefix, seededSessionId, sessionKey }) => {
+      const nextSessionId = window.localStorage.getItem(sessionKey);
+      if (!nextSessionId || nextSessionId === seededSessionId) return "";
+      return window.localStorage.getItem(`${cachePrefix}${nextSessionId}`) ?? "";
+    },
+    {
+      cachePrefix: CHAT_MESSAGE_CACHE_PREFIX,
+      seededSessionId: sessionId,
+      sessionKey: CHAT_SESSION_STORAGE_KEY,
+    },
+  );
+  expect(newSessionCache).not.toContain("Cached restart question");
+  expect(newSessionCache).not.toContain("Cached restart answer");
 });
 
 test("mobile chat trigger stays in the same position on booking and home", async ({ page }) => {

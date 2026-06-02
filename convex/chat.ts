@@ -134,6 +134,12 @@ export const getReusableSession = query({
 
 		for (const session of sessions) {
 			if (session.channel !== 'web') continue;
+			if (
+				session.lastClosedAt &&
+				(!session.lastOpenedAt || session.lastClosedAt >= session.lastOpenedAt)
+			) {
+				continue;
+			}
 
 			const legacyMessageCount = session.messages?.length ?? 0;
 			if (!isReusableChatMessageCount(legacyMessageCount, messageLimit)) continue;
