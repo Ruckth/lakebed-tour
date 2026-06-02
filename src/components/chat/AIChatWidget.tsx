@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { useChatPageContext } from "@/components/chat/ChatContext";
+import { ChatVillaTourCard } from "@/components/chat/ChatVillaTourCard";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { MessagingButtons } from "@/components/chat/MessagingButtons";
 import {
@@ -44,6 +45,7 @@ import {
   type ChatSuggestionCandidate,
   type ChatSuggestionId,
 } from "@/lib/chat/suggestions";
+import { getChatActionCard, type ChatActionCard } from "@/lib/chat/action-card";
 import { localizeHref, stripLocalePrefix } from "@/i18n/routing";
 import { extractChatBookingContext, getBookingPromptKey, type ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
@@ -436,6 +438,14 @@ function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
   return null;
 }
 
+function previousUserMessageFor(items: Message[], assistantIndex: number) {
+  for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
+    if (items[userIndex]?.role === "user") return items[userIndex].content;
+  }
+
+  return "";
+}
+
 function localBookingReplyKey(context: ChatBookingContext) {
   return getBookingPromptKey(context);
 }
@@ -758,21 +768,26 @@ function ChatExperience({
     }
     return -1;
   }, [messages]);
-  const latestBookingContext = useMemo(
+  const messageActionCards = useMemo<ChatActionCard[]>(
     () =>
-      latestExchange
-        ? extractChatBookingContext({
-            latestUserMessage: latestExchange.userMessage,
-            latestAssistantMessage: latestExchange.assistantMessage,
-            activePropertySlug: activePropertySlug || undefined,
-          })
-        : null,
-    [activePropertySlug, latestExchange],
+      messages.map((message, index) => {
+        if (message.role !== "assistant") return { type: "none" };
+
+        const clickedSuggestionId =
+          index === latestAssistantIndex ? latestExchange?.clickedSuggestionId : null;
+        return getChatActionCard({
+          latestUserMessage: previousUserMessageFor(messages, index),
+          latestAssistantMessage: message.content,
+          activePropertySlug: activePropertySlug || undefined,
+          clickedSuggestionId,
+        });
+      }),
+    [activePropertySlug, latestAssistantIndex, latestExchange?.clickedSuggestionId, messages],
   );
   const canShowMessageSuggestions =
     !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
-  const canShowBookingCard =
-    canShowMessageSuggestions && Boolean(latestBookingContext?.hasBookingIntent);
+  const latestActionCard = latestAssistantIndex >= 0 ? messageActionCards[latestAssistantIndex] : null;
+  const hasLatestActionCard = Boolean(latestActionCard && latestActionCard.type !== "none");
   const chatInputDisabled =
     !messageCacheReady ||
     isTyping ||
@@ -1535,7 +1550,7 @@ function ChatExperience({
   useEffect(() => {
     if (!open) return;
     scrollTranscriptToEnd();
-  }, [canShowBookingCard, messages.length, open, scrollTranscriptToEnd]);
+  }, [hasLatestActionCard, messages.length, open, scrollTranscriptToEnd]);
 
   useEffect(() => {
     if (!open) return;
@@ -1894,46 +1909,47 @@ function ChatExperience({
                 ) : null}
               </div>
             ) : null}
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className={cn(
-                  "max-w-[85%]",
-                  message.role === "assistant" &&
-                    index === latestAssistantIndex &&
-                    canShowBookingCard &&
-                    latestBookingContext &&
-                    "w-full max-w-[96%] md:max-w-[85%]",
-                  message.role === "user" ? "ml-auto" : "mr-auto",
-                )}
-              >
+            {messages.map((message, index) => {
+              const actionCard = messageActionCards[index] ?? { type: "none" };
+              const hasActionCard = message.role === "assistant" && actionCard.type !== "none";
+
+              return (
                 <div
+                  key={`${message.role}-${index}`}
                   className={cn(
-                    "rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground",
+                    "max-w-[85%]",
+                    hasActionCard && "w-full max-w-[96%] md:max-w-[85%]",
+                    message.role === "user" ? "ml-auto" : "mr-auto",
                   )}
                 >
-                  {renderMessage(message.content)}
+                  <div
+                    className={cn(
+                      "rounded-2xl px-3 py-2 text-sm leading-relaxed",
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-foreground",
+                    )}
+                  >
+                    {renderMessage(message.content)}
+                  </div>
+                  {actionCard.type === "booking" ? (
+                    <ChatBookingCard context={actionCard.context} />
+                  ) : null}
+                  {actionCard.type === "tour" ? (
+                    <ChatVillaTourCard propertySlug={actionCard.propertySlug} />
+                  ) : null}
+                  {message.role === "assistant" &&
+                  index === latestAssistantIndex &&
+                  canShowMessageSuggestions ? (
+                    <SuggestionChips
+                      suggestions={visibleSuggestions}
+                      onSelect={sendMessage}
+                      disabled={chatInputDisabled}
+                    />
+                  ) : null}
                 </div>
-                {message.role === "assistant" &&
-                index === latestAssistantIndex &&
-                canShowBookingCard &&
-                latestBookingContext ? (
-                  <ChatBookingCard context={latestBookingContext} />
-                ) : null}
-                {message.role === "assistant" &&
-                index === latestAssistantIndex &&
-                canShowMessageSuggestions ? (
-                  <SuggestionChips
-                    suggestions={visibleSuggestions}
-                    onSelect={sendMessage}
-                    disabled={chatInputDisabled}
-                  />
-                ) : null}
-              </div>
-            ))}
+              );
+            })}
             {isTyping ? (
               <TypingIndicator label={t("thinking")} />
             ) : null}
@@ -1952,7 +1968,7 @@ function ChatExperience({
                 lineId={lineId}
                 lineUrl={lineUrl}
                 lineQrImage={lineQrImage}
-                quiet={canShowBookingCard}
+                quiet={hasLatestActionCard}
               />
             </div>
           ) : null}

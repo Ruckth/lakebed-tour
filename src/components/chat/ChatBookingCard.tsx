@@ -20,28 +20,15 @@ import {
 } from "@/lib/booking/dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
+import {
+  getChatVillaBackground,
+  getDemoChatProperties,
+  getLiveChatProperties,
+} from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
-import { getLocalizedProperties, localizePropertyLike } from "@/lib/i18n/public-content";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { getBlockedDatesByProperty, listLiveProperties } from "@/lib/react/convex-api";
 import { cn } from "@/lib/utils";
-
-const chatVillaBackgrounds: Record<string, string> = {
-  "pool-villa": "/pool-villa-veranda-view.webp",
-  "garden-suite": "/garden-image.webp",
-  penthouse: "/canopy-loft-bedroom-photo.jpg",
-};
-
-function getDemoProperties(locale: string): BookingProperty[] {
-  return getLocalizedProperties(locale).map((property) => ({
-    ...property,
-    _id: `demo-${property.id}`,
-    slug: property.id,
-    currency: resort.currency,
-    directDiscountPercent: 15,
-    source: "demo",
-  }));
-}
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const chatT = useTranslations("Chat");
@@ -50,7 +37,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const villaT = useTranslations("Villa");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
-  const fallbackProperties = useMemo(() => getDemoProperties(locale), [locale]);
+  const fallbackProperties = useMemo(() => getDemoChatProperties(locale), [locale]);
   const convex = useOptionalConvex();
   const today = todayIsoLocal();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
@@ -84,16 +71,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         ]);
         if (!active) return;
 
-        const liveProperties = rows.map((row) =>
-          localizePropertyLike(
-            {
-              ...row,
-              id: row.slug,
-              source: "live" as const,
-            },
-            locale,
-          ),
-        );
+        const liveProperties = getLiveChatProperties(rows, locale);
         setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
         setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
@@ -258,7 +236,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                   )}
                 >
                   <PropertyImage
-                    src={chatVillaBackgrounds[item.slug] ?? chatVillaBackgrounds[item.id]}
+                    src={getChatVillaBackground(item)}
                     images={item.images}
                     fallbackImages={[resort.heroImage]}
                     alt=""

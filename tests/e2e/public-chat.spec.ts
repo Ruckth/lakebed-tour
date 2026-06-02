@@ -872,6 +872,45 @@ test("thai booking prompt asks only for missing fields and shows villa cards", a
   await expect(bookingCard.getByTestId("chat-villa-option-penthouse")).toBeVisible();
 });
 
+test("thai 360 chat shows a distinct villa tour card with detail links", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }).click();
+
+  const tourCard = page.getByTestId("chat-tour-card");
+  await expect(tourCard).toBeVisible();
+  await expect(page.getByTestId("chat-booking-card")).toHaveCount(0);
+  await expect(tourCard.getByTestId("chat-booking-check-in")).toHaveCount(0);
+  await expect(tourCard.getByTestId("chat-booking-check-out")).toHaveCount(0);
+  await expect(tourCard.getByRole("button", { name: "จอง" })).toHaveCount(0);
+
+  const gardenTourOption = tourCard.getByTestId("chat-tour-villa-option-garden-suite");
+  await page.waitForTimeout(1000);
+  await gardenTourOption.click();
+  await page.waitForTimeout(250);
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/th/rooms/garden-suite");
+    expect(url.search).toBe("");
+    return true;
+  });
+});
+
+test("chat action cards stay attached after a newer message", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }).click();
+  await expect(page.getByTestId("chat-tour-card")).toBeVisible();
+
+  await page.getByPlaceholder("พิมพ์คำถาม").fill("ขอข้อมูลเพิ่มเติม");
+  await page.getByRole("button", { name: "ส่งข้อความ" }).click();
+
+  await expect(page.getByText("ขอข้อมูลเพิ่มเติม")).toBeVisible();
+  await expect(page.getByTestId("chat-tour-card")).toHaveCount(1);
+  await expect(page.getByTestId("chat-tour-card")).toBeVisible();
+});
+
 test("english booking chat lets visitors choose a missing villa before booking", async ({ page }) => {
   const checkIn = "2026-10-30";
   const checkOut = "2026-11-03";
