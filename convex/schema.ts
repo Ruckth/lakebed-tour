@@ -249,6 +249,7 @@ export default defineSchema({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		content: v.string(),
+		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
 	}).index('by_session', ['sessionId', 'timestamp']),
 

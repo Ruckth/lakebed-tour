@@ -1,6 +1,7 @@
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { BookingProperty } from "@/lib/booking/booking";
+import type { ChatActionHint } from "@/lib/chat/action-card";
 
 const CONVEX_TIMEOUT_MS = 8_000;
 const AI_CONVEX_TIMEOUT_MS = 45_000;
@@ -62,6 +63,7 @@ export type ChatTranscriptMessage = {
   sessionId?: string;
   role: "user" | "assistant";
   content: string;
+  action?: ChatActionHint;
   timestamp?: number;
 };
 
@@ -245,7 +247,7 @@ export async function claimChatBrowserHandoff(
 
 export async function addChatMessage(
   client: ConvexReactClient,
-  args: { sessionId: string; role: "user" | "assistant"; content: string },
+  args: { sessionId: string; role: "user" | "assistant"; content: string; action?: ChatActionHint },
 ) {
   return (await withConvexTimeout(
     client.mutation(api.chat.addMessage, args as never),
@@ -282,7 +284,13 @@ export async function identifyChatVisitor(
 
 export async function askConcierge(
   client: ConvexReactClient,
-  args: { sessionId: string; userMessage: string; propertySlug?: string; locale?: string },
+  args: {
+    sessionId: string;
+    userMessage: string;
+    propertySlug?: string;
+    locale?: string;
+    actionHint?: ChatActionHint;
+  },
 ) {
   return (await withConvexTimeout(
     client.action(api.chatAi.respond, args as never),

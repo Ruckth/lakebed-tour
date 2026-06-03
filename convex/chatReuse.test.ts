@@ -84,4 +84,29 @@ describe("chat session reuse", () => {
 
     expect(reusableSession?._id).toBe(sessionId);
   });
+
+  it("round-trips assistant action metadata with chat messages", async () => {
+    const t = convexTest(schema, modules);
+    const sessionId = await t.mutation(api.chat.createSession, {
+      channel: "web",
+      visitorId: "visitor-action-metadata",
+    });
+
+    await t.mutation(api.chat.addMessage, {
+      sessionId,
+      role: "assistant",
+      content: "Use the booking card below to choose dates.",
+      action: "booking",
+    });
+    await t.mutation(api.chat.addMessage, {
+      sessionId,
+      role: "assistant",
+      content: "This answer should not show an action card.",
+      action: "none",
+    });
+
+    const messages = await t.query(api.chat.getMessages, { sessionId });
+
+    expect(messages.map((message) => message.action)).toEqual(["booking", "none"]);
+  });
 });

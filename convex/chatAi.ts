@@ -7,12 +7,15 @@ import type { ChatMessage } from './lib/chatLlm';
 import { TOOLS, executeTool } from './lib/chatTools';
 import { getFallbackResponse } from './lib/chatFallback';
 
+const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
+
 export const respond = action({
 	args: {
 		sessionId: v.id('chatSessions'),
 		userMessage: v.string(),
 		propertySlug: v.optional(v.string()),
-		locale: v.optional(v.string())
+		locale: v.optional(v.string()),
+		actionHint: v.optional(chatActionValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.runQuery(api.chat.getSession, {
@@ -88,6 +91,7 @@ STYLE:
 			await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 				sessionId: args.sessionId,
 				content: fallbackResponse,
+				...(args.actionHint ? { action: args.actionHint } : {}),
 				locale: args.locale,
 				propertySlug: args.propertySlug,
 				replyToMessageId: userMessageId
@@ -141,6 +145,7 @@ STYLE:
 		await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
 			content: assistantMessage,
+			...(args.actionHint ? { action: args.actionHint } : {}),
 			locale: args.locale,
 			propertySlug: args.propertySlug,
 			replyToMessageId: userMessageId

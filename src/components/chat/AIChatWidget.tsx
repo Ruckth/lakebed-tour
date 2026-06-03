@@ -45,7 +45,12 @@ import {
   type ChatSuggestionCandidate,
   type ChatSuggestionId,
 } from "@/lib/chat/suggestions";
-import { getChatActionCard, type ChatActionCard } from "@/lib/chat/action-card";
+import {
+  getChatActionCard,
+  resolveChatActionHint,
+  type ChatActionCard,
+  type ChatActionHint,
+} from "@/lib/chat/action-card";
 import { localizeHref, stripLocalePrefix } from "@/i18n/routing";
 import { extractChatBookingContext, getBookingPromptKey, type ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
@@ -67,7 +72,7 @@ import {
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { role: "user" | "assistant"; content: string; action?: ChatActionHint };
 type ContactApp = "whatsapp" | "line";
 type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
 type StaticChatSuggestion = ChatSuggestionCandidate & { answer: string; source: "static" };
@@ -76,6 +81,7 @@ type RankedVisibleSuggestion = {
   text: string;
   source: "ranked";
   suggestionId: string;
+  topic: string;
   score: number;
 };
 type ChatSuggestion = StaticChatSuggestion | RankedVisibleSuggestion;
@@ -332,7 +338,11 @@ function isMessage(value: unknown): value is Message {
   const item = value as Partial<Message>;
   return (
     (item.role === "user" || item.role === "assistant") &&
-    typeof item.content === "string"
+    typeof item.content === "string" &&
+    (item.action === undefined ||
+      item.action === "booking" ||
+      item.action === "tour" ||
+      item.action === "none")
   );
 }
 
@@ -414,11 +424,21 @@ function clearKnownChatMessageCaches(sessionId: string | null) {
   clearCachedChatMessages(null);
 }
 
-function normalizeTranscriptMessages(transcript: { role: "user" | "assistant"; content: string }[]) {
-  return transcript.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+function normalizeTranscriptMessages(
+  transcript: { role: "user" | "assistant"; content: string; action?: ChatActionHint }[],
+) {
+  return transcript.map((message) =>
+    message.role === "assistant" && message.action
+      ? createAssistantMessage(message.content, message.action)
+      : {
+          role: message.role,
+          content: message.content,
+        },
+  );
+}
+
+function createAssistantMessage(content: string, action?: ChatActionHint | null): Message {
+  return action ? { role: "assistant", content, action } : { role: "assistant", content };
 }
 
 function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
@@ -699,9 +719,15 @@ function ChatExperience({
   const suggestions = useMemo(
     (): StaticChatSuggestion[] => [
       {
-        id: "couple",
-        text: t("suggestionCouple"),
-        answer: t("answerCouple"),
+        id: "availability",
+        text: t("suggestionAvailability"),
+        answer: t("answerAvailability"),
+        source: "static",
+      },
+      {
+        id: "totalPrice",
+        text: t("suggestionTotalPrice"),
+        answer: t("answerTotalPrice"),
         source: "static",
       },
       {
@@ -717,12 +743,6 @@ function ChatExperience({
         source: "static",
       },
       {
-        id: "availability",
-        text: t("suggestionAvailability"),
-        answer: t("answerAvailability"),
-        source: "static",
-      },
-      {
         id: "guests",
         text: t("suggestionGuests"),
         answer: t("answerGuests"),
@@ -732,6 +752,42 @@ function ChatExperience({
         id: "contact",
         text: t("suggestionContact"),
         answer: t("answerContact"),
+        source: "static",
+      },
+      {
+        id: "couple",
+        text: t("suggestionCouple"),
+        answer: t("answerCouple"),
+        source: "static",
+      },
+      {
+        id: "family",
+        text: t("suggestionFamily"),
+        answer: t("answerFamily"),
+        source: "static",
+      },
+      {
+        id: "cancellation",
+        text: t("suggestionCancellation"),
+        answer: t("answerCancellation"),
+        source: "static",
+      },
+      {
+        id: "airport",
+        text: t("suggestionAirport"),
+        answer: t("answerAirport"),
+        source: "static",
+      },
+      {
+        id: "amenitiesIncluded",
+        text: t("suggestionAmenitiesIncluded"),
+        answer: t("answerAmenitiesIncluded"),
+        source: "static",
+      },
+      {
+        id: "location",
+        text: t("suggestionLocation"),
+        answer: t("answerLocation"),
         source: "static",
       },
     ],
@@ -755,6 +811,7 @@ function ChatExperience({
         text: suggestion.question,
         source: "ranked",
         suggestionId: suggestion._id,
+        topic: suggestion.topic,
         score: suggestion.score,
       })),
     [rankedSuggestions],
@@ -779,6 +836,7 @@ function ChatExperience({
           latestUserMessage: previousUserMessageFor(messages, index),
           latestAssistantMessage: message.content,
           activePropertySlug: activePropertySlug || undefined,
+          actionHint: message.action,
           clickedSuggestionId,
         });
       }),
@@ -1632,6 +1690,7 @@ function ChatExperience({
     sessionId: string,
     userMessage: string,
     placeholderMessage: string,
+    action?: ChatActionHint | null,
     generation = chatGenerationRef.current,
   ) {
     for (let attempt = 0; attempt < BACKGROUND_RECONCILE_ATTEMPTS; attempt += 1) {
@@ -1649,11 +1708,11 @@ function ChatExperience({
         const next = [...items];
         for (let index = next.length - 1; index >= 0; index -= 1) {
           if (next[index]?.role === "assistant" && next[index]?.content === placeholderMessage) {
-            next[index] = { role: "assistant", content: recoveredMessage };
+            next[index] = { ...next[index], content: recoveredMessage };
             return next;
           }
         }
-        return [...items, { role: "assistant", content: recoveredMessage }];
+        return [...items, createAssistantMessage(recoveredMessage, action)];
       });
       setLatestExchange({
         userMessage,
@@ -1681,9 +1740,18 @@ function ChatExperience({
     const rankedSuggestion =
       selectedSuggestion?.source === "ranked" ? selectedSuggestion : null;
     const preset = rankedSuggestion ? undefined : suggestions.find((item) => item.text === clean);
+    const selectedActionHint = resolveChatActionHint({
+      latestUserMessage: clean,
+      activePropertySlug: activePropertySlug || undefined,
+      clickedSuggestionId: preset?.id,
+      rankedSuggestionTopic: rankedSuggestion?.topic,
+    });
     if (preset) {
       const assistantMessage = preset.answer;
-      setMessages((items) => [...items, { role: "assistant", content: assistantMessage }]);
+      setMessages((items) => [
+        ...items,
+        createAssistantMessage(assistantMessage, selectedActionHint),
+      ]);
       setLatestExchange({
         userMessage: clean,
         assistantMessage,
@@ -1704,6 +1772,7 @@ function ChatExperience({
               sessionId: id,
               role: "assistant",
               content: preset.answer,
+              ...(selectedActionHint ? { action: selectedActionHint } : {}),
             });
           }
         } catch {
@@ -1724,10 +1793,10 @@ function ChatExperience({
         : t("noConvex");
       setMessages((items) => [
         ...items,
-        {
-          role: "assistant",
-          content: assistantMessage,
-        },
+        createAssistantMessage(
+          assistantMessage,
+          bookingContext.hasBookingIntent ? "booking" : null,
+        ),
       ]);
       setLatestExchange({
         userMessage: clean,
@@ -1754,13 +1823,14 @@ function ChatExperience({
         userMessage: clean,
         propertySlug: activePropertySlug || undefined,
         locale,
+        ...(selectedActionHint ? { actionHint: selectedActionHint } : {}),
       });
       if (generation !== chatGenerationRef.current) return;
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)
           : t("sent");
-      setMessages((items) => [...items, { role: "assistant", content: response }]);
+      setMessages((items) => [...items, createAssistantMessage(response, selectedActionHint)]);
       setLatestExchange({
         userMessage: clean,
         assistantMessage: response,
@@ -1774,17 +1844,20 @@ function ChatExperience({
       const assistantMessage = recoveredMessage ?? t("fallback");
       setMessages((items) => [
         ...items,
-        {
-          role: "assistant",
-          content: assistantMessage,
-        },
+        createAssistantMessage(assistantMessage, selectedActionHint),
       ]);
       setLatestExchange({
         userMessage: clean,
         assistantMessage,
       });
       if (!recoveredMessage && id) {
-        void reconcilePersistedAssistantMessage(id, clean, assistantMessage, generation);
+        void reconcilePersistedAssistantMessage(
+          id,
+          clean,
+          assistantMessage,
+          selectedActionHint,
+          generation,
+        );
       }
     } finally {
       if (generation !== chatGenerationRef.current) return;
