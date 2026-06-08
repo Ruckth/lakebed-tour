@@ -21,7 +21,35 @@ type GenerateConciergeReplyArgs = {
 
 function normalizeSiteUrl(siteUrl?: string) {
 	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
-	return trimmed || undefined;
+	if (!trimmed) return undefined;
+
+	try {
+		return new URL(trimmed).origin;
+	} catch {
+		return trimmed;
+	}
+}
+
+function isThaiText(text: string) {
+	return /[\u0E00-\u0E7F]/u.test(text);
+}
+
+export function getResortRealityDisclosure(message: string, siteUrl?: string) {
+	const normalized = message.trim().toLocaleLowerCase();
+	const asksRealWorldStatus =
+		/\b(real|legit|genuine|actual|exist|exists|scam|fake)\b/i.test(normalized) ||
+		/(จริงไหม|มีอยู่จริง|ที่พักจริง|รีสอร์ตจริง|หลอกลวง|ปลอม)/u.test(message);
+
+	if (!asksRealWorldStatus) return null;
+
+	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+	const linkText = normalizedSiteUrl ? ` ${normalizedSiteUrl}` : '';
+
+	if (isThaiText(message)) {
+		return `Auralis Cove Retreat ในเว็บไซต์นี้เป็นประสบการณ์เดโม/พรีวิวสำหรับการจองและทัวร์ 360° จึงไม่ควรยืนยันว่าเป็นรีสอร์ตจริงจากแชทนี้ได้ครับ ผมช่วยดูข้อมูลเดโมวิลล่า ราคา ห้องว่าง และลิงก์ทัวร์ให้ได้${linkText}`;
+	}
+
+	return `Auralis Cove Retreat is presented here as a demo/preview experience for booking and 360° villa tours, so I should not claim it is a real-world verified resort from this chat. I can still help you explore the demo villas, pricing, availability, and tour links${linkText}.`;
 }
 
 function lineChannelGuidance(siteUrl?: string) {
@@ -55,8 +83,12 @@ async function generateConciergeReply(
 		? properties.find((p) => p.slug === effectivePropertySlug) ?? null
 		: null;
 	const channel = args.channel ?? session.channel;
+	const realityDisclosure = getResortRealityDisclosure(args.userMessage, args.siteUrl);
+	if (realityDisclosure) {
+		return { response: realityDisclosure, model: 'guardrail' };
+	}
 
-	const systemPrompt = `You are a helpful, friendly AI concierge for Auralis Cove Retreat, a boutique luxury villa resort in Koh Samui, Thailand. You help guests find the perfect villa and answer questions about pricing and availability.
+	const systemPrompt = `You are a helpful, friendly AI concierge for the Auralis Cove Retreat demo/preview experience, a boutique luxury villa booking and 360° tour concept set in Koh Samui, Thailand. You help guests find the perfect demo villa and answer questions about pricing and availability.
 
 PROPERTIES:
 ${propertyContext}
@@ -75,6 +107,7 @@ STYLE:
 - If the latest visitor message language is unclear, reply in English
 - Keep resort facts, prices, villa names, cancellation rules, discounts, and booking rules exactly consistent with the data above
 - Do not translate villa names, price amounts, currency symbols, or booking rules into different facts
+- Do not claim that Auralis Cove Retreat is a real-world verified resort or independently verified business. If asked whether it is real, say it is presented here as a demo/preview experience and offer to help with the demo villas, pricing, availability, or 360° tour.
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
 - If the guest seems ready to book or asks about availability, point them to the booking card below the chat
