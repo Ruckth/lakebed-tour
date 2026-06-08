@@ -80,4 +80,16 @@ describe("LINE webhook helpers", () => {
       "Contact host",
     ]);
   });
+
+  it("builds customer links from the site origin even when SITE_URL includes the webhook path", () => {
+    const answer = resolveLineQuickAnswer({
+      eventType: "message",
+      messageText: "Check dates",
+      properties,
+      siteUrl: "https://tour.helpgueststay.com/api/line/webhook",
+    });
+
+    expect(answer?.text).toContain("https://tour.helpgueststay.com/booking");
+    expect(answer?.text).not.toContain("/api/line/webhook/booking");
+  });
 });

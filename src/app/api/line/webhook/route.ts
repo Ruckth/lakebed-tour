@@ -99,12 +99,17 @@ function getConvexClient() {
 }
 
 function getSiteUrl(request: Request) {
-  return (
+  const configuredUrl =
     process.env.SITE_URL?.trim().replace(/\/+$/, "") ||
     process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") ||
     new URL(request.url).origin ||
-    DEFAULT_SITE_URL
-  );
+    DEFAULT_SITE_URL;
+
+  try {
+    return new URL(configuredUrl).origin;
+  } catch {
+    return configuredUrl || DEFAULT_SITE_URL;
+  }
 }
 
 function classifyLineEvent(event: LineWebhookEvent): LineEventType {

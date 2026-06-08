@@ -119,7 +119,16 @@ const exactQuestionIntents = new Map<string, LineIntent>([
 ]);
 
 function normalizeSiteUrl(siteUrl: string) {
-  return siteUrl.trim().replace(/\/+$/, "") || "https://tour.helpgueststay.com";
+  const fallback = "https://tour.helpgueststay.com";
+  const trimmed = siteUrl.trim();
+  if (!trimmed) return fallback;
+
+  try {
+    const url = new URL(trimmed);
+    return url.origin;
+  } catch {
+    return trimmed.replace(/\/+$/, "") || fallback;
+  }
 }
 
 function formatBaht(value: number) {
