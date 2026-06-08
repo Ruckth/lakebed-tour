@@ -44,6 +44,13 @@ describe("chatSuggestions.nextForSession", () => {
         topic: "availability",
         score: 150,
       });
+      await expect(
+        admin.mutation(api.chatSuggestions.adminCreateCurated, {
+          question: "Is this place real?",
+          answerMode: "static",
+          topic: "villa_fit",
+        }),
+      ).rejects.toThrow("Answer is required");
       let rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
@@ -86,6 +93,122 @@ describe("chatSuggestions.nextForSession", () => {
       rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "all" });
       expect(rows).toEqual([]);
     } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("returns localized static answers and dynamic intent metadata for curated questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Is this place real?",
+        translations: { th: "ที่พักนี้มีอยู่จริงไหม?" },
+        answer: "Yes. This is a real villa managed by our concierge team.",
+        answerTranslations: {
+          th: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา",
+        },
+        answerMode: "static",
+        topic: "villa_fit",
+        score: 99,
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "What is the direct booking price?",
+        answerMode: "dynamic",
+        dynamicIntent: "pricing",
+        topic: "direct_booking",
+        score: 98,
+      });
+
+      const now = 1_700_000_000_000;
+      const sessionId = await t.run(async (ctx) => {
+        return await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-static-answer",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+      });
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        locale: "th",
+        limit: 5,
+      });
+
+      expect(selected[0]).toMatchObject({
+        question: "ที่พักนี้มีอยู่จริงไหม?",
+        answer: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา",
+        answerMode: "static",
+        source: "curated",
+      });
+      expect(selected[1]).toMatchObject({
+        question: "What is the direct booking price?",
+        answerMode: "dynamic",
+        dynamicIntent: "pricing",
+        source: "curated",
+      });
+      expect(selected[1]).not.toHaveProperty("answer");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("translates question bank drafts through the admin action", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  questionTranslations: {
+                    th: "ที่พักนี้มีอยู่จริงไหม?",
+                    de: "Ist dieser Ort echt?",
+                  },
+                  answerTranslations: {
+                    th: "ใช่ ที่พักนี้มีอยู่จริง",
+                    de: "Ja. Diese Villa ist echt.",
+                  },
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const translated = await admin.action(api.chatSuggestions.adminTranslateCuratedDraft, {
+        question: "Is this place real?",
+        answer: "Yes. This villa is real.",
+        targetLocales: ["th", "de"],
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://ai.example.test/v1/chat/completions",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(translated).toEqual({
+        questionTranslations: {
+          th: "ที่พักนี้มีอยู่จริงไหม?",
+          de: "Ist dieser Ort echt?",
+        },
+        answerTranslations: {
+          th: "ใช่ ที่พักนี้มีอยู่จริง",
+          de: "Ja. Diese Villa ist echt.",
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
   });

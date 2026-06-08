@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Component, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,12 +128,18 @@ type AdminSuggestedQuestion = {
 };
 
 type CuratedQuestionStatus = "all" | "active" | "archived";
+type CuratedAnswerMode = "static" | "dynamic";
+type CuratedDynamicIntent = "availability" | "pricing" | "property_details" | "booking_help" | "contact";
 
 type AdminCuratedQuestion = {
   _id: Id<"curatedChatQuestions">;
   question: string;
   normalizedQuestion: string;
   translations?: Record<string, string>;
+  answer?: string;
+  answerTranslations?: Record<string, string>;
+  answerMode?: CuratedAnswerMode;
+  dynamicIntent?: CuratedDynamicIntent;
   locale?: string;
   propertySlug?: string;
   topic: string;
@@ -149,10 +155,14 @@ type AdminCuratedQuestion = {
 
 type QuestionBankForm = {
   question: string;
+  answer: string;
+  answerMode: CuratedAnswerMode;
+  dynamicIntent: CuratedDynamicIntent;
   topic: string;
   score: string;
   propertySlug: string;
   translations: Record<string, string>;
+  answerTranslations: Record<string, string>;
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
@@ -164,6 +174,13 @@ const questionTopics = [
   "availability",
   "booking",
   "amenities",
+  "contact",
+];
+const dynamicIntentOptions: CuratedDynamicIntent[] = [
+  "availability",
+  "pricing",
+  "property_details",
+  "booking_help",
   "contact",
 ];
 const PRESENCE_CLOCK_MS = 10_000;
@@ -291,19 +308,33 @@ function getCuratedQuestionForLocale(question: AdminCuratedQuestion, locale: Loc
   return question.translations?.[locale]?.trim() || question.question;
 }
 
+function getCuratedAnswerForLocale(question: AdminCuratedQuestion, locale: Locale) {
+  if (!question.answer?.trim()) return "";
+  if (locale === defaultLocale) return question.answer;
+  return question.answerTranslations?.[locale]?.trim() || question.answer;
+}
+
 function emptyQuestionBankForm(): QuestionBankForm {
   return {
     question: "",
+    answer: "",
+    answerMode: "static",
+    dynamicIntent: "property_details",
     topic: "villa_fit",
     score: "80",
     propertySlug: "",
     translations: {},
+    answerTranslations: {},
   };
 }
 
 function formForCuratedQuestion(question: AdminCuratedQuestion): QuestionBankForm {
+  const answerMode = question.answerMode ?? (question.answer ? "static" : "dynamic");
   return {
     question: question.question,
+    answer: question.answer ?? "",
+    answerMode,
+    dynamicIntent: question.dynamicIntent ?? "property_details",
     topic: question.topic,
     score: String(question.score),
     propertySlug: question.propertySlug ?? "",
@@ -311,6 +342,11 @@ function formForCuratedQuestion(question: AdminCuratedQuestion): QuestionBankFor
       locales
         .filter((locale) => locale !== defaultLocale)
         .map((locale) => [locale, question.translations?.[locale] ?? ""]),
+    ),
+    answerTranslations: Object.fromEntries(
+      locales
+        .filter((locale) => locale !== defaultLocale)
+        .map((locale) => [locale, question.answerTranslations?.[locale] ?? ""]),
     ),
   };
 }
@@ -326,6 +362,19 @@ function translationsFromForm(form: QuestionBankForm) {
       .map(([locale, value]) => [locale, value.trim()])
       .filter(([, value]) => value),
   );
+}
+
+function answerTranslationsFromForm(form: QuestionBankForm) {
+  return Object.fromEntries(
+    Object.entries(form.answerTranslations)
+      .map(([locale, value]) => [locale, value.trim()])
+      .filter(([, value]) => value),
+  );
+}
+
+function answerModeLabel(mode?: CuratedAnswerMode, answer?: string) {
+  const resolved = mode ?? (answer ? "static" : "dynamic");
+  return resolved === "static" ? "Static" : "Dynamic";
 }
 
 function AdminQueryError({ error }: { error: Error }) {
@@ -901,6 +950,7 @@ function AdminQuestionsView({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<AdminCuratedQuestion | null>(null);
   const [form, setForm] = useState<QuestionBankForm>(() => emptyQuestionBankForm());
+  const [translationLocale, setTranslationLocale] = useState<Locale>("th");
   const [formError, setFormError] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const curatedQuestions = useQuery(api.chatSuggestions.adminListCurated, {
@@ -909,6 +959,7 @@ function AdminQuestionsView({
   }) as AdminCuratedQuestion[] | undefined;
   const createQuestion = useMutation(api.chatSuggestions.adminCreateCurated);
   const updateQuestion = useMutation(api.chatSuggestions.adminUpdateCurated);
+  const translateQuestion = useAction(api.chatSuggestions.adminTranslateCuratedDraft);
   const archiveQuestion = useMutation(api.chatSuggestions.adminArchiveCurated);
   const restoreQuestion = useMutation(api.chatSuggestions.adminRestoreCurated);
   const deleteQuestion = useMutation(api.chatSuggestions.adminDeleteArchivedCurated);
@@ -920,6 +971,7 @@ function AdminQuestionsView({
   function openCreateDialog() {
     setEditingQuestion(null);
     setForm(emptyQuestionBankForm());
+    setTranslationLocale("th");
     setFormError("");
     setDialogOpen(true);
   }
@@ -927,6 +979,7 @@ function AdminQuestionsView({
   function openEditDialog(question: AdminCuratedQuestion) {
     setEditingQuestion(question);
     setForm(formForCuratedQuestion(question));
+    setTranslationLocale("th");
     setFormError("");
     setDialogOpen(true);
   }
@@ -939,11 +992,19 @@ function AdminQuestionsView({
       setFormError("Question is required.");
       return;
     }
+    if (form.answerMode === "static" && !form.answer.trim()) {
+      setFormError("Answer is required for static questions.");
+      return;
+    }
 
     setPendingAction("save");
     try {
       const payload = {
         question,
+        answer: form.answerMode === "static" ? form.answer.trim() || undefined : undefined,
+        answerTranslations: form.answerMode === "static" ? answerTranslationsFromForm(form) : {},
+        answerMode: form.answerMode,
+        dynamicIntent: form.answerMode === "dynamic" ? form.dynamicIntent : undefined,
         translations: translationsFromForm(form),
         topic: form.topic,
         score: scoreFromForm(form.score),
@@ -957,6 +1018,58 @@ function AdminQuestionsView({
       setDialogOpen(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Unable to save question.");
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function translateDraft(mode: "all" | "missing") {
+    setFormError("");
+    const question = form.question.trim();
+    if (!question) {
+      setFormError("Question is required before translating.");
+      return;
+    }
+
+    const targetLocales = locales.filter((locale) => {
+      if (locale === defaultLocale) return false;
+      if (mode === "all") return true;
+      const hasQuestion = Boolean(form.translations[locale]?.trim());
+      const hasAnswer = form.answerMode !== "static" || Boolean(form.answerTranslations[locale]?.trim());
+      return !hasQuestion || !hasAnswer;
+    });
+    if (targetLocales.length === 0) return;
+
+    setPendingAction(`translate:${mode}`);
+    try {
+      const result = await translateQuestion({
+        question,
+        answer: form.answerMode === "static" ? form.answer.trim() || undefined : undefined,
+        targetLocales,
+      });
+      const nextQuestionTranslations = result.questionTranslations ?? {};
+      const nextAnswerTranslations = result.answerTranslations ?? {};
+      setForm((current) => ({
+        ...current,
+        translations: {
+          ...current.translations,
+          ...Object.fromEntries(
+            Object.entries(nextQuestionTranslations).filter(
+              ([locale]) => mode === "all" || !current.translations[locale]?.trim(),
+            ),
+          ),
+        },
+        answerTranslations: {
+          ...current.answerTranslations,
+          ...Object.fromEntries(
+            Object.entries(nextAnswerTranslations).filter(
+              ([locale]) => mode === "all" || !current.answerTranslations[locale]?.trim(),
+            ),
+          ),
+        },
+      }));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to translate question bank content.");
     } finally {
       setPendingAction("");
     }
@@ -986,10 +1099,10 @@ function AdminQuestionsView({
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
               <HelpCircle className="h-4 w-4" />
-              Generated question ranking
+              Concierge question bank
             </div>
             <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">
-              Suggested Questions
+              Question Bank
             </h2>
             <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
               {(["bank", "generated"] as const).map((option) => (
@@ -1004,7 +1117,7 @@ function AdminQuestionsView({
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  {option === "bank" ? "Question bank" : "Generated activity"}
+                  {option === "bank" ? "Question bank" : "AI suggestions"}
                 </button>
               ))}
             </div>
@@ -1078,8 +1191,8 @@ function AdminQuestionsView({
               <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Question</th>
-                  <th className="px-4 py-3 font-semibold">Score</th>
-                  <th className="px-4 py-3 font-semibold">Topic</th>
+                  <th className="px-4 py-3 font-semibold">Answer</th>
+                  <th className="px-4 py-3 font-semibold">Mode</th>
                   <th className="px-4 py-3 font-semibold">Scope</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Updated</th>
@@ -1097,12 +1210,16 @@ function AdminQuestionsView({
                         Created by {question.createdByAdminEmail}
                       </p>
                     </td>
-                    <td className="px-4 py-3 font-mono text-sm text-foreground">
-                      {question.score}
+                    <td className="max-w-[360px] px-4 py-3 text-muted-foreground">
+                      {question.answerMode === "dynamic" || (!question.answerMode && !question.answer) ? (
+                        <span>{question.dynamicIntent ?? "AI live data"}</span>
+                      ) : (
+                        truncate(getCuratedAnswerForLocale(question, selectedLocale), 120)
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="outline" className="rounded-full">
-                        {question.topic}
+                        {answerModeLabel(question.answerMode, question.answer)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
@@ -1267,25 +1384,116 @@ function AdminQuestionsView({
       </section>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingQuestion ? "Edit Question" : "Add Question"}
+              {editingQuestion ? "Edit Question Bank Item" : "Add Question Bank Item"}
             </DialogTitle>
             <DialogDescription>
-              Active questions can appear as concierge chat suggestions immediately.
+              Static items answer from saved text. Dynamic items use live villa data.
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitQuestion}>
             <div className="grid gap-2">
               <Label htmlFor="question-text">Question</Label>
-              <Input
+              <textarea
                 id="question-text"
                 value={form.question}
                 maxLength={160}
                 onChange={(event) => setForm((current) => ({ ...current, question: event.target.value }))}
                 placeholder="Can I check availability for my dates?"
+                className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
               />
+            </div>
+            <div className="grid gap-2">
+              <Label>Answer mode</Label>
+              <div className="grid w-fit grid-cols-2 rounded-lg border border-border bg-background p-1">
+                {(["static", "dynamic"] as const).map((modeOption) => (
+                  <button
+                    key={modeOption}
+                    type="button"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        answerMode: modeOption,
+                      }))
+                    }
+                    className={cn(
+                      "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
+                      form.answerMode === modeOption
+                        ? "bg-navy text-white shadow-sm"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {modeOption === "static" ? "Static answer" : "Dynamic answer"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {form.answerMode === "static" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="question-answer">Answer</Label>
+                <textarea
+                  id="question-answer"
+                  value={form.answer}
+                  maxLength={1200}
+                  onChange={(event) => setForm((current) => ({ ...current, answer: event.target.value }))}
+                  placeholder="Yes. This is a real villa listing managed by our concierge team..."
+                  className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                />
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label htmlFor="dynamic-intent">Dynamic intent</Label>
+                <Select
+                  value={form.dynamicIntent}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      dynamicIntent: value as CuratedDynamicIntent,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="dynamic-intent" className="h-10 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dynamicIntentOptions.map((intent) => (
+                      <SelectItem key={intent} value={intent}>
+                        {intent}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pendingAction.startsWith("translate")}
+                onClick={() => void translateDraft("all")}
+              >
+                {pendingAction === "translate:all" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Globe2 className="h-4 w-4" />
+                )}
+                Translate all languages
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pendingAction.startsWith("translate")}
+                onClick={() => void translateDraft("missing")}
+              >
+                {pendingAction === "translate:missing" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Translate missing only
+              </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
               <div className="grid gap-2">
@@ -1328,29 +1536,69 @@ function AdminQuestionsView({
               />
             </div>
             <div className="grid gap-3">
-              <p className="text-sm font-medium text-foreground">Translations</p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="mr-1 text-sm font-medium text-foreground">Translations</p>
                 {locales
                   .filter((locale) => locale !== defaultLocale)
                   .map((locale) => (
-                    <div key={locale} className="grid gap-2">
-                      <Label htmlFor={`translation-${locale}`}>{localeLabels[locale]}</Label>
-                      <Input
-                        id={`translation-${locale}`}
-                        value={form.translations[locale] ?? ""}
-                        maxLength={160}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            translations: {
-                              ...current.translations,
-                              [locale]: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
+                    <button
+                      key={locale}
+                      type="button"
+                      onClick={() => setTranslationLocale(locale)}
+                      className={cn(
+                        "rounded-md border px-3 py-1.5 text-xs font-semibold transition",
+                        translationLocale === locale
+                          ? "border-navy bg-navy text-white"
+                          : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {localeLabels[locale]}
+                    </button>
                   ))}
+              </div>
+              <div className="grid gap-3 rounded-lg border border-border bg-background/60 p-3">
+                <div className="grid gap-2">
+                  <Label htmlFor={`translation-${translationLocale}`}>
+                    {localeLabels[translationLocale]} question
+                  </Label>
+                  <textarea
+                    id={`translation-${translationLocale}`}
+                    value={form.translations[translationLocale] ?? ""}
+                    maxLength={160}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        translations: {
+                          ...current.translations,
+                          [translationLocale]: event.target.value,
+                        },
+                      }))
+                    }
+                    className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                  />
+                </div>
+                {form.answerMode === "static" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor={`answer-translation-${translationLocale}`}>
+                      {localeLabels[translationLocale]} answer
+                    </Label>
+                    <textarea
+                      id={`answer-translation-${translationLocale}`}
+                      value={form.answerTranslations[translationLocale] ?? ""}
+                      maxLength={1200}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          answerTranslations: {
+                            ...current.answerTranslations,
+                            [translationLocale]: event.target.value,
+                          },
+                        }))
+                      }
+                      className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
             {formError ? (

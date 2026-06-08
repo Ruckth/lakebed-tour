@@ -73,6 +73,10 @@ export type RankedChatSuggestion = {
   suggestionId: string;
   question: string;
   translations?: Record<string, string>;
+  answer?: string;
+  answerTranslations?: Record<string, string>;
+  answerMode?: "static" | "dynamic";
+  dynamicIntent?: "availability" | "pricing" | "property_details" | "booking_help" | "contact";
   topic: string;
   score: number;
   locale: string;
@@ -253,8 +257,13 @@ export async function addChatMessage(
   client: ConvexReactClient,
   args: { sessionId: string; role: "user" | "assistant"; content: string; action?: ChatActionHint },
 ) {
+  const persistedArgs = {
+    sessionId: args.sessionId,
+    role: args.role,
+    content: args.content,
+  };
   return (await withConvexTimeout(
-    client.mutation(api.chat.addMessage, args as never),
+    client.mutation(api.chat.addMessage, persistedArgs as never),
     "Saving chat message",
   )) as string;
 }

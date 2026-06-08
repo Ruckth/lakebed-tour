@@ -333,6 +333,18 @@ export default defineSchema({
 		question: v.string(),
 		normalizedQuestion: v.string(),
 		translations: v.optional(v.record(v.string(), v.string())),
+		answer: v.optional(v.string()),
+		answerTranslations: v.optional(v.record(v.string(), v.string())),
+		answerMode: v.optional(v.union(v.literal('static'), v.literal('dynamic'))),
+		dynamicIntent: v.optional(
+			v.union(
+				v.literal('availability'),
+				v.literal('pricing'),
+				v.literal('property_details'),
+				v.literal('booking_help'),
+				v.literal('contact')
+			)
+		),
 		propertySlug: v.optional(v.string()),
 		topic: v.string(),
 		score: v.number(),

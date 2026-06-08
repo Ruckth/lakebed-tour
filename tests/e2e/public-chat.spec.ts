@@ -72,6 +72,15 @@ async function expectPrefilledEmail(link: Locator) {
   expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
 }
 
+async function expectVillaTileImageVisible(tile: Locator) {
+  const image = tile.locator("img").first();
+  await expect(image).toBeVisible();
+  await expect(image).toHaveCSS("opacity", "1");
+  await expect
+    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+}
+
 async function installMockVisualViewport(page: Page, userAgent: string) {
   await page.addInitScript(({ mockedUserAgent }) => {
     Object.defineProperty(navigator, "userAgent", {
@@ -907,6 +916,7 @@ test("thai 360 chat shows a distinct villa tour card with detail links", async (
   await expect(tourCard.getByTestId("chat-booking-check-in")).toHaveCount(0);
   await expect(tourCard.getByTestId("chat-booking-check-out")).toHaveCount(0);
   await expect(tourCard.getByRole("button", { name: "จอง" })).toHaveCount(0);
+  await expectVillaTileImageVisible(tourCard.getByTestId("chat-tour-villa-option-pool-villa"));
 
   const gardenTourOption = tourCard.getByTestId("chat-tour-villa-option-garden-suite");
   await page.waitForTimeout(1000);
@@ -993,6 +1003,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   ).toHaveCount(0);
 
   const poolCard = bookingCard.getByTestId("chat-villa-option-pool-villa");
+  await expectVillaTileImageVisible(poolCard);
   const guestBadge = poolCard.getByText(/Up to 4 guests/);
   const price = bookingCard.getByTestId("chat-villa-price-pool-villa");
   const guestBox = await guestBadge.boundingBox();

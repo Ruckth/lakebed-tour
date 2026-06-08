@@ -49,10 +49,13 @@ const STATIC_SUGGESTION_ACTIONS: Record<ChatSuggestionId, ChatActionHint> = {
 const RANKED_TOPIC_ACTIONS: Record<string, ChatActionHint> = {
   availability: "booking",
   booking: "booking",
+  booking_help: "booking",
   direct_booking: "booking",
+  pricing: "booking",
   tour: "tour",
   amenities: "none",
   contact: "none",
+  property_details: "none",
   villa_fit: "none",
 };
 

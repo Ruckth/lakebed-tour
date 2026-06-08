@@ -82,6 +82,9 @@ type RankedVisibleSuggestion = {
   source: "ranked";
   suggestionSource: RankedChatSuggestion["source"];
   suggestionId: RankedChatSuggestion["suggestionId"];
+  answer?: string;
+  answerMode?: RankedChatSuggestion["answerMode"];
+  dynamicIntent?: RankedChatSuggestion["dynamicIntent"];
   topic: string;
   score: number;
 };
@@ -813,6 +816,9 @@ function ChatExperience({
         source: "ranked",
         suggestionSource: suggestion.source,
         suggestionId: suggestion.suggestionId,
+        answer: suggestion.answer,
+        answerMode: suggestion.answerMode,
+        dynamicIntent: suggestion.dynamicIntent,
         topic: suggestion.topic,
         score: suggestion.score,
       })),
@@ -1749,7 +1755,7 @@ function ChatExperience({
       latestUserMessage: clean,
       activePropertySlug: activePropertySlug || undefined,
       clickedSuggestionId: preset?.id,
-      rankedSuggestionTopic: rankedSuggestion?.topic,
+      rankedSuggestionTopic: rankedSuggestion?.dynamicIntent ?? rankedSuggestion?.topic,
     });
     if (preset) {
       const assistantMessage = preset.answer;
@@ -1782,6 +1788,49 @@ function ChatExperience({
           }
         } catch {
           // The visitor still sees the local answer if persistence is temporarily unavailable.
+        }
+      }
+      return;
+    }
+
+    if (rankedSuggestion?.answerMode === "static" && rankedSuggestion.answer?.trim()) {
+      const assistantMessage = rankedSuggestion.answer.trim();
+      setMessages((items) => [
+        ...items,
+        createAssistantMessage(assistantMessage, selectedActionHint),
+      ]);
+      setLatestExchange({
+        userMessage: clean,
+        assistantMessage,
+      });
+      if (convex) {
+        try {
+          const id = await ensureSession({ markOpen: true, generation });
+          if (generation !== chatGenerationRef.current) return;
+          if (id) {
+            await markChatSuggestionClicked(convex, {
+              sessionId: id,
+              suggestion: {
+                source: rankedSuggestion.suggestionSource,
+                suggestionId: rankedSuggestion.suggestionId,
+              },
+            }).catch(() => null);
+            if (generation !== chatGenerationRef.current) return;
+            await addChatMessage(convex, {
+              sessionId: id,
+              role: "user",
+              content: clean,
+            });
+            if (generation !== chatGenerationRef.current) return;
+            await addChatMessage(convex, {
+              sessionId: id,
+              role: "assistant",
+              content: assistantMessage,
+              ...(selectedActionHint ? { action: selectedActionHint } : {}),
+            });
+          }
+        } catch {
+          // The visitor still sees the saved answer if persistence is temporarily unavailable.
         }
       }
       return;

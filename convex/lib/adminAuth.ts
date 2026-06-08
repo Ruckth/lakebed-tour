@@ -1,4 +1,4 @@
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 
 function adminEmails() {
 	return new Set(
@@ -9,7 +9,7 @@ function adminEmails() {
 	);
 }
 
-export async function requireAdmin(ctx: QueryCtx | MutationCtx): Promise<{ email: string }> {
+export async function requireAdmin(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity?.email) {
 		throw new Error('Not authenticated');
