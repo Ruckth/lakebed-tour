@@ -2,7 +2,9 @@
 
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import {
+  Archive,
   Clock,
+  Edit3,
   ExternalLink,
   Globe2,
   HelpCircle,
@@ -12,23 +14,29 @@ import {
   MessageCircle,
   MonitorSmartphone,
   Phone,
+  Plus,
+  RotateCcw,
   Search,
   Shield,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useQuery } from "convex/react";
-import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { Component, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { defaultLocale, localeLabels, locales, type Locale } from "@/i18n/routing";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
@@ -83,6 +91,8 @@ type TranscriptResult = {
 
 type AdminSuggestedQuestion = {
   _id: Id<"chatSuggestedQuestions">;
+  source?: "generated";
+  suggestionId?: Id<"chatSuggestedQuestions">;
   sessionId: Id<"chatSessions">;
   question: string;
   translations?: Record<string, string>;
@@ -98,7 +108,45 @@ type AdminSuggestedQuestion = {
   currentPath?: string;
 };
 
+type CuratedQuestionStatus = "all" | "active" | "archived";
+
+type AdminCuratedQuestion = {
+  _id: Id<"curatedChatQuestions">;
+  question: string;
+  normalizedQuestion: string;
+  translations?: Record<string, string>;
+  locale?: string;
+  propertySlug?: string;
+  topic: string;
+  score: number;
+  status: "active" | "archived";
+  createdAt: number;
+  updatedAt: number;
+  archivedAt?: number;
+  createdByAdminEmail: string;
+  updatedByAdminEmail: string;
+  archivedByAdminEmail?: string;
+};
+
+type QuestionBankForm = {
+  question: string;
+  topic: string;
+  score: string;
+  propertySlug: string;
+  translations: Record<string, string>;
+};
+
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
+const curatedStatusOptions: CuratedQuestionStatus[] = ["active", "all", "archived"];
+const questionTopics = [
+  "villa_fit",
+  "direct_booking",
+  "tour",
+  "availability",
+  "booking",
+  "amenities",
+  "contact",
+];
 const PRESENCE_CLOCK_MS = 10_000;
 
 function visitorLabel(session?: AdminSession | null) {
@@ -200,6 +248,48 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
 function getQuestionForLocale(question: AdminSuggestedQuestion, locale: Locale) {
   if (locale === defaultLocale) return question.question;
   return question.translations?.[locale]?.trim() || question.question;
+}
+
+function getCuratedQuestionForLocale(question: AdminCuratedQuestion, locale: Locale) {
+  if (locale === defaultLocale) return question.question;
+  return question.translations?.[locale]?.trim() || question.question;
+}
+
+function emptyQuestionBankForm(): QuestionBankForm {
+  return {
+    question: "",
+    topic: "villa_fit",
+    score: "80",
+    propertySlug: "",
+    translations: {},
+  };
+}
+
+function formForCuratedQuestion(question: AdminCuratedQuestion): QuestionBankForm {
+  return {
+    question: question.question,
+    topic: question.topic,
+    score: String(question.score),
+    propertySlug: question.propertySlug ?? "",
+    translations: Object.fromEntries(
+      locales
+        .filter((locale) => locale !== defaultLocale)
+        .map((locale) => [locale, question.translations?.[locale] ?? ""]),
+    ),
+  };
+}
+
+function scoreFromForm(value: string) {
+  const score = Number(value);
+  return Number.isFinite(score) ? score : 50;
+}
+
+function translationsFromForm(form: QuestionBankForm) {
+  return Object.fromEntries(
+    Object.entries(form.translations)
+      .map(([locale, value]) => [locale, value.trim()])
+      .filter(([, value]) => value),
+  );
 }
 
 function AdminQueryError({ error }: { error: Error }) {
@@ -715,8 +805,88 @@ function AdminQuestionsView({
   questions: AdminSuggestedQuestion[] | undefined;
 }) {
   const [selectedLocale, setSelectedLocale] = useState<Locale>(defaultLocale);
-  const loading = questions === undefined;
-  const rows = questions ?? [];
+  const [mode, setMode] = useState<"bank" | "generated">("bank");
+  const [curatedStatus, setCuratedStatus] = useState<CuratedQuestionStatus>("active");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<AdminCuratedQuestion | null>(null);
+  const [form, setForm] = useState<QuestionBankForm>(() => emptyQuestionBankForm());
+  const [formError, setFormError] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const curatedQuestions = useQuery(api.chatSuggestions.adminListCurated, {
+    status: curatedStatus,
+    limit: 100,
+  }) as AdminCuratedQuestion[] | undefined;
+  const createQuestion = useMutation(api.chatSuggestions.adminCreateCurated);
+  const updateQuestion = useMutation(api.chatSuggestions.adminUpdateCurated);
+  const archiveQuestion = useMutation(api.chatSuggestions.adminArchiveCurated);
+  const restoreQuestion = useMutation(api.chatSuggestions.adminRestoreCurated);
+  const deleteQuestion = useMutation(api.chatSuggestions.adminDeleteArchivedCurated);
+  const generatedLoading = questions === undefined;
+  const generatedRows = questions ?? [];
+  const curatedLoading = curatedQuestions === undefined;
+  const curatedRows = curatedQuestions ?? [];
+
+  function openCreateDialog() {
+    setEditingQuestion(null);
+    setForm(emptyQuestionBankForm());
+    setFormError("");
+    setDialogOpen(true);
+  }
+
+  function openEditDialog(question: AdminCuratedQuestion) {
+    setEditingQuestion(question);
+    setForm(formForCuratedQuestion(question));
+    setFormError("");
+    setDialogOpen(true);
+  }
+
+  async function submitQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    const question = form.question.trim();
+    if (!question) {
+      setFormError("Question is required.");
+      return;
+    }
+
+    setPendingAction("save");
+    try {
+      const payload = {
+        question,
+        translations: translationsFromForm(form),
+        topic: form.topic,
+        score: scoreFromForm(form.score),
+        propertySlug: form.propertySlug.trim() || undefined,
+      };
+      if (editingQuestion) {
+        await updateQuestion({ questionId: editingQuestion._id, ...payload });
+      } else {
+        await createQuestion(payload);
+      }
+      setDialogOpen(false);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to save question.");
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function runQuestionAction(action: string, question: AdminCuratedQuestion) {
+    setPendingAction(`${action}:${question._id}`);
+    try {
+      if (action === "archive") await archiveQuestion({ questionId: question._id });
+      if (action === "restore") await restoreQuestion({ questionId: question._id });
+      if (action === "delete") {
+        const confirmed = window.confirm(
+          "Permanently delete this archived question? This cannot be undone.",
+        );
+        if (!confirmed) return;
+        await deleteQuestion({ questionId: question._id });
+      }
+    } finally {
+      setPendingAction("");
+    }
+  }
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
@@ -730,6 +900,23 @@ function AdminQuestionsView({
             <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">
               Suggested Questions
             </h2>
+            <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
+              {(["bank", "generated"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={cn(
+                    "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
+                    mode === option
+                      ? "bg-navy text-white shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {option === "bank" ? "Question bank" : "Generated activity"}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select
@@ -751,27 +938,170 @@ function AdminQuestionsView({
                 ))}
               </SelectContent>
             </Select>
-            <Badge variant="secondary" className="w-fit rounded-full">
-              Read only
-            </Badge>
+            {mode === "bank" ? (
+              <>
+                <Select
+                  value={curatedStatus}
+                  onValueChange={(value) => setCuratedStatus(value as CuratedQuestionStatus)}
+                >
+                  <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Question status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {curatedStatusOptions.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" onClick={openCreateDialog} size="sm">
+                  <Plus className="h-4 w-4" />
+                  Add question
+                </Button>
+              </>
+            ) : (
+              <Badge variant="secondary" className="w-fit rounded-full">
+                Read only
+              </Badge>
+            )}
           </div>
         </div>
 
-        {loading ? (
+        {mode === "bank" && curatedLoading ? (
+          <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading question bank
+          </div>
+        ) : null}
+
+        {mode === "bank" && !curatedLoading && curatedRows.length === 0 ? (
+          <div className="p-5 text-sm leading-6 text-muted-foreground">
+            No curated questions match this filter yet.
+          </div>
+        ) : null}
+
+        {mode === "bank" && curatedRows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Question</th>
+                  <th className="px-4 py-3 font-semibold">Score</th>
+                  <th className="px-4 py-3 font-semibold">Topic</th>
+                  <th className="px-4 py-3 font-semibold">Scope</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Updated</th>
+                  <th className="px-4 py-3 font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {curatedRows.map((question) => (
+                  <tr key={question._id} className="border-b border-border last:border-b-0">
+                    <td className="max-w-[390px] px-4 py-3">
+                      <p className="font-medium text-foreground">
+                        {getCuratedQuestionForLocale(question, selectedLocale)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Created by {question.createdByAdminEmail}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-foreground">
+                      {question.score}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className="rounded-full">
+                        {question.topic}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {question.propertySlug ?? "Global"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        className={cn(
+                          "rounded-full",
+                          question.status === "active"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-muted text-foreground",
+                        )}
+                      >
+                        {question.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatDateTime(question.updatedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(question)}
+                        >
+                          <Edit3 className="h-4 w-4" />
+                          Edit
+                        </Button>
+                        {question.status === "active" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={pendingAction === `archive:${question._id}`}
+                            onClick={() => void runQuestionAction("archive", question)}
+                          >
+                            <Archive className="h-4 w-4" />
+                            Archive
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={pendingAction === `restore:${question._id}`}
+                              onClick={() => void runQuestionAction("restore", question)}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              Restore
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={pendingAction === `delete:${question._id}`}
+                              onClick={() => void runQuestionAction("delete", question)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {mode === "generated" && generatedLoading ? (
           <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading generated questions
           </div>
         ) : null}
 
-        {!loading && rows.length === 0 ? (
+        {mode === "generated" && !generatedLoading && generatedRows.length === 0 ? (
           <div className="p-5 text-sm leading-6 text-muted-foreground">
             No generated questions yet. They will appear after visitors receive concierge
             replies from a Convex-backed chat session.
           </div>
         ) : null}
 
-        {rows.length > 0 ? (
+        {mode === "generated" && generatedRows.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -786,7 +1116,7 @@ function AdminQuestionsView({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((question) => (
+                {generatedRows.map((question) => (
                   <tr key={question._id} className="border-b border-border last:border-b-0">
                     <td className="max-w-[360px] px-4 py-3">
                       <p className="font-medium text-foreground">
@@ -844,6 +1174,115 @@ function AdminQuestionsView({
           </div>
         ) : null}
       </section>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingQuestion ? "Edit Question" : "Add Question"}
+            </DialogTitle>
+            <DialogDescription>
+              Active questions can appear as concierge chat suggestions immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={submitQuestion}>
+            <div className="grid gap-2">
+              <Label htmlFor="question-text">Question</Label>
+              <Input
+                id="question-text"
+                value={form.question}
+                maxLength={160}
+                onChange={(event) => setForm((current) => ({ ...current, question: event.target.value }))}
+                placeholder="Can I check availability for my dates?"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+              <div className="grid gap-2">
+                <Label htmlFor="question-topic">Topic</Label>
+                <Select
+                  value={form.topic}
+                  onValueChange={(value) => setForm((current) => ({ ...current, topic: value }))}
+                >
+                  <SelectTrigger id="question-topic" className="h-10 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {questionTopics.map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="question-score">Score</Label>
+                <Input
+                  id="question-score"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.score}
+                  onChange={(event) => setForm((current) => ({ ...current, score: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="question-property">Property slug</Label>
+              <Input
+                id="question-property"
+                value={form.propertySlug}
+                onChange={(event) => setForm((current) => ({ ...current, propertySlug: event.target.value }))}
+                placeholder="Leave blank for global"
+              />
+            </div>
+            <div className="grid gap-3">
+              <p className="text-sm font-medium text-foreground">Translations</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {locales
+                  .filter((locale) => locale !== defaultLocale)
+                  .map((locale) => (
+                    <div key={locale} className="grid gap-2">
+                      <Label htmlFor={`translation-${locale}`}>{localeLabels[locale]}</Label>
+                      <Input
+                        id={`translation-${locale}`}
+                        value={form.translations[locale] ?? ""}
+                        maxLength={160}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            translations: {
+                              ...current.translations,
+                              [locale]: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+              </div>
+            </div>
+            {formError ? (
+              <p className="text-sm font-medium text-destructive">{formError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pendingAction === "save"}>
+                {pendingAction === "save" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Save question
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

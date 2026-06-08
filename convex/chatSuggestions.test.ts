@@ -13,12 +13,186 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+const adminEmail = "admin@example.com";
 
 async function finishScheduledWork(t: ReturnType<typeof convexTest>) {
   await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 }
 
+function adminTest(t: ReturnType<typeof convexTest>) {
+  return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+}
+
 describe("chatSuggestions.nextForSession", () => {
+  it("lets admins create, update, archive, restore, and delete curated questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+
+      await expect(
+        t.mutation(api.chatSuggestions.adminCreateCurated, {
+          question: "Can I check availability?",
+          topic: "availability",
+          score: 150,
+        }),
+      ).rejects.toThrow("Not authenticated");
+
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability?",
+        translations: { th: "ตรวจสอบห้องว่างได้ไหม?" },
+        topic: "availability",
+        score: 150,
+      });
+      let rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        question: "Can I check availability?",
+        score: 100,
+        status: "active",
+        createdByAdminEmail: adminEmail,
+      });
+
+      await admin.mutation(api.chatSuggestions.adminUpdateCurated, {
+        questionId,
+        question: "Can I check availability for my dates?",
+        translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
+        topic: "not-real",
+        score: -12,
+        propertySlug: "pool-villa",
+      });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows[0]).toMatchObject({
+        question: "Can I check availability for my dates?",
+        topic: "villa_fit",
+        score: 0,
+        propertySlug: "pool-villa",
+      });
+
+      await admin.mutation(api.chatSuggestions.adminArchiveCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "archived" });
+      expect(rows[0]?.status).toBe("archived");
+
+      await admin.mutation(api.chatSuggestions.adminRestoreCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows[0]?.status).toBe("active");
+
+      await expect(
+        admin.mutation(api.chatSuggestions.adminDeleteArchivedCurated, { questionId }),
+      ).rejects.toThrow("Archive the question");
+
+      await admin.mutation(api.chatSuggestions.adminArchiveCurated, { questionId });
+      await admin.mutation(api.chatSuggestions.adminDeleteArchivedCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "all" });
+      expect(rows).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("merges active curated questions into public ranked suggestions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability for my dates?",
+        translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
+        topic: "availability",
+        score: 99,
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I tour the Pool Villa before booking?",
+        topic: "tour",
+        score: 98,
+        propertySlug: "pool-villa",
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Should not show for this property?",
+        topic: "villa_fit",
+        score: 100,
+        propertySlug: "garden-villa",
+      });
+
+      const now = 1_700_000_000_000;
+      const sessionId = await t.run(async (ctx) => {
+        return await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-curated",
+          propertySlug: "pool-villa",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+      });
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        locale: "th",
+        limit: 5,
+      });
+
+      expect(selected.map((question) => question.question)).toEqual([
+        "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        "Can I tour the Pool Villa before booking?",
+      ]);
+      expect(selected.map((question) => question.source)).toEqual(["curated", "curated"]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("tracks curated clicks per session without archiving the global question", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability for my dates?",
+        topic: "availability",
+        score: 99,
+      });
+      const now = 1_700_000_000_000;
+      const [firstSessionId, secondSessionId] = await t.run(async (ctx) => {
+        const first = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-one",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        const second = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-two",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        return [first, second];
+      });
+
+      await t.mutation(api.chatSuggestions.markClicked, {
+        sessionId: firstSessionId,
+        suggestion: { source: "curated", suggestionId: questionId },
+      });
+
+      const firstSelected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId: firstSessionId,
+        limit: 5,
+      });
+      const secondSelected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId: secondSessionId,
+        limit: 5,
+      });
+      const rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+
+      expect(firstSelected.map((question) => question.question)).toEqual([]);
+      expect(secondSelected.map((question) => question.question)).toEqual([
+        "Can I check availability for my dates?",
+      ]);
+      expect(rows[0]?.status).toBe("active");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("excludes previously asked questions and returns the top two scores", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;

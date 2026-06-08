@@ -285,6 +285,36 @@ export default defineSchema({
 		.index('by_created_at', ['createdAt'])
 		.index('by_status_and_created_at', ['status', 'createdAt']),
 
+	curatedChatQuestions: defineTable({
+		question: v.string(),
+		normalizedQuestion: v.string(),
+		translations: v.optional(v.record(v.string(), v.string())),
+		propertySlug: v.optional(v.string()),
+		topic: v.string(),
+		score: v.number(),
+		status: v.union(v.literal('active'), v.literal('archived')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		archivedAt: v.optional(v.number()),
+		createdByAdminEmail: v.string(),
+		updatedByAdminEmail: v.string(),
+		archivedByAdminEmail: v.optional(v.string())
+	})
+		.index('by_created_at', ['createdAt'])
+		.index('by_status_and_created_at', ['status', 'createdAt'])
+		.index('by_status_and_score', ['status', 'score'])
+		.index('by_status_and_propertySlug_and_score', ['status', 'propertySlug', 'score']),
+
+	chatQuestionInteractions: defineTable({
+		sessionId: v.id('chatSessions'),
+		questionId: v.id('curatedChatQuestions'),
+		shownAt: v.optional(v.number()),
+		clickedAt: v.optional(v.number()),
+		createdAt: v.number()
+	})
+		.index('by_session', ['sessionId'])
+		.index('by_session_and_question', ['sessionId', 'questionId']),
+
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),
 		category: v.union(

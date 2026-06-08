@@ -80,7 +80,8 @@ type RankedVisibleSuggestion = {
   id: string;
   text: string;
   source: "ranked";
-  suggestionId: string;
+  suggestionSource: RankedChatSuggestion["source"];
+  suggestionId: RankedChatSuggestion["suggestionId"];
   topic: string;
   score: number;
 };
@@ -810,7 +811,8 @@ function ChatExperience({
         id: suggestion._id,
         text: suggestion.question,
         source: "ranked",
-        suggestionId: suggestion._id,
+        suggestionSource: suggestion.source,
+        suggestionId: suggestion.suggestionId,
         topic: suggestion.topic,
         score: suggestion.score,
       })),
@@ -1108,7 +1110,10 @@ function ChatExperience({
           if (nextSuggestions.length >= 2) {
             await markChatSuggestionsShown(convex, {
               sessionId,
-              suggestionIds: nextSuggestions.map((suggestion) => suggestion._id),
+              suggestions: nextSuggestions.map((suggestion) => ({
+                source: suggestion.source,
+                suggestionId: suggestion.suggestionId,
+              })),
             }).catch(() => null);
             if (cancelled) return;
             setRankedSuggestions(nextSuggestions);
@@ -1814,7 +1819,10 @@ function ChatExperience({
       if (rankedSuggestion) {
         await markChatSuggestionClicked(convex, {
           sessionId: id,
-          suggestionId: rankedSuggestion.suggestionId,
+          suggestion: {
+            source: rankedSuggestion.suggestionSource,
+            suggestionId: rankedSuggestion.suggestionId,
+          },
         }).catch(() => null);
       }
       if (generation !== chatGenerationRef.current) return;

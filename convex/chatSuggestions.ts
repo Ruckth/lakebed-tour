@@ -45,6 +45,62 @@ type GeneratedQuestion = {
 	score: number;
 };
 
+const suggestionTopics = [
+	'villa_fit',
+	'direct_booking',
+	'tour',
+	'availability',
+	'booking',
+	'amenities',
+	'contact'
+] as const;
+
+const generatedSuggestionRefValidator = v.object({
+	source: v.literal('generated'),
+	suggestionId: v.id('chatSuggestedQuestions')
+});
+
+const curatedSuggestionRefValidator = v.object({
+	source: v.literal('curated'),
+	suggestionId: v.id('curatedChatQuestions')
+});
+
+const suggestionRefValidator = v.union(
+	generatedSuggestionRefValidator,
+	curatedSuggestionRefValidator
+);
+
+function normalizeTopic(topic: string) {
+	const trimmed = topic.trim();
+	return suggestionTopics.includes(trimmed as SuggestionTopic) ? trimmed : 'villa_fit';
+}
+
+function sanitizeQuestionText(question: string) {
+	const trimmed = question.trim();
+	if (!trimmed) throw new Error('Question is required');
+	if (trimmed.length > 160) throw new Error('Question must be 160 characters or fewer');
+	return trimmed;
+}
+
+function sanitizePropertySlug(propertySlug?: string) {
+	const trimmed = propertySlug?.trim();
+	return trimmed || undefined;
+}
+
+function sanitizeTranslations(question: string, translations?: Record<string, string>) {
+	const sanitized: SuggestedQuestionTranslations = { en: question };
+	for (const locale of supportedSuggestionLocales) {
+		if (locale === 'en') continue;
+		const translated = translations?.[locale]?.trim();
+		if (translated && translated.length <= 160) sanitized[locale] = translated;
+	}
+	return sanitized;
+}
+
+function normalizeOptionalScore(score?: number) {
+	return clampSuggestionScore(score ?? 50);
+}
+
 function detectTopic(text: string): SuggestionTopic {
 	const lower = text.toLocaleLowerCase();
 	if (/(available|availability|date|dates|check.?in|check.?out)/i.test(lower)) return 'availability';
@@ -352,6 +408,140 @@ export const generateForAssistant = internalAction({
 	}
 });
 
+export const adminListCurated = query({
+	args: {
+		status: v.optional(v.union(v.literal('all'), v.literal('active'), v.literal('archived'))),
+		limit: v.optional(v.number())
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+
+		const limit = Math.min(Math.max(args.limit ?? 100, 1), 100);
+		if (args.status && args.status !== 'all') {
+			return await ctx.db
+				.query('curatedChatQuestions')
+				.withIndex('by_status_and_created_at', (q) => q.eq('status', args.status as 'active' | 'archived'))
+				.order('desc')
+				.take(limit);
+		}
+
+		return await ctx.db
+			.query('curatedChatQuestions')
+			.withIndex('by_created_at')
+			.order('desc')
+			.take(limit);
+	}
+});
+
+export const adminCreateCurated = mutation({
+	args: {
+		question: v.string(),
+		translations: v.optional(v.record(v.string(), v.string())),
+		topic: v.string(),
+		score: v.optional(v.number()),
+		propertySlug: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const question = sanitizeQuestionText(args.question);
+		const now = Date.now();
+		return await ctx.db.insert('curatedChatQuestions', {
+			question,
+			normalizedQuestion: normalizeSuggestedQuestion(question),
+			translations: sanitizeTranslations(question, args.translations),
+			propertySlug: sanitizePropertySlug(args.propertySlug),
+			topic: normalizeTopic(args.topic),
+			score: normalizeOptionalScore(args.score),
+			status: 'active',
+			createdAt: now,
+			updatedAt: now,
+			createdByAdminEmail: admin.email,
+			updatedByAdminEmail: admin.email
+		});
+	}
+});
+
+export const adminUpdateCurated = mutation({
+	args: {
+		questionId: v.id('curatedChatQuestions'),
+		question: v.string(),
+		translations: v.optional(v.record(v.string(), v.string())),
+		topic: v.string(),
+		score: v.optional(v.number()),
+		propertySlug: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.questionId);
+		if (!existing) throw new Error('Question not found');
+
+		const question = sanitizeQuestionText(args.question);
+		await ctx.db.patch(args.questionId, {
+			question,
+			normalizedQuestion: normalizeSuggestedQuestion(question),
+			translations: sanitizeTranslations(question, args.translations),
+			propertySlug: sanitizePropertySlug(args.propertySlug),
+			topic: normalizeTopic(args.topic),
+			score: normalizeOptionalScore(args.score),
+			updatedAt: Date.now(),
+			updatedByAdminEmail: admin.email
+		});
+		return { updated: true };
+	}
+});
+
+export const adminArchiveCurated = mutation({
+	args: { questionId: v.id('curatedChatQuestions') },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.questionId);
+		if (!existing) throw new Error('Question not found');
+
+		const now = Date.now();
+		await ctx.db.patch(args.questionId, {
+			status: 'archived',
+			archivedAt: now,
+			archivedByAdminEmail: admin.email,
+			updatedAt: now,
+			updatedByAdminEmail: admin.email
+		});
+		return { archived: true };
+	}
+});
+
+export const adminRestoreCurated = mutation({
+	args: { questionId: v.id('curatedChatQuestions') },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.questionId);
+		if (!existing) throw new Error('Question not found');
+
+		await ctx.db.patch(args.questionId, {
+			status: 'active',
+			archivedAt: undefined,
+			archivedByAdminEmail: undefined,
+			updatedAt: Date.now(),
+			updatedByAdminEmail: admin.email
+		});
+		return { restored: true };
+	}
+});
+
+export const adminDeleteArchivedCurated = mutation({
+	args: { questionId: v.id('curatedChatQuestions') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.questionId);
+		if (!existing) throw new Error('Question not found');
+		if (existing.status !== 'archived') {
+			throw new Error('Archive the question before deleting it permanently');
+		}
+
+		await ctx.db.delete(args.questionId);
+		return { deleted: true };
+	}
+});
+
 export const nextForSession = query({
 	args: {
 		sessionId: v.id('chatSessions'),
@@ -361,7 +551,10 @@ export const nextForSession = query({
 	handler: async (ctx, args) => {
 		const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), 5);
 		const locale = normalizeSuggestionLocale(args.locale);
-		const [activeQuestions, clickedQuestions, messages] = await Promise.all([
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) return [];
+
+		const [activeQuestions, clickedQuestions, messages, globalCuratedQuestions, propertyCuratedQuestions, interactions] = await Promise.all([
 			ctx.db
 				.query('chatSuggestedQuestions')
 				.withIndex('by_session_status_score', (q) =>
@@ -379,14 +572,51 @@ export const nextForSession = query({
 				.query('chatMessages')
 				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 				.order('desc')
-				.take(ASKED_MESSAGE_LOOKBACK_LIMIT)
+				.take(ASKED_MESSAGE_LOOKBACK_LIMIT),
+			ctx.db
+				.query('curatedChatQuestions')
+				.withIndex('by_status_and_propertySlug_and_score', (q) =>
+					q.eq('status', 'active').eq('propertySlug', undefined)
+				)
+				.order('desc')
+				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT),
+			session.propertySlug
+				? ctx.db
+						.query('curatedChatQuestions')
+						.withIndex('by_status_and_propertySlug_and_score', (q) =>
+							q.eq('status', 'active').eq('propertySlug', session.propertySlug)
+						)
+						.order('desc')
+						.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT)
+				: Promise.resolve([]),
+			ctx.db
+				.query('chatQuestionInteractions')
+				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT)
 		]);
+		const clickedCuratedIds = new Set(
+			interactions
+				.filter((interaction) => interaction.clickedAt)
+				.map((interaction) => interaction.questionId)
+		);
+		const curatedQuestions = [...globalCuratedQuestions, ...propertyCuratedQuestions];
 
 		const selected = selectRankedSuggestedQuestions({
-			candidates: activeQuestions.map((question) => ({
+			candidates: [
+				...activeQuestions.map((question) => ({
 				...question,
-				_id: question._id
-			})),
+					_id: question._id,
+					source: 'generated' as const,
+					suggestionId: question._id
+				})),
+				...curatedQuestions.map((question) => ({
+					...question,
+					_id: question._id,
+					source: 'curated' as const,
+					suggestionId: question._id,
+					status: clickedCuratedIds.has(question._id) ? ('clicked' as const) : question.status
+				}))
+			],
 			askedQuestions: messages
 				.filter((message) => message.role === 'user')
 				.map((message) => message.content),
@@ -407,15 +637,39 @@ export const nextForSession = query({
 export const markShown = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
-		suggestionIds: v.array(v.id('chatSuggestedQuestions'))
+		suggestions: v.array(suggestionRefValidator)
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		let updated = 0;
-		for (const suggestionId of args.suggestionIds.slice(0, 5)) {
-			const suggestion = await ctx.db.get(suggestionId);
-			if (!suggestion || suggestion.sessionId !== args.sessionId || suggestion.shownAt) continue;
-			await ctx.db.patch(suggestionId, { shownAt: now });
+		for (const suggestionRef of args.suggestions.slice(0, 5)) {
+			if (suggestionRef.source === 'generated') {
+				const suggestion = await ctx.db.get(suggestionRef.suggestionId);
+				if (!suggestion || suggestion.sessionId !== args.sessionId || suggestion.shownAt) continue;
+				await ctx.db.patch(suggestionRef.suggestionId, { shownAt: now });
+				updated++;
+				continue;
+			}
+
+			const question = await ctx.db.get(suggestionRef.suggestionId);
+			if (!question || question.status !== 'active') continue;
+			const existing = await ctx.db
+				.query('chatQuestionInteractions')
+				.withIndex('by_session_and_question', (q) =>
+					q.eq('sessionId', args.sessionId).eq('questionId', suggestionRef.suggestionId)
+				)
+				.unique();
+			if (existing?.shownAt) continue;
+			if (existing) {
+				await ctx.db.patch(existing._id, { shownAt: now });
+			} else {
+				await ctx.db.insert('chatQuestionInteractions', {
+					sessionId: args.sessionId,
+					questionId: suggestionRef.suggestionId,
+					shownAt: now,
+					createdAt: now
+				});
+			}
 			updated++;
 		}
 		return { updated };
@@ -425,15 +679,43 @@ export const markShown = mutation({
 export const markClicked = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
-		suggestionId: v.id('chatSuggestedQuestions')
+		suggestion: suggestionRefValidator
 	},
 	handler: async (ctx, args) => {
-		const suggestion = await ctx.db.get(args.suggestionId);
-		if (!suggestion || suggestion.sessionId !== args.sessionId) return { clicked: false };
-		await ctx.db.patch(args.suggestionId, {
-			status: 'clicked',
-			clickedAt: Date.now()
-		});
+		const now = Date.now();
+		if (args.suggestion.source === 'generated') {
+			const suggestion = await ctx.db.get(args.suggestion.suggestionId);
+			if (!suggestion || suggestion.sessionId !== args.sessionId) return { clicked: false };
+			await ctx.db.patch(args.suggestion.suggestionId, {
+				status: 'clicked',
+				clickedAt: now
+			});
+			return { clicked: true };
+		}
+
+		const curatedSuggestionId = args.suggestion.suggestionId;
+		const question = await ctx.db.get(curatedSuggestionId);
+		if (!question || question.status !== 'active') return { clicked: false };
+		const existing = await ctx.db
+			.query('chatQuestionInteractions')
+			.withIndex('by_session_and_question', (q) =>
+				q.eq('sessionId', args.sessionId).eq('questionId', curatedSuggestionId)
+			)
+			.unique();
+		if (existing) {
+			await ctx.db.patch(existing._id, {
+				shownAt: existing.shownAt ?? now,
+				clickedAt: now
+			});
+		} else {
+			await ctx.db.insert('chatQuestionInteractions', {
+				sessionId: args.sessionId,
+				questionId: curatedSuggestionId,
+				shownAt: now,
+				clickedAt: now,
+				createdAt: now
+			});
+		}
 		return { clicked: true };
 	}
 });

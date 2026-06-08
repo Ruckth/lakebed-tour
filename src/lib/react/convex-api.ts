@@ -69,6 +69,8 @@ export type ChatTranscriptMessage = {
 
 export type RankedChatSuggestion = {
   _id: string;
+  source: "generated" | "curated";
+  suggestionId: string;
   question: string;
   translations?: Record<string, string>;
   topic: string;
@@ -79,6 +81,8 @@ export type RankedChatSuggestion = {
   shownAt?: number;
   clickedAt?: number;
 };
+
+export type RankedChatSuggestionRef = Pick<RankedChatSuggestion, "source" | "suggestionId">;
 
 export type ReusableChatSession = {
   _id: string;
@@ -311,7 +315,7 @@ export async function getNextChatSuggestions(
 
 export async function markChatSuggestionsShown(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestionIds: string[] },
+  args: { sessionId: string; suggestions: RankedChatSuggestionRef[] },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markShown, args as never),
@@ -321,7 +325,7 @@ export async function markChatSuggestionsShown(
 
 export async function markChatSuggestionClicked(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestionId: string },
+  args: { sessionId: string; suggestion: RankedChatSuggestionRef },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markClicked, args as never),

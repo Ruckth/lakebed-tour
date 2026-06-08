@@ -912,11 +912,9 @@ test("thai 360 chat shows a distinct villa tour card with detail links", async (
   await page.waitForTimeout(1000);
   await gardenTourOption.click();
   await page.waitForTimeout(250);
-  await expect(page).toHaveURL((url) => {
-    expect(url.pathname).toBe("/th/rooms/garden-suite");
-    expect(url.search).toBe("");
-    return true;
-  });
+  await expect(page).toHaveURL(
+    (url) => url.pathname === "/th/rooms/garden-suite" && url.search === "",
+  );
 });
 
 test("chat action cards stay attached after a newer message", async ({ page }) => {
