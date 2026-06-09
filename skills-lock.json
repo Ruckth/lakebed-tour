@@ -26,16 +26,6 @@
       "sourceType": "github",
       "computedHash": "92a5c170cf238f45f08439d9d5d7947af490b880ee8f15306183240483cbed02"
     },
-    "svelte-core-bestpractices": {
-      "source": "sveltejs/ai-tools",
-      "sourceType": "github",
-      "computedHash": "bec11e369679027edf9d4acbe6d9788f8da33dc14b48b874f231d3ba13705324"
-    },
-    "sveltekit-structure": {
-      "source": "spences10/svelte-skills-kit",
-      "sourceType": "github",
-      "computedHash": "a935fd51b32e4e37d23286c04748825a6a193ef74d9980385449aa4f80646f9d"
-    },
     "threejs-fundamentals": {
       "source": "cloudai-x/threejs-skills",
       "sourceType": "github",

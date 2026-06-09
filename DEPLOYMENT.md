@@ -2,8 +2,6 @@
 
 This project deploys as a Next.js App Router app on Vercel with Convex for backend data and functions. Clerk is used for the admin area when configured, AI chat uses Convex environment variables, and checkout is currently no-card/demo only. Stripe is not active in the current runtime.
 
-The legacy SvelteKit prototype remains under `archive/sveltekit-prototype` for reference only. The active production target is the Next.js app in `src` plus Convex functions in `convex`.
-
 ## Current Production Shape
 
 - Public resort pages, localized routes, villa detail pages, room galleries, pricing, reviews, and 360 tour entry points.

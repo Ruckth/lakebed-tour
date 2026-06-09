@@ -84,8 +84,8 @@ We build premium direct booking websites for luxury boutique resorts in Southeas
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Frontend | SvelteKit 2 + Tailwind CSS | Fast, SEO-friendly, beautiful |
-| 3D/Tours | Three.js + Threlte | Smooth 360-degree rendering |
+| Frontend | Next.js App Router + Tailwind CSS | Fast, SEO-friendly, beautiful |
+| 3D/Tours | React Three Fiber + Three.js | Smooth 360-degree rendering |
 | Backend | Convex | Real-time, serverless, zero DevOps |
 | Payments | Stripe | Global, PCI-compliant, trusted |
 | AI Chat | OpenAI API (model routing) | Intelligent, context-aware responses |
