@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
 import {
@@ -18,6 +18,8 @@ const DEFAULT_LIMIT = 2;
 const GENERATION_CANDIDATE_LIMIT = 5;
 const SCORE_ORDERED_CANDIDATE_SCAN_LIMIT = 100;
 const HISTORY_LIMIT = 12;
+const SEMANTIC_MATCH_CONFIDENCE_THRESHOLD = 0.82;
+const SEMANTIC_MATCH_CANDIDATE_LIMIT = 25;
 // V1 keeps the repeat check bounded to the latest session turns.
 const ASKED_MESSAGE_LOOKBACK_LIMIT = 200;
 
@@ -47,6 +49,23 @@ type GeneratedQuestion = {
 	translations?: SuggestedQuestionTranslations;
 	topic: string;
 	score: number;
+};
+
+type CuratedResolutionCandidate = Doc<'curatedChatQuestions'> & {
+	scopeRank: number;
+};
+
+type CuratedQuestionMatch = {
+	source: 'exact' | 'semantic';
+	suggestionId: Id<'curatedChatQuestions'>;
+	question: string;
+	answer?: string;
+	answerMode: CuratedAnswerMode;
+	dynamicIntent?: DynamicIntent;
+	topic: string;
+	score: number;
+	propertySlug?: string;
+	confidence?: number;
 };
 
 const suggestionTopics = [
@@ -178,6 +197,124 @@ function getSuggestedAnswerForLocale(
 
 function normalizeOptionalScore(score?: number) {
 	return clampSuggestionScore(score ?? 50);
+}
+
+function detectMessageLocale(message: string, locale?: string) {
+	if (locale) return normalizeSuggestionLocale(locale);
+	return /[\u0E00-\u0E7F]/u.test(message) ? normalizeSuggestionLocale('th') : normalizeSuggestionLocale('en');
+}
+
+function curatedQuestionAnswerMode(question: Doc<'curatedChatQuestions'>): CuratedAnswerMode {
+	return question.answerMode ?? (question.answer ? 'static' : 'dynamic');
+}
+
+function curatedQuestionVariants(question: Doc<'curatedChatQuestions'>) {
+	return [
+		question.question,
+		question.normalizedQuestion,
+		...Object.values(question.translations ?? {})
+	]
+		.filter((value): value is string => typeof value === 'string')
+		.map(normalizeSuggestedQuestion)
+		.filter(Boolean);
+}
+
+function sortCuratedResolutionCandidates(candidates: CuratedResolutionCandidate[]) {
+	return [...candidates].sort((left, right) => {
+		if (right.scopeRank !== left.scopeRank) return right.scopeRank - left.scopeRank;
+		if (right.score !== left.score) return right.score - left.score;
+		return right.updatedAt - left.updatedAt;
+	});
+}
+
+function serializeCuratedMatch(
+	question: Doc<'curatedChatQuestions'>,
+	source: CuratedQuestionMatch['source'],
+	locale: string,
+	confidence?: number
+): CuratedQuestionMatch {
+	const answerMode = curatedQuestionAnswerMode(question);
+	return {
+		source,
+		suggestionId: question._id,
+		question: getSuggestedQuestionForLocale(question, locale),
+		...(answerMode === 'static' ? { answer: getSuggestedAnswerForLocale(question, locale) } : {}),
+		answerMode,
+		...(answerMode === 'dynamic' ? { dynamicIntent: question.dynamicIntent } : {}),
+		topic: question.topic,
+		score: question.score,
+		...(question.propertySlug ? { propertySlug: question.propertySlug } : {}),
+		...(typeof confidence === 'number' ? { confidence } : {})
+	};
+}
+
+async function getCuratedResolutionCandidates(
+	ctx: QueryCtx,
+	sessionId: Id<'chatSessions'>
+): Promise<CuratedResolutionCandidate[]> {
+	const session = await ctx.db.get(sessionId);
+	if (!session) return [];
+
+	const [globalQuestions, propertyQuestions] = await Promise.all([
+		ctx.db
+			.query('curatedChatQuestions')
+			.withIndex('by_status_and_propertySlug_and_score', (q) =>
+				q.eq('status', 'active').eq('propertySlug', undefined)
+			)
+			.order('desc')
+			.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT),
+		session.propertySlug
+			? ctx.db
+					.query('curatedChatQuestions')
+					.withIndex('by_status_and_propertySlug_and_score', (q) =>
+						q.eq('status', 'active').eq('propertySlug', session.propertySlug)
+					)
+					.order('desc')
+					.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT)
+			: Promise.resolve([])
+	]);
+
+	return sortCuratedResolutionCandidates([
+		...globalQuestions.map((question) => ({ ...question, scopeRank: 0 })),
+		...propertyQuestions.map((question) => ({ ...question, scopeRank: 1 }))
+	]);
+}
+
+function resolveExactCuratedMatch({
+	candidates,
+	locale,
+	messageText
+}: {
+	candidates: CuratedResolutionCandidate[];
+	locale: string;
+	messageText: string;
+}) {
+	const normalizedMessage = normalizeSuggestedQuestion(messageText);
+	if (!normalizedMessage) return null;
+
+	const match = sortCuratedResolutionCandidates(candidates).find((question) =>
+		curatedQuestionVariants(question).includes(normalizedMessage)
+	);
+	return match ? serializeCuratedMatch(match, 'exact', locale) : null;
+}
+
+function parseSemanticQuestionMatch(content: string | null) {
+	if (!content) return null;
+	const json = extractJsonObject(content);
+	if (!json) return null;
+
+	try {
+		const parsed = JSON.parse(json) as unknown;
+		if (!parsed || typeof parsed !== 'object') return null;
+		const row = parsed as Record<string, unknown>;
+		const matched = row.matched === true;
+		const questionId = typeof row.questionId === 'string' ? row.questionId.trim() : '';
+		const confidenceValue = typeof row.confidence === 'number' ? row.confidence : Number(row.confidence);
+		const confidence = Number.isFinite(confidenceValue) ? confidenceValue : 0;
+		return { matched, questionId, confidence };
+	} catch {
+		return null;
+	}
 }
 
 function detectTopic(text: string): SuggestionTopic {
@@ -525,6 +662,115 @@ export const generateForAssistant = internalAction({
 			}
 		);
 		return result;
+	}
+});
+
+export const getCuratedResolutionContext = internalQuery({
+	args: {
+		sessionId: v.id('chatSessions')
+	},
+	handler: async (ctx, args): Promise<CuratedResolutionCandidate[]> => {
+		return await getCuratedResolutionCandidates(ctx, args.sessionId);
+	}
+});
+
+export const resolveCuratedExact = query({
+	args: {
+		sessionId: v.id('chatSessions'),
+		messageText: v.string(),
+		locale: v.optional(v.string())
+	},
+	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
+		const messageText = args.messageText.trim();
+		if (!messageText) return null;
+		const locale = detectMessageLocale(messageText, args.locale);
+		const candidates = await getCuratedResolutionCandidates(ctx, args.sessionId);
+		return resolveExactCuratedMatch({ candidates, locale, messageText });
+	}
+});
+
+export const resolveCuratedSemantic = action({
+	args: {
+		sessionId: v.id('chatSessions'),
+		messageText: v.string(),
+		locale: v.optional(v.string())
+	},
+	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
+		const messageText = args.messageText.trim();
+		if (!messageText) return null;
+
+		const apiKey = process.env.AI_API_KEY;
+		if (!apiKey) return null;
+
+		const locale = detectMessageLocale(messageText, args.locale);
+		const candidates: CuratedResolutionCandidate[] = await ctx.runQuery(
+			internal.chatSuggestions.getCuratedResolutionContext,
+			{ sessionId: args.sessionId }
+		);
+		const boundedCandidates = sortCuratedResolutionCandidates(candidates).slice(
+			0,
+			SEMANTIC_MATCH_CANDIDATE_LIMIT
+		);
+		if (boundedCandidates.length === 0) return null;
+
+		const candidateLines = boundedCandidates
+			.map((candidate, index) => {
+				const translations = Object.entries(candidate.translations ?? {})
+					.filter(([translationLocale]) => translationLocale !== 'en')
+					.map(([translationLocale, value]) => `${translationLocale}: ${value}`)
+					.join('; ');
+				return `${index + 1}. id=${candidate._id}
+question=${candidate.question}
+translations=${translations || 'none'}
+topic=${candidate.topic}
+answerMode=${curatedQuestionAnswerMode(candidate)}
+propertySlug=${candidate.propertySlug ?? 'global'}`;
+			})
+			.join('\n\n');
+
+		const messages: ChatMessage[] = [
+			{
+				role: 'system',
+				content:
+					'You match a LINE guest message to one existing concierge question-bank item. Return compact JSON only.'
+			},
+			{
+				role: 'user',
+				content: `Guest message:
+${messageText}
+
+Candidate question-bank items:
+${candidateLines}
+
+Return exactly:
+{
+  "matched": boolean,
+  "questionId": "id from candidates or empty string",
+  "confidence": number
+}
+
+Rules:
+- Match only when the guest is asking the same thing as a candidate question, including translated variants.
+- Do not match just because topics are loosely related.
+- Use confidence from 0 to 1.
+- If no candidate clearly matches, return matched false and confidence 0.`
+			}
+		];
+
+		const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
+		const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+		const response = await callAI(apiBase, apiKey, model, messages, []);
+		const parsed = parseSemanticQuestionMatch(response.content);
+		if (
+			!parsed?.matched ||
+			parsed.confidence < SEMANTIC_MATCH_CONFIDENCE_THRESHOLD ||
+			!parsed.questionId
+		) {
+			return null;
+		}
+
+		const match = boundedCandidates.find((candidate) => candidate._id === parsed.questionId);
+		return match ? serializeCuratedMatch(match, 'semantic', locale, parsed.confidence) : null;
 	}
 });
 

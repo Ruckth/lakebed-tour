@@ -17,6 +17,12 @@ type GenerateConciergeReplyArgs = {
 	locale?: string;
 	channel?: 'web' | 'line';
 	siteUrl?: string;
+	questionBankHint?: {
+		question: string;
+		topic: string;
+		dynamicIntent?: 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
+		source?: 'exact' | 'semantic';
+	};
 };
 
 function normalizeSiteUrl(siteUrl?: string) {
@@ -62,6 +68,17 @@ LINE CHANNEL:
 - If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
 - For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
 - Keep LINE responses under 120 words unless the guest explicitly asks for detail.`;
+}
+
+function questionBankHintPrompt(hint?: GenerateConciergeReplyArgs['questionBankHint']) {
+	if (!hint) return '';
+	return `
+QUESTION BANK INTENT:
+- The latest LINE message matched this curated question-bank item: "${hint.question}".
+- Source: ${hint.source ?? 'unknown'}.
+- Topic: ${hint.topic}.
+${hint.dynamicIntent ? `- Dynamic intent: ${hint.dynamicIntent}.` : ''}
+- Use this as intent guidance only; answer with live property/pricing/availability context when relevant.`;
 }
 
 async function generateConciergeReply(
@@ -114,7 +131,7 @@ STYLE:
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}`;
+- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
@@ -195,7 +212,23 @@ export const generateReply = action({
 		propertySlug: v.optional(v.string()),
 		locale: v.optional(v.string()),
 		channel: v.optional(chatChannelValidator),
-		siteUrl: v.optional(v.string())
+		siteUrl: v.optional(v.string()),
+		questionBankHint: v.optional(
+			v.object({
+				question: v.string(),
+				topic: v.string(),
+				dynamicIntent: v.optional(
+					v.union(
+						v.literal('availability'),
+						v.literal('pricing'),
+						v.literal('property_details'),
+						v.literal('booking_help'),
+						v.literal('contact')
+					)
+				),
+				source: v.optional(v.union(v.literal('exact'), v.literal('semantic')))
+			})
+		)
 	},
 	handler: async (ctx, args): Promise<{ response: string; model: string }> => {
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(api.chat.getSession, {
@@ -204,6 +237,16 @@ export const generateReply = action({
 		if (!session) throw new Error('Session not found');
 
 		return await generateConciergeReply(ctx, args, session);
+	}
+});
+
+export const getGuardrailReply = action({
+	args: {
+		userMessage: v.string(),
+		siteUrl: v.optional(v.string())
+	},
+	handler: async (_ctx, args) => {
+		return getResortRealityDisclosure(args.userMessage, args.siteUrl);
 	}
 });
 

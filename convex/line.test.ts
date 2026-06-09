@@ -113,4 +113,44 @@ describe("LINE webhook events", () => {
     expect(duplicateClaim.duplicate).toBe(false);
     expect(duplicateClaim.status).toBe("received");
   });
+
+  it("stores question-bank LINE reply modes in the transcript event", async () => {
+    const t = convexTest(schema, modules);
+
+    const claim = await t.mutation(api.line.claimEvent, {
+      eventKey: "line-event-question-bank",
+      lineUserId: "UQB",
+      sourceType: "user",
+      eventType: "message",
+      messageText: "Do you include airport pickup?",
+      eventTimestamp: 1_700_000_000_000,
+    });
+    await t.mutation(api.line.recordInboundEvent, {
+      eventId: claim.eventId,
+      sessionId: claim.sessionId!,
+      userContent: "Do you include airport pickup?",
+    });
+    await t.mutation(api.line.completeEvent, {
+      eventId: claim.eventId,
+      sessionId: claim.sessionId!,
+      assistantContent: "Yes. Direct booking includes airport pickup.",
+      replyMode: "question_bank_exact",
+      lineReplyStatus: 200,
+    });
+
+    const messages = await t.query(api.chat.getMessages, {
+      sessionId: claim.sessionId!,
+    });
+    const event = await t.run(async (ctx) => await ctx.db.get(claim.eventId));
+
+    expect(messages.map((message) => [message.role, message.content])).toEqual([
+      ["user", "Do you include airport pickup?"],
+      ["assistant", "Yes. Direct booking includes airport pickup."],
+    ]);
+    expect(event).toMatchObject({
+      status: "replied",
+      replyMode: "question_bank_exact",
+      lineReplyStatus: 200,
+    });
+  });
 });

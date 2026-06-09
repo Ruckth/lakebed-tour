@@ -11,6 +11,8 @@ const eventTypeValidator = v.union(
 
 const replyModeValidator = v.union(
 	v.literal('exact'),
+	v.literal('question_bank_exact'),
+	v.literal('question_bank_semantic'),
 	v.literal('ai'),
 	v.literal('postback'),
 	v.literal('follow'),
