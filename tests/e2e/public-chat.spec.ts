@@ -24,7 +24,7 @@ const CHAT_MESSAGE_CACHE_VERSION = 1;
 const CONTACT_PREFILL_MESSAGE =
   "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
 const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
-const LINE_URL = "https://line.me/ti/p/iSjTWG5aMg";
+const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
 type SeededChatMessage = { role: "user" | "assistant"; content: string };
 
