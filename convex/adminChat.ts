@@ -14,6 +14,12 @@ const PAGE_SIZE = 10;
 const SEARCH_SESSION_LIMIT = 50;
 const SEARCH_MESSAGE_LIMIT = 100;
 const FUZZY_SCAN_LIMIT = 200;
+const FILTER_SCAN_PAGE_LIMIT = 25;
+
+type FilterCursor = {
+	sourceCursor: string | null;
+	overflowIds: Id<'chatSessions'>[];
+};
 
 const sessionStatusValidator = v.union(
 	v.literal('all'),
@@ -44,6 +50,36 @@ function parseSearchCursor(cursor: string | null) {
 
 function searchCursor(offset: number) {
 	return JSON.stringify({ offset });
+}
+
+function parseFilterCursor(cursor: string | null): FilterCursor {
+	if (!cursor) return { sourceCursor: null, overflowIds: [] };
+	try {
+		const parsed = JSON.parse(cursor) as {
+			type?: unknown;
+			sourceCursor?: unknown;
+			overflowIds?: unknown;
+		};
+		if (parsed.type !== 'filtered') {
+			return { sourceCursor: cursor, overflowIds: [] };
+		}
+		return {
+			sourceCursor: typeof parsed.sourceCursor === 'string' ? parsed.sourceCursor : null,
+			overflowIds: Array.isArray(parsed.overflowIds)
+				? parsed.overflowIds.filter((id): id is Id<'chatSessions'> => typeof id === 'string')
+				: []
+		};
+	} catch {
+		return { sourceCursor: cursor, overflowIds: [] };
+	}
+}
+
+function filterCursor(cursor: FilterCursor) {
+	return JSON.stringify({
+		type: 'filtered',
+		sourceCursor: cursor.sourceCursor,
+		overflowIds: cursor.overflowIds
+	});
 }
 
 function boundedEditDistance(a: string, b: string, maxDistance: number) {
@@ -184,6 +220,7 @@ async function searchSessions(
 		empty: EmptyFilter;
 		messageStartAt?: number;
 		messageEndAt?: number;
+		propertySlug?: string;
 		now: number;
 	}
 ) {
@@ -229,7 +266,10 @@ async function searchSessions(
 	).filter((session): session is Doc<'chatSessions'> => Boolean(session));
 
 	const filtered = hydrated
-		.filter((session) => sessionMatchesFilters(session, options))
+		.filter((session) => {
+			if (options.propertySlug && session.propertySlug !== options.propertySlug) return false;
+			return sessionMatchesFilters(session, options);
+		})
 		.sort((a, b) => {
 			const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
 			if (scoreDelta !== 0) return scoreDelta;
@@ -245,6 +285,92 @@ async function searchSessions(
 		sessions: await decorateSessions(ctx, page, options.now),
 		continueCursor: isDone ? null : searchCursor(nextOffset),
 		isDone
+	};
+}
+
+async function listFilteredSessions(
+	ctx: QueryCtx,
+	options: {
+		cursor: string | null;
+		status: SessionStatus;
+		empty: EmptyFilter;
+		messageStartAt?: number;
+		messageEndAt?: number;
+		propertySlug?: string;
+		now: number;
+	}
+) {
+	if (
+		options.empty === 'empty' &&
+		(typeof options.messageStartAt === 'number' || typeof options.messageEndAt === 'number')
+	) {
+		return { sessions: [], continueCursor: null, nextCursor: null, isDone: true };
+	}
+
+	const parsedCursor = parseFilterCursor(options.cursor);
+	let cursor = parsedCursor.sourceCursor;
+	let isDone = false;
+	let pagesScanned = 0;
+	const matched: Doc<'chatSessions'>[] = [];
+
+	for (const sessionId of parsedCursor.overflowIds) {
+		const session = await ctx.db.get(sessionId);
+		if (!session) continue;
+		if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
+		if (!sessionMatchesFilters(session, options)) continue;
+		matched.push(session);
+	}
+
+	while (matched.length < PAGE_SIZE && !isDone && pagesScanned < FILTER_SCAN_PAGE_LIMIT) {
+		const paginationOpts = { numItems: PAGE_SIZE, cursor };
+		const page =
+			options.empty === 'empty'
+				? await ctx.db
+						.query('chatSessions')
+						.withIndex('by_messageCount_and_adminSortAt', (q) =>
+							q.eq('messageCount', 0)
+						)
+						.order('desc')
+						.paginate(paginationOpts)
+				: options.empty === 'non_empty' ||
+					  typeof options.messageStartAt === 'number' ||
+					  typeof options.messageEndAt === 'number'
+					? await ctx.db
+							.query('chatSessions')
+							.withIndex('by_latestMessageAt', (q) => {
+								const lower = options.messageStartAt ?? 0;
+								return typeof options.messageEndAt === 'number'
+									? q.gte('latestMessageAt', lower).lte('latestMessageAt', options.messageEndAt)
+									: q.gte('latestMessageAt', lower);
+							})
+							.order('desc')
+							.paginate(paginationOpts)
+					: await ctx.db
+							.query('chatSessions')
+							.withIndex('by_adminSortAt')
+							.order('desc')
+							.paginate(paginationOpts);
+
+		pagesScanned++;
+		cursor = page.continueCursor;
+		isDone = page.isDone;
+
+		for (const session of page.page) {
+			if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
+			if (!sessionMatchesFilters(session, options)) continue;
+			matched.push(session);
+		}
+	}
+
+	const pageSessions = matched.slice(0, PAGE_SIZE);
+	const overflowIds = matched.slice(PAGE_SIZE).map((session) => session._id);
+	const hasMore = overflowIds.length > 0 || !isDone;
+	const continueCursor = hasMore ? filterCursor({ sourceCursor: cursor, overflowIds }) : null;
+	return {
+		sessions: await decorateSessions(ctx, pageSessions, options.now),
+		continueCursor,
+		nextCursor: continueCursor,
+		isDone: !hasMore
 	};
 }
 
@@ -285,62 +411,20 @@ export const listSessions = query({
 				empty,
 				messageStartAt,
 				messageEndAt,
+				propertySlug: args.propertySlug,
 				now
 			});
 		}
 
-		if (
-			empty === 'empty' &&
-			(typeof messageStartAt === 'number' || typeof messageEndAt === 'number')
-		) {
-			return { sessions: [], continueCursor: null, isDone: true };
-		}
-
-		const page =
-			empty === 'empty'
-				? await ctx.db
-						.query('chatSessions')
-						.withIndex('by_messageCount_and_adminSortAt', (q) =>
-							q.eq('messageCount', 0)
-						)
-						.order('desc')
-						.paginate(paginationOpts)
-				: empty === 'non_empty' ||
-					  typeof messageStartAt === 'number' ||
-					  typeof messageEndAt === 'number'
-					? await ctx.db
-							.query('chatSessions')
-							.withIndex('by_latestMessageAt', (q) => {
-								const lower = messageStartAt ?? 0;
-								return typeof messageEndAt === 'number'
-									? q.gte('latestMessageAt', lower).lte('latestMessageAt', messageEndAt)
-									: q.gte('latestMessageAt', lower);
-							})
-							.order('desc')
-							.paginate(paginationOpts)
-					: await ctx.db
-							.query('chatSessions')
-							.withIndex('by_adminSortAt')
-							.order('desc')
-							.paginate(paginationOpts);
-
-		const filtered = page.page.filter((session) => {
-			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
-			return sessionMatchesFilters(session, {
-				status,
-				empty,
-				messageStartAt,
-				messageEndAt,
-				now
-			});
+		return await listFilteredSessions(ctx, {
+			cursor: paginationOpts.cursor,
+			status,
+			empty,
+			messageStartAt,
+			messageEndAt,
+			propertySlug: args.propertySlug,
+			now
 		});
-
-		return {
-			sessions: await decorateSessions(ctx, filtered, now),
-			continueCursor: page.isDone ? null : page.continueCursor,
-			nextCursor: page.isDone ? null : page.continueCursor,
-			isDone: page.isDone
-		};
 	}
 });
 

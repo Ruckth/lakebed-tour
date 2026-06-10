@@ -201,6 +201,133 @@ describe("adminChat.listSessions", () => {
     ]);
   });
 
+  it("fills status-filtered pages when matching sessions are beyond the first raw page", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const now = 1_700_000_000_000;
+
+    for (let index = 0; index < 12; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Active ${index}`,
+        messageCount: 1,
+        latestMessageAt: now + 2_000 + index,
+        adminSortAt: now + 2_000 + index,
+        lastSeenAt: now - 1_000,
+        lastOpenedAt: now - 1_000,
+      });
+    }
+    for (let index = 0; index < 10; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Inactive ${index}`,
+        messageCount: 1,
+        latestMessageAt: now + index,
+        adminSortAt: now + index,
+        lastSeenAt: now - 300_000,
+        lastOpenedAt: now - 300_000,
+      });
+    }
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "inactive",
+      now,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions).toHaveLength(10);
+    expect(result.sessions.every((session) => session.visitorName?.startsWith("Inactive"))).toBe(true);
+    expect(result.isDone).toBe(true);
+  });
+
+  it("fills date-filtered active pages when inactive sessions are newer", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const now = 1_700_000_000_000;
+
+    for (let index = 0; index < 12; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Inactive in range ${index}`,
+        messageCount: 1,
+        latestMessageAt: 3_000 + index,
+        adminSortAt: 3_000 + index,
+        lastSeenAt: now - 300_000,
+        lastOpenedAt: now - 300_000,
+      });
+    }
+    for (let index = 0; index < 10; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Active in range ${index}`,
+        messageCount: 1,
+        latestMessageAt: 2_000 + index,
+        adminSortAt: 2_000 + index,
+        lastSeenAt: now - 1_000,
+        lastOpenedAt: now - 1_000,
+      });
+    }
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "active",
+      messageStartAt: 1_500,
+      messageEndAt: 4_000,
+      now,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions).toHaveLength(10);
+    expect(result.sessions.every((session) => session.visitorName?.startsWith("Active in range"))).toBe(true);
+    expect(result.isDone).toBe(true);
+  });
+
+  it("keeps combined date and status cursors stable without skipping overflow matches", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const now = 1_700_000_000_000;
+
+    for (let index = 0; index < 12; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Inactive cursor ${index}`,
+        messageCount: 1,
+        latestMessageAt: 4_000 + index,
+        adminSortAt: 4_000 + index,
+        lastSeenAt: now - 300_000,
+        lastOpenedAt: now - 300_000,
+      });
+    }
+    for (let index = 0; index < 13; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Active cursor ${index}`,
+        messageCount: 1,
+        latestMessageAt: 2_000 + index,
+        adminSortAt: 2_000 + index,
+        lastSeenAt: now - 1_000,
+        lastOpenedAt: now - 1_000,
+      });
+    }
+
+    const firstPage = await admin.query(api.adminChat.listSessions, {
+      status: "active",
+      messageStartAt: 1_500,
+      messageEndAt: 5_000,
+      now,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+    const secondPage = await admin.query(api.adminChat.listSessions, {
+      status: "active",
+      messageStartAt: 1_500,
+      messageEndAt: 5_000,
+      now,
+      paginationOpts: { numItems: 10, cursor: firstPage.continueCursor },
+    });
+
+    expect(firstPage.sessions).toHaveLength(10);
+    expect(firstPage.isDone).toBe(false);
+    expect(secondPage.sessions).toHaveLength(3);
+    expect(secondPage.isDone).toBe(true);
+    expect(new Set([...firstPage.sessions, ...secondPage.sessions].map((session) => session._id)).size).toBe(13);
+  });
+
   it("searches visitor contact and context with light typo tolerance", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);

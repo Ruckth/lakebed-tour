@@ -3,6 +3,7 @@
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import {
   Archive,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -31,6 +32,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { Component, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -269,6 +271,39 @@ const dynamicIntentOptions: CuratedDynamicIntent[] = [
   "contact",
 ];
 const PRESENCE_CLOCK_MS = 10_000;
+const timeHours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const timeMinutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+function dateTimeValueFromParts(date: Date, hour: string, minute: string) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function parseDateTimeValue(value: string, defaultHour: string, defaultMinute: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) {
+    return {
+      date: undefined,
+      hour: defaultHour,
+      minute: defaultMinute,
+    };
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const validDate =
+    date.getFullYear() === Number(year) &&
+    date.getMonth() === Number(month) - 1 &&
+    date.getDate() === Number(day);
+
+  return {
+    date: validDate ? date : undefined,
+    hour: timeHours.includes(hour) ? hour : defaultHour,
+    minute: timeMinutes.includes(minute) ? minute : defaultMinute,
+  };
+}
 
 function visitorLabel(session?: AdminSession | null) {
   if (!session) return "Visitor";
@@ -392,6 +427,96 @@ function dateTimeInputToMillis(value: string) {
 function dateTimeBadgeLabel(value: string) {
   const timestamp = dateTimeInputToMillis(value);
   return typeof timestamp === "number" ? formatDateTime(timestamp) : value;
+}
+
+function AdminDateTimeFilterField({
+  id,
+  label,
+  value,
+  onChange,
+  defaultHour,
+  defaultMinute,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  defaultHour: string;
+  defaultMinute: string;
+}) {
+  const { date, hour, minute } = parseDateTimeValue(value, defaultHour, defaultMinute);
+  const dateLabel = date
+    ? new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(date)
+    : "Select date";
+
+  function updateTime(nextHour: string, nextMinute: string) {
+    if (!date) return;
+    onChange(dateTimeValueFromParts(date, nextHour, nextMinute));
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id} className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </Label>
+      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              id={id}
+              type="button"
+              variant="outline"
+              className={cn(
+                "h-10 justify-start rounded-lg px-3 text-left text-sm",
+                !date && "text-muted-foreground",
+              )}
+            >
+              <CalendarDays className="h-4 w-4 text-gold" />
+              <span className="min-w-0 truncate">{dateLabel}</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-3">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={(selectedDate) => {
+                if (!selectedDate) return;
+                onChange(dateTimeValueFromParts(selectedDate, hour, minute));
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        <Select value={hour} onValueChange={(nextHour) => updateTime(nextHour, minute)} disabled={!date}>
+          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} hour`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {timeHours.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={minute} onValueChange={(nextMinute) => updateTime(hour, nextMinute)} disabled={!date}>
+          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} minute`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {timeMinutes.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
 }
 
 function emptyFilterLabel(value: EmptyChatFilter) {
@@ -797,7 +922,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     <Filter className="h-4 w-4" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 space-y-4">
+                <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
                   <div>
                     <p className="text-sm font-semibold text-foreground">Filters</p>
                   </div>
@@ -824,30 +949,22 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     </div>
                   </div>
                   <div className="grid gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-message-start" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Message start
-                      </Label>
-                      <Input
-                        id="admin-message-start"
-                        type="datetime-local"
-                        value={messageStartAt}
-                        onChange={(event) => setMessageStartAt(event.target.value)}
-                        className="admin-datetime-input h-10 rounded-lg"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-message-end" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Message end
-                      </Label>
-                      <Input
-                        id="admin-message-end"
-                        type="datetime-local"
-                        value={messageEndAt}
-                        onChange={(event) => setMessageEndAt(event.target.value)}
-                        className="admin-datetime-input h-10 rounded-lg"
-                      />
-                    </div>
+                    <AdminDateTimeFilterField
+                      id="admin-message-start"
+                      label="Message start"
+                      value={messageStartAt}
+                      onChange={setMessageStartAt}
+                      defaultHour="00"
+                      defaultMinute="00"
+                    />
+                    <AdminDateTimeFilterField
+                      id="admin-message-end"
+                      label="Message end"
+                      value={messageEndAt}
+                      onChange={setMessageEndAt}
+                      defaultHour="23"
+                      defaultMinute="59"
+                    />
                   </div>
                   <div className="flex justify-end">
                     <Button
