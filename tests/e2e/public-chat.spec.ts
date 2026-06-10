@@ -28,6 +28,18 @@ const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
 type SeededChatMessage = { role: "user" | "assistant"; content: string };
 
+async function getVisibleBoundingBox(locator: Locator) {
+  let box: Awaited<ReturnType<Locator["boundingBox"]>> = null;
+
+  await expect.poll(async () => {
+    box = await locator.boundingBox().catch(() => null);
+    return Boolean(box && box.width > 0 && box.height > 0);
+  }).toBe(true);
+
+  expect(box).not.toBeNull();
+  return box!;
+}
+
 async function chooseLanguage(page: Page, optionName: string) {
   const languageButtons = page.getByTestId("language-switcher");
   const buttonCount = await languageButtons.count();
@@ -404,12 +416,12 @@ test("mobile chat trigger stays in the same position on booking and home", async
   await page.setViewportSize({ width: 390, height: 760 });
 
   await page.goto("/");
-  const homeBox = await page.getByRole("link", { name: "Open concierge chat" }).boundingBox();
-  expect(homeBox).not.toBeNull();
+  const homeTrigger = page.getByRole("link", { name: "Open concierge chat" });
+  const homeBox = await getVisibleBoundingBox(homeTrigger);
 
   await page.goto("/booking");
-  const bookingBox = await page.getByRole("link", { name: "Open concierge chat" }).boundingBox();
-  expect(bookingBox).not.toBeNull();
+  const bookingTrigger = page.getByRole("link", { name: "Open concierge chat" });
+  const bookingBox = await getVisibleBoundingBox(bookingTrigger);
 
   expect(Math.abs(bookingBox!.x - homeBox!.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(bookingBox!.y - homeBox!.y)).toBeLessThanOrEqual(1);

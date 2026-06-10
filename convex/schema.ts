@@ -227,6 +227,10 @@ export default defineSchema({
 		lastSeenAt: v.optional(v.number()),
 		lastOpenedAt: v.optional(v.number()),
 		lastClosedAt: v.optional(v.number()),
+		messageCount: v.optional(v.number()),
+		latestMessageAt: v.optional(v.number()),
+		adminSortAt: v.optional(v.number()),
+		adminSearchText: v.optional(v.string()),
 		// Legacy embedded messages — kept optional for migration compatibility.
 		// New sessions write to the chatMessages table instead.
 		messages: v.optional(
@@ -243,7 +247,15 @@ export default defineSchema({
 		.index('by_property', ['propertyId'])
 		.index('by_last_seen', ['lastSeenAt'])
 		.index('by_property_last_seen', ['propertyId', 'lastSeenAt'])
-		.index('by_visitor', ['visitorId']),
+		.index('by_visitor', ['visitorId'])
+		.index('by_adminSortAt', ['adminSortAt'])
+		.index('by_latestMessageAt', ['latestMessageAt'])
+		.index('by_messageCount_and_adminSortAt', ['messageCount', 'adminSortAt'])
+		.index('by_propertyId_and_adminSortAt', ['propertyId', 'adminSortAt'])
+		.index('by_propertyId_and_latestMessageAt', ['propertyId', 'latestMessageAt'])
+		.searchIndex('search_adminSearchText', {
+			searchField: 'adminSearchText'
+		}),
 
 	chatMessages: defineTable({
 		sessionId: v.id('chatSessions'),
@@ -251,7 +263,12 @@ export default defineSchema({
 		content: v.string(),
 		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
-	}).index('by_session', ['sessionId', 'timestamp']),
+	})
+		.index('by_session', ['sessionId', 'timestamp'])
+		.searchIndex('search_content', {
+			searchField: 'content',
+			filterFields: ['sessionId']
+		}),
 
 	chatBrowserHandoffs: defineTable({
 		token: v.string(),
@@ -286,9 +303,11 @@ export default defineSchema({
 		replyMode: v.optional(
 			v.union(
 				v.literal('exact'),
+				v.literal('approved_exact'),
 				v.literal('question_bank_exact'),
 				v.literal('question_bank_semantic'),
 				v.literal('ai'),
+				v.literal('unknown_fallback'),
 				v.literal('postback'),
 				v.literal('follow'),
 				v.literal('ignored'),
@@ -372,6 +391,91 @@ export default defineSchema({
 	})
 		.index('by_session', ['sessionId'])
 		.index('by_session_and_question', ['sessionId', 'questionId']),
+
+	chatAnswers: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		title: v.string(),
+		answer: v.string(),
+		status: v.union(v.literal('draft'), v.literal('approved'), v.literal('archived')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		archivedAt: v.optional(v.number()),
+		createdByAdminEmail: v.string(),
+		updatedByAdminEmail: v.string(),
+		archivedByAdminEmail: v.optional(v.string())
+	})
+		.index('by_createdAt', ['createdAt'])
+		.index('by_status_and_updatedAt', ['status', 'updatedAt'])
+		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt']),
+
+	chatQuestions: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		answerId: v.id('chatAnswers'),
+		questionText: v.string(),
+		normalizedQuestion: v.string(),
+		isPrimary: v.boolean(),
+		isAiTrigger: v.boolean(),
+		createdBy: v.union(v.literal('admin'), v.literal('ai')),
+		status: v.union(v.literal('approved'), v.literal('suggested'), v.literal('rejected')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		approvedAt: v.optional(v.number()),
+		rejectedAt: v.optional(v.number()),
+		createdByAdminEmail: v.optional(v.string()),
+		updatedByAdminEmail: v.optional(v.string())
+	})
+		.index('by_answerId', ['answerId'])
+		.index('by_answerId_and_status', ['answerId', 'status'])
+		.index('by_status_and_createdAt', ['status', 'createdAt'])
+		.index('by_status_and_normalizedQuestion_and_propertyId', [
+			'status',
+			'normalizedQuestion',
+			'propertyId'
+		]),
+
+	chatTopics: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		name: v.string(),
+		normalizedName: v.string(),
+		description: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_propertyId', ['propertyId'])
+		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName']),
+
+	chatAnswerTopics: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		answerId: v.id('chatAnswers'),
+		topicId: v.id('chatTopics'),
+		createdAt: v.number()
+	})
+		.index('by_answerId', ['answerId'])
+		.index('by_topicId', ['topicId'])
+		.index('by_propertyId', ['propertyId']),
+
+	chatUnknownQuestions: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		propertySlug: v.optional(v.string()),
+		sessionId: v.optional(v.id('chatSessions')),
+		userQuestion: v.string(),
+		normalizedQuestion: v.string(),
+		detectedTopic: v.optional(v.string()),
+		userId: v.optional(v.string()),
+		pageUrl: v.optional(v.string()),
+		status: v.union(v.literal('new'), v.literal('resolved'), v.literal('ignored')),
+		adminNotified: v.boolean(),
+		resolvedAnswerId: v.optional(v.id('chatAnswers')),
+		resolvedQuestionId: v.optional(v.id('chatQuestions')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		resolvedAt: v.optional(v.number()),
+		ignoredAt: v.optional(v.number())
+	})
+		.index('by_createdAt', ['createdAt'])
+		.index('by_status_and_createdAt', ['status', 'createdAt'])
+		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
+		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion']),
 
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),

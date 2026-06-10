@@ -172,7 +172,7 @@ describe("chatAi.respond question-bank matching", () => {
     }
   });
 
-  it("falls through to the AI concierge when semantic confidence is low", async () => {
+  it("records an unknown fallback when semantic confidence is low", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
@@ -208,9 +208,16 @@ describe("chatAi.respond question-bank matching", () => {
         userMessage: "Can you help with late checkout?",
       });
 
+      const unknownRows = await admin.query(api.chatKnowledge.adminListUnknownQuestions, {
+        status: "new",
+      });
+
       expect(result).toMatchObject({
-        response: "The host can help with late checkout.",
-        model: "grok-4.3",
+        response: "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+        model: "unknown_fallback",
+      });
+      expect(unknownRows[0]).toMatchObject({
+        userQuestion: "Can you help with late checkout?",
       });
       expect(fetchMock).toHaveBeenCalled();
     } finally {
@@ -240,7 +247,7 @@ describe("chatAi.respond question-bank matching", () => {
       });
 
       expect(result.response).not.toBe("Breakfast can be arranged with the host.");
-      expect(result.model).toBe("fallback");
+      expect(result.model).toBe("unknown_fallback");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -310,7 +317,10 @@ describe("chatAi.respond question-bank matching", () => {
         sessionId,
         userMessage: "Can I check live availability?",
       });
-      const systemPrompt = requestBodies[0]?.messages?.[0]?.content ?? "";
+      const systemPrompt =
+        requestBodies
+          .map((body) => body.messages?.[0]?.content ?? "")
+          .find((content) => content.includes("QUESTION BANK INTENT")) ?? "";
 
       expect(result.response).toBe("Use the booking card to check live dates.");
       expect(systemPrompt).toContain("QUESTION BANK INTENT");

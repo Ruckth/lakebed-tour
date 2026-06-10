@@ -38,6 +38,17 @@ type QuestionBankMatch = {
 	confidence?: number;
 };
 
+type ApprovedKnowledgeMatch = {
+	source: 'approved_exact';
+	answerId: Id<'chatAnswers'>;
+	questionId: Id<'chatQuestions'>;
+	title: string;
+	answer: string;
+	questionText: string;
+	normalizedQuestion: string;
+	propertyId?: Id<'properties'>;
+};
+
 function normalizeSiteUrl(siteUrl?: string) {
 	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
 	if (!trimmed) return undefined;
@@ -69,6 +80,14 @@ export function getResortRealityDisclosure(message: string, siteUrl?: string) {
 	}
 
 	return `Auralis Cove Retreat is presented here as a demo/preview experience for booking and 360° villa tours, so I should not claim it is a real-world verified resort from this chat. I can still help you explore the demo villas, pricing, availability, and tour links${linkText}.`;
+}
+
+export function getUnknownFallbackResponse(message: string) {
+	if (isThaiText(message)) {
+		return 'ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว';
+	}
+
+	return "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.";
 }
 
 function lineChannelGuidance(siteUrl?: string) {
@@ -127,6 +146,19 @@ async function resolveQuestionBankMatch(
 	});
 }
 
+async function resolveApprovedKnowledgeExact(
+	ctx: ActionCtx,
+	args: Pick<GenerateConciergeReplyArgs, 'sessionId' | 'userMessage'>
+) {
+	const messageText = args.userMessage.trim();
+	if (!messageText) return null;
+
+	return await ctx.runQuery(api.chatKnowledge.resolveExact, {
+		sessionId: args.sessionId,
+		messageText
+	}) as ApprovedKnowledgeMatch | null;
+}
+
 async function markQuestionBankMatchClicked(
 	ctx: ActionCtx,
 	sessionId: Id<'chatSessions'>,
@@ -142,6 +174,24 @@ async function markQuestionBankMatchClicked(
 			}
 		})
 		.catch(() => null);
+}
+
+async function recordUnknownFallback(
+	ctx: ActionCtx,
+	args: Pick<GenerateConciergeReplyArgs, 'sessionId' | 'userMessage' | 'propertySlug'>,
+	session: Doc<'chatSessions'>
+) {
+	await ctx.runMutation(api.chatKnowledge.recordUnknownQuestion, {
+		sessionId: args.sessionId,
+		userQuestion: args.userMessage,
+		propertySlug: args.propertySlug ?? session.propertySlug,
+		pageUrl: session.currentPath
+	});
+
+	return {
+		response: getUnknownFallbackResponse(args.userMessage),
+		model: 'unknown_fallback'
+	};
 }
 
 async function generateConciergeReply(
@@ -334,30 +384,39 @@ export const respond = action({
 		});
 
 		const guardrailReply = getResortRealityDisclosure(args.userMessage);
+		let approvedKnowledgeMatch: ApprovedKnowledgeMatch | null = null;
 		let questionBankMatch: QuestionBankMatch | null = null;
 		let result: { response: string; model: string };
 
 		if (guardrailReply) {
 			result = { response: guardrailReply, model: 'guardrail' };
 		} else {
-			questionBankMatch = await resolveQuestionBankMatch(ctx, args);
-			if (
-				questionBankMatch?.answerMode === 'static' &&
-				questionBankMatch.answer?.trim()
-			) {
+			approvedKnowledgeMatch = await resolveApprovedKnowledgeExact(ctx, args);
+			if (approvedKnowledgeMatch) {
 				result = {
-					response: questionBankMatch.answer.trim(),
-					model: questionBankMatch.source === 'exact'
-						? 'question_bank_exact'
-						: 'question_bank_semantic'
+					response: approvedKnowledgeMatch.answer.trim(),
+					model: 'approved_exact'
 				};
 			} else {
-				result = await generateConciergeReply(ctx, {
-					...args,
-					...(questionBankMatch
-						? { questionBankHint: questionBankHintFromMatch(questionBankMatch) }
-						: {})
-				}, session);
+				questionBankMatch = await resolveQuestionBankMatch(ctx, args);
+				if (
+					questionBankMatch?.answerMode === 'static' &&
+					questionBankMatch.answer?.trim()
+				) {
+					result = {
+						response: questionBankMatch.answer.trim(),
+						model: questionBankMatch.source === 'exact'
+							? 'question_bank_exact'
+							: 'question_bank_semantic'
+					};
+				} else if (questionBankMatch) {
+					result = await generateConciergeReply(ctx, {
+						...args,
+						questionBankHint: questionBankHintFromMatch(questionBankMatch)
+					}, session);
+				} else {
+					result = await recordUnknownFallback(ctx, args, session);
+				}
 			}
 		}
 
@@ -367,7 +426,8 @@ export const respond = action({
 			...(args.actionHint ? { action: args.actionHint } : {}),
 			locale: args.locale,
 			propertySlug: args.propertySlug,
-			replyToMessageId: userMessageId
+			replyToMessageId: userMessageId,
+			...(result.model === 'unknown_fallback' ? { skipSuggestions: true } : {})
 		});
 
 		await markQuestionBankMatchClicked(ctx, args.sessionId, questionBankMatch);

@@ -3,9 +3,12 @@
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import {
   Archive,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Edit3,
   ExternalLink,
+  Filter,
   Globe2,
   HelpCircle,
   Loader2,
@@ -20,11 +23,12 @@ import {
   Shield,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Component, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +41,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { defaultLocale, localeLabels, locales, type Locale } from "@/i18n/routing";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
+type EmptyChatFilter = "all" | "empty" | "non_empty";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -53,7 +59,17 @@ type AdminMessage = {
 };
 
 type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed";
-type LineReplyMode = "exact" | "ai" | "postback" | "follow" | "ignored" | "failed";
+type LineReplyMode =
+  | "exact"
+  | "approved_exact"
+  | "question_bank_exact"
+  | "question_bank_semantic"
+  | "ai"
+  | "unknown_fallback"
+  | "postback"
+  | "follow"
+  | "ignored"
+  | "failed";
 
 type AdminLineEvent = {
   _id: Id<"lineWebhookEvents">;
@@ -92,6 +108,9 @@ type AdminSession = {
   lastSeenAt?: number;
   lastOpenedAt?: number;
   lastClosedAt?: number;
+  messageCount?: number;
+  latestMessageAt?: number;
+  adminSortAt?: number;
   isActive: boolean;
   latestMessage?: AdminMessage;
   latestLineEvent?: AdminLineEvent | null;
@@ -99,7 +118,9 @@ type AdminSession = {
 
 type SessionListResult = {
   sessions: AdminSession[];
-  nextCursor: number | null;
+  continueCursor: string | null;
+  nextCursor?: string | null;
+  isDone: boolean;
 };
 
 type TranscriptResult = {
@@ -130,6 +151,70 @@ type AdminSuggestedQuestion = {
 type CuratedQuestionStatus = "all" | "active" | "archived";
 type CuratedAnswerMode = "static" | "dynamic";
 type CuratedDynamicIntent = "availability" | "pricing" | "property_details" | "booking_help" | "contact";
+
+type KnowledgeAnswerStatus = "draft" | "approved" | "archived";
+type KnowledgeAnswerFilter = KnowledgeAnswerStatus | "all";
+type UnknownQuestionStatus = "new" | "resolved" | "ignored";
+type UnknownQuestionFilter = UnknownQuestionStatus | "all";
+type KnowledgeViewMode = "answers" | "unknown" | "generated";
+
+type AdminKnowledgeQuestion = {
+  _id: Id<"chatQuestions">;
+  answerId: Id<"chatAnswers">;
+  questionText: string;
+  normalizedQuestion: string;
+  isPrimary: boolean;
+  isAiTrigger: boolean;
+  createdBy: "admin" | "ai";
+  status: "approved" | "suggested" | "rejected";
+  createdAt: number;
+  updatedAt: number;
+};
+
+type AdminKnowledgeTopic = {
+  _id: Id<"chatTopics">;
+  name: string;
+  description: string;
+};
+
+type AdminKnowledgeAnswer = {
+  _id: Id<"chatAnswers">;
+  propertyName?: string;
+  propertySlug?: string;
+  title: string;
+  answer: string;
+  status: KnowledgeAnswerStatus;
+  createdAt: number;
+  updatedAt: number;
+  questions: AdminKnowledgeQuestion[];
+  topics: AdminKnowledgeTopic[];
+};
+
+type AdminUnknownQuestion = {
+  _id: Id<"chatUnknownQuestions">;
+  propertyName?: string;
+  propertySlug?: string;
+  userQuestion: string;
+  normalizedQuestion: string;
+  detectedTopic?: string;
+  userId?: string;
+  pageUrl?: string;
+  status: UnknownQuestionStatus;
+  adminNotified: boolean;
+  resolvedAnswerTitle?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type AnswerKnowledgeForm = {
+  title: string;
+  answer: string;
+  status: KnowledgeAnswerStatus;
+  primaryQuestion: string;
+  questions: string;
+  topicNames: string;
+  propertySlug: string;
+};
 
 type AdminCuratedQuestion = {
   _id: Id<"curatedChatQuestions">;
@@ -296,6 +381,23 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
 
   if (value !== undefined) return value;
   return latest?.resetKey === resetKey ? latest.value : undefined;
+}
+
+function dateTimeInputToMillis(value: string) {
+  if (!value) return undefined;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function dateTimeBadgeLabel(value: string) {
+  const timestamp = dateTimeInputToMillis(value);
+  return typeof timestamp === "number" ? formatDateTime(timestamp) : value;
+}
+
+function emptyFilterLabel(value: EmptyChatFilter) {
+  if (value === "empty") return "Empty only";
+  if (value === "non_empty") return "Non-empty only";
+  return "All threads";
 }
 
 function getQuestionForLocale(question: AdminSuggestedQuestion, locale: Locale) {
@@ -514,15 +616,33 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
   const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
-  const [propertySlug, setPropertySlug] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("all");
+  const [messageStartAt, setMessageStartAt] = useState("");
+  const [messageEndAt, setMessageEndAt] = useState("");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const [selectedSessionId, setSelectedSessionId] =
     useState<Id<"chatSessions"> | null>(null);
-  const trimmedPropertySlug = propertySlug.trim();
-  const sessionsResetKey = `${status}:${trimmedPropertySlug}`;
-  const liveSessionsResult = useQuery(api.adminChat.listSessions, {
+  const trimmedSearchQuery = searchQuery.trim();
+  const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt);
+  const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt);
+  const currentCursor = pageCursors[pageIndex] ?? null;
+  const filterResetKey = [
     status,
-    propertySlug: trimmedPropertySlug || undefined,
-    limit: 30,
+    trimmedSearchQuery,
+    emptyFilter,
+    messageStartAt,
+    messageEndAt,
+  ].join(":");
+  const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
+  const liveSessionsResult = useQuery(api.adminChat.listSessions, {
+    paginationOpts: { numItems: 10, cursor: currentCursor },
+    status,
+    empty: emptyFilter,
+    searchQuery: trimmedSearchQuery || undefined,
+    messageStartAt: parsedMessageStartAt,
+    messageEndAt: parsedMessageEndAt,
     now,
   }) as SessionListResult | undefined;
   const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
@@ -547,6 +667,29 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     [selectedSessionId, sessions, transcript],
   );
 
+  const resetSessionPaging = useCallback(() => {
+    setPageIndex(0);
+    setPageCursors([null]);
+    setSelectedSessionId(null);
+  }, []);
+
+  function handleNextPage() {
+    const nextCursor = sessionsResult?.continueCursor ?? sessionsResult?.nextCursor ?? null;
+    if (!nextCursor || sessionsResult?.isDone) return;
+    setPageCursors((current) => [
+      ...current.slice(0, pageIndex + 1),
+      nextCursor,
+    ]);
+    setPageIndex((current) => current + 1);
+    setSelectedSessionId(null);
+  }
+
+  function handlePreviousPage() {
+    if (pageIndex <= 0) return;
+    setPageIndex((current) => Math.max(0, current - 1));
+    setSelectedSessionId(null);
+  }
+
   useEffect(() => {
     if (!sessionsResult) return;
 
@@ -557,6 +700,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       return isLargeViewport ? sessionsResult.sessions[0]?._id ?? null : null;
     });
   }, [isLargeViewport, sessionsResult]);
+
+  useEffect(() => {
+    resetSessionPaging();
+  }, [filterResetKey, resetSessionPaging]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -600,7 +747,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       ) : (
       <>
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="min-h-[calc(100vh-132px)] border border-border bg-card">
+        <aside className="grid min-h-[calc(100vh-132px)] grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">
             <div className="flex rounded-lg border border-border bg-background p-1">
               {statusOptions.map((option) => (
@@ -609,7 +756,6 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   type="button"
                   onClick={() => {
                     setStatus(option);
-                    setSelectedSessionId(null);
                   }}
                   className={cn(
                     "flex-1 rounded-md px-3 py-2 text-xs font-semibold capitalize transition",
@@ -626,16 +772,156 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  value={propertySlug}
-                  onChange={(event) => setPropertySlug(event.target.value)}
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
                   className="h-10 rounded-lg pl-9"
-                  placeholder="Filter by property slug"
+                  placeholder="Search contacts or messages"
                 />
               </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className={cn(
+                      "h-10 w-10 rounded-lg",
+                      (emptyFilter !== "all" || messageStartAt || messageEndAt) &&
+                        "border-gold text-gold",
+                    )}
+                    aria-label="Open chat filters"
+                  >
+                    <Filter className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Filters</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Empty thread
+                    </Label>
+                    <div className="grid grid-cols-3 rounded-lg border border-border bg-background p-1">
+                      {(["all", "empty", "non_empty"] satisfies EmptyChatFilter[]).map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setEmptyFilter(option)}
+                          className={cn(
+                            "rounded-md px-2 py-2 text-xs font-semibold transition",
+                            emptyFilter === option
+                              ? "bg-navy text-white shadow-sm"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {option === "all" ? "All" : option === "empty" ? "Empty" : "Non-empty"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="admin-message-start" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Message start
+                      </Label>
+                      <Input
+                        id="admin-message-start"
+                        type="datetime-local"
+                        value={messageStartAt}
+                        onChange={(event) => setMessageStartAt(event.target.value)}
+                        className="h-10 rounded-lg"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="admin-message-end" className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Message end
+                      </Label>
+                      <Input
+                        id="admin-message-end"
+                        type="datetime-local"
+                        value={messageEndAt}
+                        onChange={(event) => setMessageEndAt(event.target.value)}
+                        className="h-10 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEmptyFilter("all");
+                        setMessageStartAt("");
+                        setMessageEndAt("");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
+            {trimmedSearchQuery || emptyFilter !== "all" || messageStartAt || messageEndAt ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {trimmedSearchQuery ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full">
+                    Search: {truncate(trimmedSearchQuery, 24)}
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Clear search"
+                      className="rounded-full p-0.5 hover:bg-background"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
+                {emptyFilter !== "all" ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full">
+                    {emptyFilterLabel(emptyFilter)}
+                    <button
+                      type="button"
+                      onClick={() => setEmptyFilter("all")}
+                      aria-label="Clear empty filter"
+                      className="rounded-full p-0.5 hover:bg-background"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
+                {messageStartAt ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full">
+                    From {dateTimeBadgeLabel(messageStartAt)}
+                    <button
+                      type="button"
+                      onClick={() => setMessageStartAt("")}
+                      aria-label="Clear message start"
+                      className="rounded-full p-0.5 hover:bg-background"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
+                {messageEndAt ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full">
+                    To {dateTimeBadgeLabel(messageEndAt)}
+                    <button
+                      type="button"
+                      onClick={() => setMessageEndAt("")}
+                      aria-label="Clear message end"
+                      className="rounded-full p-0.5 hover:bg-background"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
-          <div className="max-h-[calc(100vh-255px)] overflow-y-auto">
+          <div className="min-h-0 overflow-y-auto">
             {loadingSessions && sessions.length === 0 ? (
               <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -669,11 +955,14 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {session.propertyName ?? session.propertySlug ?? "General site"} ·{" "}
-                      {session.channel}
+                      {session.channel} · {session.messageCount ?? 0} messages
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
+                    {relativeTime(
+                      session.latestMessageAt ?? session.lastSeenAt ?? session.createdAt,
+                      now,
+                    )}
                   </span>
                 </div>
                 {session.latestMessage ? (
@@ -697,6 +986,37 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 )}
               </button>
             ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-border p-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handlePreviousPage}
+              disabled={pageIndex === 0 || loadingSessions}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Previous
+            </Button>
+            <div className="text-center text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">Page {pageIndex + 1}</p>
+              <p>10 per page</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={
+                loadingSessions ||
+                !sessionsResult ||
+                sessionsResult.isDone ||
+                !(sessionsResult.continueCursor ?? sessionsResult.nextCursor)
+              }
+            >
+              Next
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
           </div>
         </aside>
 
@@ -940,6 +1260,746 @@ function AdminSessionDetail({
 }
 
 function AdminQuestionsView({
+  questions,
+}: {
+  questions: AdminSuggestedQuestion[] | undefined;
+}) {
+  const [selectedLocale, setSelectedLocale] = useState<Locale>(defaultLocale);
+  const [mode, setMode] = useState<KnowledgeViewMode>("answers");
+  const [answerStatus, setAnswerStatus] = useState<KnowledgeAnswerFilter>("approved");
+  const [unknownStatus, setUnknownStatus] = useState<UnknownQuestionFilter>("new");
+  const [answerDialogOpen, setAnswerDialogOpen] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState<AdminKnowledgeAnswer | null>(null);
+  const [sourceUnknown, setSourceUnknown] = useState<AdminUnknownQuestion | null>(null);
+  const [form, setForm] = useState<AnswerKnowledgeForm>(() => emptyKnowledgeForm());
+  const [formError, setFormError] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const [linkAnswerIds, setLinkAnswerIds] = useState<Record<string, string>>({});
+  const answers = useQuery(
+    api.chatKnowledge.adminListAnswers,
+    mode === "answers"
+      ? {
+          status: answerStatus === "all" ? undefined : answerStatus,
+          limit: 100,
+        }
+      : mode === "unknown"
+        ? { status: "approved", limit: 100 }
+        : "skip",
+  ) as AdminKnowledgeAnswer[] | undefined;
+  const unknownQuestions = useQuery(
+    api.chatKnowledge.adminListUnknownQuestions,
+    mode === "unknown" ? { status: unknownStatus, limit: 100 } : "skip",
+  ) as AdminUnknownQuestion[] | undefined;
+  const createAnswer = useMutation(api.chatKnowledge.adminCreateAnswer);
+  const updateAnswer = useMutation(api.chatKnowledge.adminUpdateAnswer);
+  const approveQuestion = useMutation(api.chatKnowledge.adminApproveQuestion);
+  const rejectQuestion = useMutation(api.chatKnowledge.adminRejectQuestion);
+  const ignoreUnknown = useMutation(api.chatKnowledge.adminIgnoreUnknown);
+  const createAnswerFromUnknown = useAction(api.chatKnowledge.adminCreateAnswerFromUnknown);
+  const resolveUnknownWithAnswer = useAction(api.chatKnowledge.adminResolveUnknownWithAnswer);
+  const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
+  const answerRows = answers ?? [];
+  const unknownRows = unknownQuestions ?? [];
+  const generatedRows = questions ?? [];
+
+  function emptyKnowledgeForm(): AnswerKnowledgeForm {
+    return {
+      title: "",
+      answer: "",
+      status: "approved",
+      primaryQuestion: "",
+      questions: "",
+      topicNames: "",
+      propertySlug: "",
+    };
+  }
+
+  function formForKnowledgeAnswer(answer: AdminKnowledgeAnswer): AnswerKnowledgeForm {
+    return {
+      title: answer.title,
+      answer: answer.answer,
+      status: answer.status,
+      primaryQuestion:
+        answer.questions.find((question) => question.isPrimary)?.questionText ??
+        answer.questions.find((question) => question.status === "approved")?.questionText ??
+        "",
+      questions: "",
+      topicNames: answer.topics.map((topic) => topic.name).join(", "),
+      propertySlug: answer.propertySlug ?? "",
+    };
+  }
+
+  function splitList(value: string) {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function openCreateAnswer() {
+    setEditingAnswer(null);
+    setSourceUnknown(null);
+    setForm(emptyKnowledgeForm());
+    setFormError("");
+    setAnswerDialogOpen(true);
+  }
+
+  function openEditAnswer(answer: AdminKnowledgeAnswer) {
+    setEditingAnswer(answer);
+    setSourceUnknown(null);
+    setForm(formForKnowledgeAnswer(answer));
+    setFormError("");
+    setAnswerDialogOpen(true);
+  }
+
+  function openCreateFromUnknown(question: AdminUnknownQuestion) {
+    setEditingAnswer(null);
+    setSourceUnknown(question);
+    setForm({
+      ...emptyKnowledgeForm(),
+      title: question.detectedTopic ? `${question.detectedTopic}: ${question.userQuestion}` : question.userQuestion,
+      primaryQuestion: question.userQuestion,
+      topicNames: question.detectedTopic ?? "",
+      propertySlug: question.propertySlug ?? "",
+    });
+    setFormError("");
+    setAnswerDialogOpen(true);
+  }
+
+  async function submitKnowledgeAnswer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    const title = form.title.trim();
+    const answer = form.answer.trim();
+    if (!title || !answer) {
+      setFormError("Title and answer are required.");
+      return;
+    }
+    if (!editingAnswer && !sourceUnknown && !form.primaryQuestion.trim()) {
+      setFormError("Add the primary question guests will ask.");
+      return;
+    }
+
+    setPendingAction("save-answer");
+    try {
+      const topicNames = splitList(form.topicNames);
+      if (sourceUnknown) {
+        await createAnswerFromUnknown({
+          unknownQuestionId: sourceUnknown._id,
+          title,
+          answer,
+          status: form.status,
+          topicNames,
+          generateSimilar: true,
+        });
+      } else if (editingAnswer) {
+        await updateAnswer({
+          answerId: editingAnswer._id,
+          title,
+          answer,
+          status: form.status,
+          topicNames,
+          propertySlug: form.propertySlug.trim() || undefined,
+        });
+      } else {
+        await createAnswer({
+          title,
+          answer,
+          status: form.status,
+          primaryQuestion: form.primaryQuestion.trim(),
+          questions: splitList(form.questions),
+          topicNames,
+          propertySlug: form.propertySlug.trim() || undefined,
+        });
+      }
+      setAnswerDialogOpen(false);
+      setSourceUnknown(null);
+      setEditingAnswer(null);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to save answer.");
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function runAnswerAction(action: string, answer: AdminKnowledgeAnswer) {
+    setPendingAction(`${action}:${answer._id}`);
+    try {
+      if (action === "generate") {
+        await generateSimilarQuestions({ answerId: answer._id });
+      }
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function runQuestionAction(action: string, question: AdminKnowledgeQuestion) {
+    setPendingAction(`${action}:${question._id}`);
+    try {
+      if (action === "approve") await approveQuestion({ questionId: question._id });
+      if (action === "reject") await rejectQuestion({ questionId: question._id });
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function linkUnknownQuestion(question: AdminUnknownQuestion) {
+    const answerId = linkAnswerIds[question._id];
+    if (!answerId) return;
+    setPendingAction(`link:${question._id}`);
+    try {
+      await resolveUnknownWithAnswer({
+        unknownQuestionId: question._id,
+        answerId: answerId as Id<"chatAnswers">,
+        generateSimilar: true,
+      });
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function ignoreUnknownQuestion(question: AdminUnknownQuestion) {
+    setPendingAction(`ignore:${question._id}`);
+    try {
+      await ignoreUnknown({ unknownQuestionId: question._id });
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  function answerStatusTone(status: KnowledgeAnswerStatus) {
+    if (status === "approved") return "bg-emerald-600 text-white";
+    if (status === "archived") return "bg-muted text-foreground";
+    return "bg-amber-600 text-white";
+  }
+
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+      <section className="border border-border bg-card">
+        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
+              <HelpCircle className="h-4 w-4" />
+              Approved knowledge
+            </div>
+            <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">
+              Chatbot Knowledge
+            </h2>
+            <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
+              {(["answers", "unknown", "generated"] satisfies KnowledgeViewMode[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={cn(
+                    "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
+                    mode === option
+                      ? "bg-navy text-white shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  {option === "generated" ? "AI Suggestions" : option}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {mode === "answers" ? (
+              <>
+                <Select
+                  value={answerStatus}
+                  onValueChange={(value) => setAnswerStatus(value as KnowledgeAnswerFilter)}
+                >
+                  <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Answer status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["approved", "draft", "archived", "all"] satisfies KnowledgeAnswerFilter[]).map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" onClick={openCreateAnswer} size="sm">
+                  <Plus className="h-4 w-4" />
+                  Add answer
+                </Button>
+              </>
+            ) : null}
+            {mode === "unknown" ? (
+              <Select
+                value={unknownStatus}
+                onValueChange={(value) => setUnknownStatus(value as UnknownQuestionFilter)}
+              >
+                <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Unknown status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["new", "resolved", "ignored", "all"] satisfies UnknownQuestionFilter[]).map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            {mode === "generated" ? (
+              <Select
+                value={selectedLocale}
+                onValueChange={(value) => setSelectedLocale(value as Locale)}
+              >
+                <SelectTrigger className="h-10 w-[11rem] rounded-lg" aria-label="Suggested question language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {locales.map((locale) => (
+                    <SelectItem key={locale} value={locale}>
+                      {localeLabels[locale]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        </div>
+
+        {mode === "answers" ? (
+          <div>
+            {!answers ? (
+              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading answers
+              </div>
+            ) : null}
+            {answers && answerRows.length === 0 ? (
+              <div className="p-5 text-sm leading-6 text-muted-foreground">
+                No approved answers match this filter yet.
+              </div>
+            ) : null}
+            {answerRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-left text-sm">
+                  <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Answer</th>
+                      <th className="px-4 py-3 font-semibold">Questions</th>
+                      <th className="px-4 py-3 font-semibold">Suggested</th>
+                      <th className="px-4 py-3 font-semibold">Scope</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {answerRows.map((answer) => {
+                      const approvedQuestions = answer.questions.filter((question) => question.status === "approved");
+                      const suggestedQuestions = answer.questions.filter((question) => question.status === "suggested");
+                      return (
+                        <tr key={answer._id} className="border-b border-border last:border-b-0">
+                          <td className="max-w-[360px] px-4 py-3">
+                            <p className="font-medium text-foreground">{answer.title}</p>
+                            <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                              {answer.answer}
+                            </p>
+                            {answer.topics.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {answer.topics.map((topic) => (
+                                  <Badge key={topic._id} variant="outline" className="rounded-full">
+                                    {topic.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="max-w-[300px] px-4 py-3 text-muted-foreground">
+                            {approvedQuestions.length > 0 ? (
+                              <div className="space-y-1">
+                                {approvedQuestions.slice(0, 4).map((question) => (
+                                  <p key={question._id} className="line-clamp-1">
+                                    {question.isPrimary ? "Primary: " : ""}
+                                    {question.questionText}
+                                  </p>
+                                ))}
+                                {approvedQuestions.length > 4 ? (
+                                  <p className="text-xs">+{approvedQuestions.length - 4} more</p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span>No approved questions</span>
+                            )}
+                          </td>
+                          <td className="max-w-[300px] px-4 py-3">
+                            {suggestedQuestions.length > 0 ? (
+                              <div className="space-y-2">
+                                {suggestedQuestions.slice(0, 3).map((question) => (
+                                  <div key={question._id} className="rounded-lg border border-border bg-background/70 p-2">
+                                    <p className="text-xs leading-5 text-foreground">{question.questionText}</p>
+                                    <div className="mt-2 flex gap-2">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        disabled={pendingAction === `approve:${question._id}`}
+                                        onClick={() => void runQuestionAction("approve", question)}
+                                      >
+                                        Approve
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={pendingAction === `reject:${question._id}`}
+                                        onClick={() => void runQuestionAction("reject", question)}
+                                      >
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">No pending suggestions</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {answer.propertyName ?? answer.propertySlug ?? "Global"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge className={cn("rounded-full", answerStatusTone(answer.status))}>
+                              {answer.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" variant="outline" size="sm" onClick={() => openEditAnswer(answer)}>
+                                <Edit3 className="h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={pendingAction === `generate:${answer._id}`}
+                                onClick={() => void runAnswerAction("generate", answer)}
+                              >
+                                {pendingAction === `generate:${answer._id}` ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Plus className="h-4 w-4" />
+                                )}
+                                Generate
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {mode === "unknown" ? (
+          <div>
+            {!unknownQuestions ? (
+              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading unknown questions
+              </div>
+            ) : null}
+            {unknownQuestions && unknownRows.length === 0 ? (
+              <div className="p-5 text-sm leading-6 text-muted-foreground">
+                No unknown questions match this filter.
+              </div>
+            ) : null}
+            {unknownRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] text-left text-sm">
+                  <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Question</th>
+                      <th className="px-4 py-3 font-semibold">Context</th>
+                      <th className="px-4 py-3 font-semibold">Link Existing</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unknownRows.map((question) => (
+                      <tr key={question._id} className="border-b border-border last:border-b-0">
+                        <td className="max-w-[360px] px-4 py-3">
+                          <p className="font-medium text-foreground">{question.userQuestion}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(question.createdAt)}
+                          </p>
+                        </td>
+                        <td className="max-w-[280px] px-4 py-3 text-muted-foreground">
+                          <p>{question.propertyName ?? question.propertySlug ?? "General"}</p>
+                          <p className="mt-1 line-clamp-1 text-xs">
+                            {question.detectedTopic ?? "No topic"} · {truncate(question.pageUrl, 72) || "No page"}
+                          </p>
+                        </td>
+                        <td className="min-w-[260px] px-4 py-3">
+                          {question.status === "new" ? (
+                            <div className="flex gap-2">
+                              <Select
+                                value={linkAnswerIds[question._id] ?? ""}
+                                onValueChange={(value) =>
+                                  setLinkAnswerIds((current) => ({
+                                    ...current,
+                                    [question._id]: value,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-9 min-w-[180px] rounded-lg" aria-label="Link answer">
+                                  <SelectValue placeholder="Select answer" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {answerRows.map((answer) => (
+                                    <SelectItem key={answer._id} value={answer._id}>
+                                      {answer.title}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                disabled={!linkAnswerIds[question._id] || pendingAction === `link:${question._id}`}
+                                onClick={() => void linkUnknownQuestion(question)}
+                              >
+                                Link
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {question.resolvedAnswerTitle ?? "No linked answer"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={question.status === "new" ? "default" : "secondary"} className="rounded-full">
+                            {question.status}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {question.status === "new" ? (
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" size="sm" onClick={() => openCreateFromUnknown(question)}>
+                                <Plus className="h-4 w-4" />
+                                Create answer
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={pendingAction === `ignore:${question._id}`}
+                                onClick={() => void ignoreUnknownQuestion(question)}
+                              >
+                                Ignore
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">{formatDateTime(question.updatedAt)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {mode === "generated" ? (
+          <div>
+            {questions === undefined ? (
+              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading generated suggestions
+              </div>
+            ) : null}
+            {questions && generatedRows.length === 0 ? (
+              <div className="p-5 text-sm leading-6 text-muted-foreground">
+                No generated chat suggestions yet.
+              </div>
+            ) : null}
+            {generatedRows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[920px] text-left text-sm">
+                  <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Question</th>
+                      <th className="px-4 py-3 font-semibold">Score</th>
+                      <th className="px-4 py-3 font-semibold">Topic</th>
+                      <th className="px-4 py-3 font-semibold">Property</th>
+                      <th className="px-4 py-3 font-semibold">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generatedRows.map((question) => (
+                      <tr key={question._id} className="border-b border-border last:border-b-0">
+                        <td className="max-w-[380px] px-4 py-3">
+                          <p className="font-medium text-foreground">
+                            {getQuestionForLocale(question, selectedLocale)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {truncate(question.currentPath, 72) ||
+                              truncate(question.visitorId, 32) ||
+                              String(question.sessionId).slice(-8)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-sm text-foreground">{question.score}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant="outline" className="rounded-full">
+                            {question.topic}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {question.propertySlug ?? "General"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatDateTime(question.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <Dialog
+        open={answerDialogOpen}
+        onOpenChange={(isOpen) => {
+          setAnswerDialogOpen(isOpen);
+          if (!isOpen) {
+            setEditingAnswer(null);
+            setSourceUnknown(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {sourceUnknown ? "Create Answer From Unknown" : editingAnswer ? "Edit Answer" : "Add Answer"}
+            </DialogTitle>
+            <DialogDescription>
+              Approved answers are the source of truth. Suggested questions still need approval.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-4" onSubmit={submitKnowledgeAnswer}>
+            <div className="grid gap-2">
+              <Label htmlFor="knowledge-title">Title</Label>
+              <Input
+                id="knowledge-title"
+                value={form.title}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Smoking policy"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="knowledge-answer">Answer</Label>
+              <textarea
+                id="knowledge-answer"
+                value={form.answer}
+                maxLength={2000}
+                onChange={(event) => setForm((current) => ({ ...current, answer: event.target.value }))}
+                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="knowledge-status">Status</Label>
+                <Select
+                  value={form.status}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, status: value as KnowledgeAnswerStatus }))
+                  }
+                >
+                  <SelectTrigger id="knowledge-status" className="h-10 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["approved", "draft", "archived"] satisfies KnowledgeAnswerStatus[]).map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="knowledge-property">Property slug</Label>
+                <Input
+                  id="knowledge-property"
+                  value={form.propertySlug}
+                  disabled={Boolean(sourceUnknown)}
+                  onChange={(event) => setForm((current) => ({ ...current, propertySlug: event.target.value }))}
+                  placeholder="Leave blank for global"
+                />
+              </div>
+            </div>
+            {!editingAnswer ? (
+              <div className="grid gap-2">
+                <Label htmlFor="knowledge-primary-question">Primary question</Label>
+                <textarea
+                  id="knowledge-primary-question"
+                  value={form.primaryQuestion}
+                  maxLength={240}
+                  disabled={Boolean(sourceUnknown)}
+                  onChange={(event) => setForm((current) => ({ ...current, primaryQuestion: event.target.value }))}
+                  className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                />
+              </div>
+            ) : null}
+            {!editingAnswer && !sourceUnknown ? (
+              <div className="grid gap-2">
+                <Label htmlFor="knowledge-more-questions">Additional approved questions</Label>
+                <textarea
+                  id="knowledge-more-questions"
+                  value={form.questions}
+                  onChange={(event) => setForm((current) => ({ ...current, questions: event.target.value }))}
+                  placeholder="One per line"
+                  className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                />
+              </div>
+            ) : null}
+            <div className="grid gap-2">
+              <Label htmlFor="knowledge-topics">Topics</Label>
+              <Input
+                id="knowledge-topics"
+                value={form.topicNames}
+                onChange={(event) => setForm((current) => ({ ...current, topicNames: event.target.value }))}
+                placeholder="house_rules, check_in"
+              />
+            </div>
+            {formError ? <p className="text-sm font-medium text-destructive">{formError}</p> : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAnswerDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pendingAction === "save-answer"}>
+                {pendingAction === "save-answer" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save answer
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </main>
+  );
+}
+
+// Kept temporarily for reference while the new approved-knowledge admin view replaces it.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LegacyAdminQuestionsView({
   questions,
 }: {
   questions: AdminSuggestedQuestion[] | undefined;

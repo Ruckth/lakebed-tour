@@ -2255,30 +2255,26 @@ function ChatExperience({
 
   return (
     <>
-      {hydrated ? (
-        <>
-          {!hideFloatingTriggerOnMobileRoom ? (
-            <Link
-              href={chatHref}
-              className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden"
-              aria-label={t("open")}
-            >
-              <MessageCircle className="h-6 w-6" />
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={openChat}
-            className={cn(
-              "fixed bottom-5 right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex",
-              open && "pointer-events-none opacity-0",
-            )}
-            aria-label={t("open")}
-          >
-            <MessageCircle className="h-6 w-6" />
-          </button>
-        </>
+      {!hideFloatingTriggerOnMobileRoom ? (
+        <Link
+          href={chatHref}
+          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden"
+          aria-label={t("open")}
+        >
+          <MessageCircle className="h-6 w-6" />
+        </Link>
       ) : null}
+      <button
+        type="button"
+        onClick={openChat}
+        className={cn(
+          "fixed bottom-5 right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex",
+          open && "pointer-events-none opacity-0",
+        )}
+        aria-label={t("open")}
+      >
+        <MessageCircle className="h-6 w-6" />
+      </button>
 
       {hydrated && mounted ? createPortal((
         <div

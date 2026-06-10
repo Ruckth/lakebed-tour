@@ -1,11 +1,261 @@
-import { query } from './_generated/server';
+import { query, type QueryCtx } from './_generated/server';
+import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
+import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import {
+	getAdminChatMessageCount,
+	getAdminChatSortAt,
+	normalizeAdminSearchText
+} from './lib/adminChatMetadata';
 import { isChatSessionActive } from './lib/chatPresence';
+
+const PAGE_SIZE = 10;
+const SEARCH_SESSION_LIMIT = 50;
+const SEARCH_MESSAGE_LIMIT = 100;
+const FUZZY_SCAN_LIMIT = 200;
+
+const sessionStatusValidator = v.union(
+	v.literal('all'),
+	v.literal('active'),
+	v.literal('inactive')
+);
+
+const emptyFilterValidator = v.union(
+	v.literal('all'),
+	v.literal('empty'),
+	v.literal('non_empty')
+);
+
+type SessionStatus = 'all' | 'active' | 'inactive';
+type EmptyFilter = 'all' | 'empty' | 'non_empty';
+
+function parseSearchCursor(cursor: string | null) {
+	if (!cursor) return 0;
+	try {
+		const parsed = JSON.parse(cursor) as { offset?: unknown };
+		return typeof parsed.offset === 'number' && parsed.offset > 0
+			? Math.floor(parsed.offset)
+			: 0;
+	} catch {
+		return 0;
+	}
+}
+
+function searchCursor(offset: number) {
+	return JSON.stringify({ offset });
+}
+
+function boundedEditDistance(a: string, b: string, maxDistance: number) {
+	if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+
+	const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+	const current = Array.from({ length: b.length + 1 }, () => 0);
+
+	for (let i = 1; i <= a.length; i++) {
+		current[0] = i;
+		let rowMin = current[0];
+
+		for (let j = 1; j <= b.length; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			current[j] = Math.min(
+				previous[j] + 1,
+				current[j - 1] + 1,
+				previous[j - 1] + cost
+			);
+			rowMin = Math.min(rowMin, current[j]);
+		}
+
+		if (rowMin > maxDistance) return maxDistance + 1;
+		for (let j = 0; j <= b.length; j++) previous[j] = current[j];
+	}
+
+	return previous[b.length];
+}
+
+function typoTolerantContactScore(query: string, searchText?: string) {
+	const haystack = normalizeAdminSearchText(searchText);
+	if (!query || !haystack) return 0;
+	if (haystack.includes(query)) return 70;
+
+	const queryTokens = query.split(' ').filter(Boolean);
+	const haystackTokens = haystack.split(' ').filter(Boolean);
+	if (queryTokens.length === 0 || haystackTokens.length === 0) return 0;
+
+	let matched = 0;
+	for (const queryToken of queryTokens) {
+		const maxDistance = queryToken.length >= 4 ? 2 : 1;
+		if (
+			haystackTokens.some((candidate) => {
+				if (candidate.includes(queryToken) || queryToken.includes(candidate)) return true;
+				if (Math.min(candidate.length, queryToken.length) < 4) return false;
+				return boundedEditDistance(queryToken, candidate, maxDistance) <= maxDistance;
+			})
+		) {
+			matched++;
+		}
+	}
+
+	return matched === queryTokens.length ? 55 + matched : 0;
+}
+
+function sessionMatchesFilters(
+	session: Doc<'chatSessions'>,
+	options: {
+		status: SessionStatus;
+		empty: EmptyFilter;
+		messageStartAt?: number;
+		messageEndAt?: number;
+		now: number;
+	}
+) {
+	const active = isChatSessionActive(session, options.now);
+	if (options.status === 'active' && !active) return false;
+	if (options.status === 'inactive' && active) return false;
+
+	const messageCount = getAdminChatMessageCount(session);
+	if (options.empty === 'empty' && messageCount !== 0) return false;
+	if (options.empty === 'non_empty' && messageCount === 0) return false;
+
+	if (
+		typeof options.messageStartAt === 'number' ||
+		typeof options.messageEndAt === 'number'
+	) {
+		if (typeof session.latestMessageAt !== 'number') return false;
+		if (
+			typeof options.messageStartAt === 'number' &&
+			session.latestMessageAt < options.messageStartAt
+		) {
+			return false;
+		}
+		if (
+			typeof options.messageEndAt === 'number' &&
+			session.latestMessageAt > options.messageEndAt
+		) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now: number) {
+	const [latestMessage, latestLineEvent, property] = await Promise.all([
+		ctx.db
+			.query('chatMessages')
+			.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+			.order('desc')
+			.first(),
+		session.channel === 'line'
+			? ctx.db
+					.query('lineWebhookEvents')
+					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.order('desc')
+					.first()
+			: null,
+		session.propertyId ? ctx.db.get(session.propertyId) : null
+	]);
+
+	return {
+		...session,
+		messageCount: getAdminChatMessageCount(session),
+		adminSortAt: getAdminChatSortAt(session),
+		propertyName: property?.name,
+		latestMessage,
+		latestLineEvent,
+		isActive: isChatSessionActive(session, now)
+	};
+}
+
+async function decorateSessions(
+	ctx: QueryCtx,
+	sessions: Doc<'chatSessions'>[],
+	now: number
+) {
+	return await Promise.all(sessions.map((session) => decorateSession(ctx, session, now)));
+}
+
+async function searchSessions(
+	ctx: QueryCtx,
+	options: {
+		query: string;
+		cursor: string | null;
+		status: SessionStatus;
+		empty: EmptyFilter;
+		messageStartAt?: number;
+		messageEndAt?: number;
+		now: number;
+	}
+) {
+	const normalizedQuery = normalizeAdminSearchText(options.query);
+	if (!normalizedQuery) {
+		return { sessions: [], continueCursor: null, isDone: true };
+	}
+
+	const scored = new Map<Id<'chatSessions'>, number>();
+	const bump = (sessionId: Id<'chatSessions'>, score: number) => {
+		scored.set(sessionId, Math.max(scored.get(sessionId) ?? 0, score));
+	};
+
+	const [contactMatches, messageMatches, fuzzyCandidates] = await Promise.all([
+		ctx.db
+			.query('chatSessions')
+			.withSearchIndex('search_adminSearchText', (q) =>
+				q.search('adminSearchText', normalizedQuery)
+			)
+			.take(SEARCH_SESSION_LIMIT),
+		ctx.db
+			.query('chatMessages')
+			.withSearchIndex('search_content', (q) => q.search('content', options.query))
+			.take(SEARCH_MESSAGE_LIMIT),
+		ctx.db
+			.query('chatSessions')
+			.withIndex('by_adminSortAt')
+			.order('desc')
+			.take(FUZZY_SCAN_LIMIT)
+	]);
+
+	for (const session of contactMatches) bump(session._id, 85);
+	for (const message of messageMatches) bump(message.sessionId, 75);
+	for (const session of fuzzyCandidates) {
+		const score = typoTolerantContactScore(normalizedQuery, session.adminSearchText);
+		if (score > 0) bump(session._id, score);
+	}
+
+	const hydrated = (
+		await Promise.all(
+			Array.from(scored.keys()).map(async (sessionId) => await ctx.db.get(sessionId))
+		)
+	).filter((session): session is Doc<'chatSessions'> => Boolean(session));
+
+	const filtered = hydrated
+		.filter((session) => sessionMatchesFilters(session, options))
+		.sort((a, b) => {
+			const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
+			if (scoreDelta !== 0) return scoreDelta;
+			return getAdminChatSortAt(b) - getAdminChatSortAt(a);
+		});
+
+	const offset = parseSearchCursor(options.cursor);
+	const page = filtered.slice(offset, offset + PAGE_SIZE);
+	const nextOffset = offset + PAGE_SIZE;
+	const isDone = nextOffset >= filtered.length;
+
+	return {
+		sessions: await decorateSessions(ctx, page, options.now),
+		continueCursor: isDone ? null : searchCursor(nextOffset),
+		isDone
+	};
+}
 
 export const listSessions = query({
 	args: {
-		status: v.optional(v.union(v.literal('all'), v.literal('active'), v.literal('inactive'))),
+		paginationOpts: v.optional(paginationOptsValidator),
+		status: v.optional(sessionStatusValidator),
+		empty: v.optional(emptyFilterValidator),
+		messageStartAt: v.optional(v.number()),
+		messageEndAt: v.optional(v.number()),
+		searchQuery: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.number()),
@@ -15,57 +265,81 @@ export const listSessions = query({
 		await requireAdmin(ctx);
 
 		const now = args.now ?? Date.now();
-		const limit = Math.min(Math.max(args.limit ?? 30, 1), 50);
-		const scanLimit = Math.min(limit * 4, 200);
-		const rows = await ctx.db
-			.query('chatSessions')
-			.withIndex('by_last_seen', (q) =>
-				args.cursor ? q.lt('lastSeenAt', args.cursor) : q
-			)
-			.order('desc')
-			.take(scanLimit);
+		const status = args.status ?? 'active';
+		const empty = args.empty ?? 'all';
+		const messageStartAt = args.messageStartAt;
+		const messageEndAt = args.messageEndAt;
+		const searchQuery = args.searchQuery?.trim();
+		const paginationOpts = {
+			numItems: PAGE_SIZE,
+			cursor:
+				args.paginationOpts?.cursor ??
+				(typeof args.cursor === 'number' ? String(args.cursor) : null)
+		};
 
-		const filtered = rows.filter((session) => {
+		if (searchQuery) {
+			return await searchSessions(ctx, {
+				query: searchQuery,
+				cursor: paginationOpts.cursor,
+				status,
+				empty,
+				messageStartAt,
+				messageEndAt,
+				now
+			});
+		}
+
+		if (
+			empty === 'empty' &&
+			(typeof messageStartAt === 'number' || typeof messageEndAt === 'number')
+		) {
+			return { sessions: [], continueCursor: null, isDone: true };
+		}
+
+		const page =
+			empty === 'empty'
+				? await ctx.db
+						.query('chatSessions')
+						.withIndex('by_messageCount_and_adminSortAt', (q) =>
+							q.eq('messageCount', 0)
+						)
+						.order('desc')
+						.paginate(paginationOpts)
+				: empty === 'non_empty' ||
+					  typeof messageStartAt === 'number' ||
+					  typeof messageEndAt === 'number'
+					? await ctx.db
+							.query('chatSessions')
+							.withIndex('by_latestMessageAt', (q) => {
+								const lower = messageStartAt ?? 0;
+								return typeof messageEndAt === 'number'
+									? q.gte('latestMessageAt', lower).lte('latestMessageAt', messageEndAt)
+									: q.gte('latestMessageAt', lower);
+							})
+							.order('desc')
+							.paginate(paginationOpts)
+					: await ctx.db
+							.query('chatSessions')
+							.withIndex('by_adminSortAt')
+							.order('desc')
+							.paginate(paginationOpts);
+
+		const filtered = page.page.filter((session) => {
 			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
-			const active = isChatSessionActive(session, now);
-			if (args.status === 'active') return active;
-			if (args.status === 'inactive') return !active;
-			return true;
+			return sessionMatchesFilters(session, {
+				status,
+				empty,
+				messageStartAt,
+				messageEndAt,
+				now
+			});
 		});
 
-		const selected = filtered.slice(0, limit);
-		const sessions = await Promise.all(
-			selected.map(async (session) => {
-				const [latestMessage, latestLineEvent, property] = await Promise.all([
-					ctx.db
-						.query('chatMessages')
-						.withIndex('by_session', (q) => q.eq('sessionId', session._id))
-						.order('desc')
-						.first(),
-					session.channel === 'line'
-						? ctx.db
-								.query('lineWebhookEvents')
-								.withIndex('by_session', (q) => q.eq('sessionId', session._id))
-								.order('desc')
-								.first()
-						: null,
-					session.propertyId ? ctx.db.get(session.propertyId) : null
-				]);
-
-				return {
-					...session,
-					propertyName: property?.name,
-					latestMessage,
-					latestLineEvent,
-					isActive: isChatSessionActive(session, now)
-				};
-			})
-		);
-
-		const lastScanned = rows[rows.length - 1];
 		return {
-			sessions,
-			nextCursor: rows.length === scanLimit ? lastScanned?.lastSeenAt : null
+			sessions: await decorateSessions(ctx, filtered, now),
+			continueCursor: page.isDone ? null : page.continueCursor,
+			nextCursor: page.isDone ? null : page.continueCursor,
+			isDone: page.isDone
 		};
 	}
 });

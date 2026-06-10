@@ -1,4 +1,6 @@
 import { internalMutation } from './_generated/server';
+import { v } from 'convex/values';
+import { buildAdminChatMetadataPatch } from './lib/adminChatMetadata';
 
 // One-shot backfill: copies legacy chatSessions.messages arrays into the
 // dedicated chatMessages table, then clears the legacy field on each session.
@@ -31,5 +33,56 @@ export const backfillChatMessages = internalMutation({
 		}
 
 		return { migratedSessions, migratedMessages };
+	}
+});
+
+// Bounded metadata backfill for the admin chat list. Run repeatedly with the
+// returned cursor until `isDone` is true.
+export const backfillChatSessionAdminMetadata = internalMutation({
+	args: {
+		cursor: v.optional(v.union(v.string(), v.null())),
+		limit: v.optional(v.number()),
+		messageScanLimit: v.optional(v.number()),
+		dryRun: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const limit = Math.min(Math.max(Math.floor(args.limit ?? 25), 1), 100);
+		const messageScanLimit = Math.min(
+			Math.max(Math.floor(args.messageScanLimit ?? 500), 1),
+			1000
+		);
+		const page = await ctx.db
+			.query('chatSessions')
+			.paginate({ numItems: limit, cursor: args.cursor ?? null });
+
+		let scannedSessions = 0;
+		let patchedSessions = 0;
+
+		for (const session of page.page) {
+			scannedSessions++;
+			const messages = await ctx.db
+				.query('chatMessages')
+				.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+				.order('desc')
+				.take(messageScanLimit);
+
+			const latestMessageAt = messages[0]?.timestamp;
+			const patch = buildAdminChatMetadataPatch(session, {
+				messageCount: messages.length,
+				latestMessageAt,
+			});
+
+			if (!args.dryRun) {
+				await ctx.db.patch(session._id, patch);
+				patchedSessions++;
+			}
+		}
+
+		return {
+			scannedSessions,
+			patchedSessions,
+			continueCursor: page.isDone ? null : page.continueCursor,
+			isDone: page.isDone
+		};
 	}
 });

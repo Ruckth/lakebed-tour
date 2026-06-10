@@ -1,6 +1,11 @@
 import { mutation, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
+import {
+	buildAdminChatMetadataPatch,
+	buildAdminSearchText,
+	patchSessionAfterMessages
+} from './lib/adminChatMetadata';
 
 const eventTypeValidator = v.union(
 	v.literal('message'),
@@ -11,9 +16,11 @@ const eventTypeValidator = v.union(
 
 const replyModeValidator = v.union(
 	v.literal('exact'),
+	v.literal('approved_exact'),
 	v.literal('question_bank_exact'),
 	v.literal('question_bank_semantic'),
 	v.literal('ai'),
+	v.literal('unknown_fallback'),
 	v.literal('postback'),
 	v.literal('follow'),
 	v.literal('ignored'),
@@ -38,10 +45,14 @@ async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
 	const now = Date.now();
 
 	if (existingSession) {
-		await ctx.db.patch(existingSession._id, {
-			visitorContactApp: 'line',
+		const patch = {
+			visitorContactApp: 'line' as const,
 			visitorContactHandle: trimmedLineUserId,
 			lastSeenAt: now
+		};
+		await ctx.db.patch(existingSession._id, {
+			...patch,
+			...buildAdminChatMetadataPatch({ ...existingSession, ...patch })
 		});
 		return existingSession._id;
 	}
@@ -53,6 +64,14 @@ async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
 		visitorContactHandle: trimmedLineUserId,
 		lastSeenAt: now,
 		lastOpenedAt: now,
+		messageCount: 0,
+		adminSortAt: now,
+		adminSearchText: buildAdminSearchText({
+			channel: 'line',
+			visitorId,
+			visitorContactApp: 'line',
+			visitorContactHandle: trimmedLineUserId,
+		}),
 		createdAt: now
 	});
 }
@@ -161,11 +180,17 @@ export const recordInboundEvent = mutation({
 		let userMessageId = event.userMessageId;
 
 		if (userContent && !userMessageId) {
+			const timestamp = event.eventTimestamp ?? now;
 			userMessageId = await ctx.db.insert('chatMessages', {
 				sessionId: args.sessionId,
 				role: 'user',
 				content: userContent,
-				timestamp: event.eventTimestamp ?? now
+				timestamp
+			});
+			await patchSessionAfterMessages(ctx, args.sessionId, {
+				addedMessages: 1,
+				latestMessageAt: timestamp,
+				lastSeenAt: now,
 			});
 		}
 
@@ -176,7 +201,15 @@ export const recordInboundEvent = mutation({
 			processingStartedAt: event.processingStartedAt ?? now,
 			updatedAt: now
 		});
-		await ctx.db.patch(args.sessionId, { lastSeenAt: now });
+		if (!userMessageId) {
+			const session = await ctx.db.get(args.sessionId);
+			if (session) {
+				await ctx.db.patch(args.sessionId, {
+					lastSeenAt: now,
+					...buildAdminChatMetadataPatch({ ...session, lastSeenAt: now })
+				});
+			}
+		}
 
 		return {
 			recorded: Boolean(userMessageId),
@@ -207,6 +240,8 @@ export const completeEvent = mutation({
 		const assistantContent = args.assistantContent.trim();
 		let userMessageId = event.userMessageId;
 		let assistantMessageId: Id<'chatMessages'> | undefined;
+		let addedMessages = 0;
+		let latestMessageAt = event.eventTimestamp ?? now;
 
 		if (userContent && !userMessageId) {
 			userMessageId = await ctx.db.insert('chatMessages', {
@@ -215,6 +250,8 @@ export const completeEvent = mutation({
 				content: userContent,
 				timestamp: now
 			});
+			addedMessages++;
+			latestMessageAt = Math.max(latestMessageAt, now);
 		}
 
 		if (assistantContent) {
@@ -224,6 +261,8 @@ export const completeEvent = mutation({
 				content: assistantContent,
 				timestamp: now
 			});
+			addedMessages++;
+			latestMessageAt = Math.max(latestMessageAt, now);
 		}
 
 		await ctx.db.patch(args.eventId, {
@@ -237,7 +276,21 @@ export const completeEvent = mutation({
 			processedAt: now,
 			updatedAt: now
 		});
-		await ctx.db.patch(args.sessionId, { lastSeenAt: now });
+		if (addedMessages > 0) {
+			await patchSessionAfterMessages(ctx, args.sessionId, {
+				addedMessages,
+				latestMessageAt,
+				lastSeenAt: now,
+			});
+		} else {
+			const session = await ctx.db.get(args.sessionId);
+			if (session) {
+				await ctx.db.patch(args.sessionId, {
+					lastSeenAt: now,
+					...buildAdminChatMetadataPatch({ ...session, lastSeenAt: now })
+				});
+			}
+		}
 
 		return {
 			completed: true,

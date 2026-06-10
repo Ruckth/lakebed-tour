@@ -73,11 +73,24 @@ type QuestionBankMatch = {
   topic: string;
 };
 
+type ApprovedKnowledgeMatch = {
+  source: "approved_exact";
+  answerId: string;
+  questionId: string;
+  title: string;
+  answer: string;
+  questionText: string;
+  normalizedQuestion: string;
+  propertyId?: string;
+};
+
 type LineEventReplyMode =
   | "exact"
+  | "approved_exact"
   | "question_bank_exact"
   | "question_bank_semantic"
   | "ai"
+  | "unknown_fallback"
   | "postback"
   | "follow"
   | "failed";
@@ -240,6 +253,14 @@ function questionBankReplyMode(match: Pick<QuestionBankMatch, "source">): LineEv
   return match.source === "exact" ? "question_bank_exact" : "question_bank_semantic";
 }
 
+function unknownFallbackReply(messageText?: string) {
+  if (/[\u0E00-\u0E7F]/u.test(messageText ?? "")) {
+    return "ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว";
+  }
+
+  return "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.";
+}
+
 async function handleLineEvent({
   accessToken,
   client,
@@ -321,80 +342,96 @@ async function handleLineEvent({
     let responseText = guardrailReply ?? "";
     let quickReplyItems: LineQuickReplyItem[] = [];
     let replyMode: LineEventReplyMode = "ai";
+    let approvedKnowledgeMatch: ApprovedKnowledgeMatch | null = null;
     let questionBankMatch: QuestionBankMatch | null = null;
     let generated: GeneratedReply | null = null;
 
     if (!guardrailReply) {
-      const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
-      const quickAnswer = resolveLineQuickAnswer({
-        eventType,
-        messageText,
-        postbackData,
-        properties,
-        siteUrl,
-      });
+      if (eventType === "message" && messageText) {
+        approvedKnowledgeMatch = (await client.query(api.chatKnowledge.resolveExact, {
+          sessionId: claimed.sessionId,
+          messageText,
+        } as never)) as ApprovedKnowledgeMatch | null;
+      }
 
-      if (quickAnswer) {
-        responseText = quickAnswer.text;
-        quickReplyItems = quickAnswer.quickReplyItems;
-        replyMode = quickAnswer.mode;
+      if (approvedKnowledgeMatch) {
+        responseText = approvedKnowledgeMatch.answer.trim();
+        replyMode = "approved_exact";
       } else {
-        if (eventType === "message" && messageText) {
-          const exactMatch = (await client.query(api.chatSuggestions.resolveCuratedExact, {
-            sessionId: claimed.sessionId,
-            messageText,
-            ...(locale ? { locale } : {}),
-          } as never)) as QuestionBankMatch | null;
+        const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
+        const quickAnswer = resolveLineQuickAnswer({
+          eventType,
+          messageText,
+          postbackData,
+          properties,
+          siteUrl,
+        });
 
-          questionBankMatch =
-            exactMatch ??
-            ((await timeout(
-              client.action(api.chatSuggestions.resolveCuratedSemantic, {
-                sessionId: claimed.sessionId,
-                messageText,
-                ...(locale ? { locale } : {}),
-              } as never) as Promise<QuestionBankMatch | null>,
-              QUESTION_BANK_SEMANTIC_TIMEOUT_MS,
-              () => null,
-            )) as QuestionBankMatch | null);
-        }
-
-        if (
-          questionBankMatch?.answerMode === "static" &&
-          questionBankMatch.answer?.trim()
-        ) {
-          responseText = questionBankMatch.answer.trim();
-          replyMode = questionBankReplyMode(questionBankMatch);
+        if (quickAnswer) {
+          responseText = quickAnswer.text;
+          quickReplyItems = quickAnswer.quickReplyItems;
+          replyMode = quickAnswer.mode;
         } else {
-          generated = await timeout(
-            client.action(api.chatAi.generateReply, {
+          if (eventType === "message" && messageText) {
+            const exactMatch = (await client.query(api.chatSuggestions.resolveCuratedExact, {
               sessionId: claimed.sessionId,
-              userMessage: messageText ?? postbackData ?? "LINE message",
-              channel: "line",
-              siteUrl,
-              ...(questionBankMatch
-                ? {
-                    questionBankHint: {
-                      question: questionBankMatch.question,
-                      topic: questionBankMatch.topic,
-                      ...(questionBankMatch.dynamicIntent
-                        ? { dynamicIntent: questionBankMatch.dynamicIntent }
-                        : {}),
-                      source: questionBankMatch.source,
-                    },
-                  }
-                : {}),
-            } as never) as Promise<GeneratedReply>,
-            AI_REPLY_TIMEOUT_MS,
-            timeoutFallbackReply,
-          );
-          responseText = generated.response ?? timeoutFallbackReply().response;
-          replyMode =
-            generated.model === "timeout"
-              ? "failed"
-              : questionBankMatch
-                ? questionBankReplyMode(questionBankMatch)
-                : "ai";
+              messageText,
+              ...(locale ? { locale } : {}),
+            } as never)) as QuestionBankMatch | null;
+
+            questionBankMatch =
+              exactMatch ??
+              ((await timeout(
+                client.action(api.chatSuggestions.resolveCuratedSemantic, {
+                  sessionId: claimed.sessionId,
+                  messageText,
+                  ...(locale ? { locale } : {}),
+                } as never) as Promise<QuestionBankMatch | null>,
+                QUESTION_BANK_SEMANTIC_TIMEOUT_MS,
+                () => null,
+              )) as QuestionBankMatch | null);
+          }
+
+          if (
+            questionBankMatch?.answerMode === "static" &&
+            questionBankMatch.answer?.trim()
+          ) {
+            responseText = questionBankMatch.answer.trim();
+            replyMode = questionBankReplyMode(questionBankMatch);
+          } else if (questionBankMatch) {
+            generated = await timeout(
+              client.action(api.chatAi.generateReply, {
+                sessionId: claimed.sessionId,
+                userMessage: messageText ?? postbackData ?? "LINE message",
+                channel: "line",
+                siteUrl,
+                questionBankHint: {
+                  question: questionBankMatch.question,
+                  topic: questionBankMatch.topic,
+                  ...(questionBankMatch.dynamicIntent
+                    ? { dynamicIntent: questionBankMatch.dynamicIntent }
+                    : {}),
+                  source: questionBankMatch.source,
+                },
+              } as never) as Promise<GeneratedReply>,
+              AI_REPLY_TIMEOUT_MS,
+              timeoutFallbackReply,
+            );
+            responseText = generated.response ?? timeoutFallbackReply().response;
+            replyMode =
+              generated.model === "timeout"
+                ? "failed"
+                : questionBankReplyMode(questionBankMatch);
+          } else {
+            if (eventType === "message" && messageText) {
+              await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
+                sessionId: claimed.sessionId,
+                userQuestion: messageText,
+              } as never);
+            }
+            responseText = unknownFallbackReply(messageText);
+            replyMode = "unknown_fallback";
+          }
         }
       }
     }
