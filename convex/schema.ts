@@ -380,6 +380,7 @@ export default defineSchema({
 		.index('by_created_at', ['createdAt'])
 		.index('by_status_and_created_at', ['status', 'createdAt'])
 		.index('by_status_and_score', ['status', 'score'])
+		.index('by_propertySlug_and_normalizedQuestion', ['propertySlug', 'normalizedQuestion'])
 		.index('by_status_and_propertySlug_and_score', ['status', 'propertySlug', 'score']),
 
 	chatQuestionInteractions: defineTable({

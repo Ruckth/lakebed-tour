@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, internalAction, internalMutation, internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
@@ -13,6 +13,7 @@ import {
 	supportedSuggestionLocales,
 	type SuggestedQuestionTranslations
 } from './lib/chatSuggestions';
+import { getSeedTranslations } from './seeds/curatedQuestions';
 
 const DEFAULT_LIMIT = 2;
 const GENERATION_CANDIDATE_LIMIT = 5;
@@ -328,166 +329,58 @@ function detectTopic(text: string): SuggestionTopic {
 	return 'villa_fit';
 }
 
-function fallbackQuestion(
-	question: string,
-	topic: SuggestionTopic,
-	score: number,
-	th: string
-): GeneratedQuestion {
+function fallbackQuestion(question: string, topic: SuggestionTopic, score: number): GeneratedQuestion {
 	return {
 		question,
-		translations: { th },
+		translations: getSeedTranslations(question),
 		topic,
 		score
 	};
 }
 
-function fallbackThaiTranslationForQuestion(question: string) {
-	const normalized = normalizeSuggestedQuestion(question);
-	const translations: Record<string, string> = {
-		[normalizeSuggestedQuestion('What is included when booking direct?')]: 'จองตรงรวมอะไรบ้าง?',
-		[normalizeSuggestedQuestion('Can I see the villa in 360?')]: 'ดูวิลล่าแบบ 360 ได้ไหม?',
-		[normalizeSuggestedQuestion('Which villa is best for my dates?')]:
-			'วิลล่าไหนเหมาะกับวันที่ของฉันที่สุด?',
-		[normalizeSuggestedQuestion('How many guests can stay comfortably?')]: 'พักได้สบายกี่คน?',
-		[normalizeSuggestedQuestion('Can I check availability for my dates?')]:
-			'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?',
-		[normalizeSuggestedQuestion('Which villa gives the best value?')]: 'วิลล่าไหนคุ้มค่าที่สุด?',
-		[normalizeSuggestedQuestion('How do I contact the host directly?')]:
-			'ติดต่อเจ้าของที่พักโดยตรงได้อย่างไร?',
-		[normalizeSuggestedQuestion('Which villa is best for a couple?')]:
-			'วิลล่าไหนเหมาะกับคู่รักที่สุด?',
-		[normalizeSuggestedQuestion('What amenities are included?')]: 'มีสิ่งอำนวยความสะดวกอะไรบ้าง?',
-		[normalizeSuggestedQuestion('Which villa should I choose for this stay?')]:
-			'ทริปนี้ควรเลือกวิลล่าไหน?',
-		[normalizeSuggestedQuestion('What is the direct booking total?')]:
-			'ราคารวมเมื่อจองตรงเท่าไหร่?',
-		[normalizeSuggestedQuestion('Can I message the host on WhatsApp?')]:
-			'ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?',
-		[normalizeSuggestedQuestion('Which villa fits my group best?')]:
-			'วิลล่าไหนเหมาะกับกลุ่มของฉันที่สุด?',
-		[normalizeSuggestedQuestion('Which villa has the best amenities for us?')]:
-			'วิลล่าไหนมีสิ่งอำนวยความสะดวกเหมาะกับเราที่สุด?',
-		[normalizeSuggestedQuestion('Can I see these spaces in 360?')]:
-			'ดูพื้นที่เหล่านี้แบบ 360 ได้ไหม?',
-		[normalizeSuggestedQuestion('Which villa should I ask the host about?')]:
-			'ควรถามเจ้าของที่พักเกี่ยวกับวิลล่าไหน?'
-	};
-	if (/^can i tour .+ before booking$/.test(normalized)) {
-		return 'ขอดูวิลล่านี้ก่อนจองได้ไหม?';
-	}
-	return translations[normalized];
-}
-
-function fallbackQuestionsForEnglish(topic: SuggestionTopic, propertyName?: string): GeneratedQuestion[] {
-	const villaLabel = propertyName ?? 'this villa';
+function fallbackQuestionsForEnglish(topic: SuggestionTopic): GeneratedQuestion[] {
 	const banks: Record<SuggestionTopic, GeneratedQuestion[]> = {
 		villa_fit: [
-			fallbackQuestion('What is included when booking direct?', 'direct_booking', 91, 'จองตรงรวมอะไรบ้าง?'),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 84, 'ดูวิลล่าแบบ 360 ได้ไหม?'),
-			fallbackQuestion(
-				'Which villa is best for my dates?',
-				'availability',
-				78,
-				'วิลล่าไหนเหมาะกับวันที่ของฉันที่สุด?'
-			),
-			fallbackQuestion('How many guests can stay comfortably?', 'amenities', 70, 'พักได้สบายกี่คน?')
+			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 91),
+			fallbackQuestion('Can I see the villa in 360?', 'tour', 84),
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 78),
+			fallbackQuestion('How many guests can stay comfortably?', 'amenities', 70)
 		],
 		direct_booking: [
-			fallbackQuestion(
-				'Can I check availability for my dates?',
-				'availability',
-				92,
-				'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?'
-			),
-			fallbackQuestion(
-				`Can I tour ${villaLabel} before booking?`,
-				'tour',
-				84,
-				'ขอดูวิลล่านี้ก่อนจองได้ไหม?'
-			),
-			fallbackQuestion('Which villa gives the best value?', 'villa_fit', 79, 'วิลล่าไหนคุ้มค่าที่สุด?'),
-			fallbackQuestion(
-				'How do I contact the host directly?',
-				'contact',
-				68,
-				'ติดต่อเจ้าของที่พักโดยตรงได้อย่างไร?'
-			)
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 92),
+			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 84),
+			fallbackQuestion('What is the direct booking price?', 'direct_booking', 79),
+			fallbackQuestion('How do I book direct?', 'booking', 68)
 		],
 		tour: [
-			fallbackQuestion('Which villa is best for a couple?', 'villa_fit', 89, 'วิลล่าไหนเหมาะกับคู่รักที่สุด?'),
-			fallbackQuestion('What is included when booking direct?', 'direct_booking', 82, 'จองตรงรวมอะไรบ้าง?'),
-			fallbackQuestion(
-				'Can I check availability for my dates?',
-				'availability',
-				80,
-				'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?'
-			),
-			fallbackQuestion('What amenities are included?', 'amenities', 72, 'มีสิ่งอำนวยความสะดวกอะไรบ้าง?')
+			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 89),
+			fallbackQuestion('What is the direct booking price?', 'direct_booking', 82),
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 80),
+			fallbackQuestion('What amenities are included?', 'amenities', 72)
 		],
 		availability: [
-			fallbackQuestion(
-				'Which villa should I choose for this stay?',
-				'villa_fit',
-				91,
-				'ทริปนี้ควรเลือกวิลล่าไหน?'
-			),
-			fallbackQuestion('What is the direct booking total?', 'direct_booking', 86, 'ราคารวมเมื่อจองตรงเท่าไหร่?'),
-			fallbackQuestion(
-				'Can I message the host on WhatsApp?',
-				'contact',
-				73,
-				'ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?'
-			),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 70, 'ดูวิลล่าแบบ 360 ได้ไหม?')
+			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 91),
+			fallbackQuestion('What is the direct booking price?', 'direct_booking', 86),
+			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 73),
+			fallbackQuestion('Can I see the villa in 360?', 'tour', 70)
 		],
 		booking: [
-			fallbackQuestion('What is included when booking direct?', 'direct_booking', 88, 'จองตรงรวมอะไรบ้าง?'),
-			fallbackQuestion(
-				'Can I check availability for my dates?',
-				'availability',
-				84,
-				'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?'
-			),
-			fallbackQuestion(
-				'Can I message the host on WhatsApp?',
-				'contact',
-				76,
-				'ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?'
-			),
-			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 72, 'วิลล่าไหนเหมาะกับกลุ่มของฉันที่สุด?')
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 88),
+			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 84),
+			fallbackQuestion('What is the direct booking price?', 'direct_booking', 76),
+			fallbackQuestion('What is the cancellation policy?', 'booking', 72)
 		],
 		amenities: [
-			fallbackQuestion(
-				'Which villa has the best amenities for us?',
-				'villa_fit',
-				90,
-				'วิลล่าไหนมีสิ่งอำนวยความสะดวกเหมาะกับเราที่สุด?'
-			),
-			fallbackQuestion('Can I see these spaces in 360?', 'tour', 83, 'ดูพื้นที่เหล่านี้แบบ 360 ได้ไหม?'),
-			fallbackQuestion('What is included when booking direct?', 'direct_booking', 76, 'จองตรงรวมอะไรบ้าง?'),
-			fallbackQuestion(
-				'Can I check availability for my dates?',
-				'availability',
-				72,
-				'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?'
-			)
+			fallbackQuestion('What amenities are included?', 'amenities', 90),
+			fallbackQuestion('Can I see the villa in 360?', 'tour', 83),
+			fallbackQuestion('How many guests can stay comfortably?', 'amenities', 76),
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 72)
 		],
 		contact: [
-			fallbackQuestion(
-				'Can I check availability for my dates?',
-				'availability',
-				88,
-				'ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?'
-			),
-			fallbackQuestion('What is included when booking direct?', 'direct_booking', 82, 'จองตรงรวมอะไรบ้าง?'),
-			fallbackQuestion(
-				'Which villa should I ask the host about?',
-				'villa_fit',
-				76,
-				'ควรถามเจ้าของที่พักเกี่ยวกับวิลล่าไหน?'
-			),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 68, 'ดูวิลล่าแบบ 360 ได้ไหม?')
+			fallbackQuestion('Can I check availability for my dates?', 'availability', 88),
+			fallbackQuestion('How do I book direct?', 'booking', 82),
+			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 76),
+			fallbackQuestion('Can I see the villa in 360?', 'tour', 68)
 		]
 	};
 
@@ -608,6 +501,13 @@ function sanitizeCandidates(candidates: GeneratedQuestion[]) {
 	}
 
 	return sanitized;
+}
+
+function sameGeneratedTranslations(
+	left: Record<string, string> | undefined,
+	right: Record<string, string>
+) {
+	return supportedSuggestionLocales.every((locale) => left?.[locale]?.trim() === right[locale]);
 }
 
 async function generateQuestionsWithAi(context: GenerationContext, locale: string) {
@@ -763,7 +663,7 @@ export const generateForAssistant = internalAction({
 		const textForTopic = `${context.userMessage?.content ?? ''} ${context.assistantMessage.content}`;
 		let candidates = await generateQuestionsWithAi(context, locale).catch(() => []);
 		if (candidates.length === 0) {
-			candidates = fallbackQuestionsForEnglish(detectTopic(textForTopic), context.property?.name);
+			candidates = fallbackQuestionsForEnglish(detectTopic(textForTopic));
 		}
 		const sanitized = sanitizeCandidates(candidates);
 		if (sanitized.length === 0) return { inserted: 0 };
@@ -1307,38 +1207,49 @@ export const markClicked = mutation({
 	}
 });
 
+async function backfillGeneratedSuggestionTranslations(
+	ctx: MutationCtx,
+	args: { limit?: number }
+) {
+	await requireAdmin(ctx);
+
+	const limit = Math.min(Math.max(args.limit ?? 100, 1), 200);
+	const questions = await ctx.db
+		.query('chatSuggestedQuestions')
+		.withIndex('by_created_at')
+		.order('desc')
+		.take(limit);
+	let updated = 0;
+
+	for (const question of questions) {
+		const translations = getSeedTranslations(question.question);
+		if (!translations) continue;
+		if (sameGeneratedTranslations(question.translations, translations)) continue;
+
+		await ctx.db.patch(question._id, {
+			translations
+		});
+		updated++;
+	}
+
+	return { scanned: questions.length, updated };
+}
+
+export const adminBackfillGeneratedSuggestionTranslations = mutation({
+	args: {
+		limit: v.optional(v.number())
+	},
+	handler: async (ctx, args) => {
+		return await backfillGeneratedSuggestionTranslations(ctx, args);
+	}
+});
+
 export const adminBackfillThaiGeneratedSuggestions = mutation({
 	args: {
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-
-		const limit = Math.min(Math.max(args.limit ?? 100, 1), 200);
-		const questions = await ctx.db
-			.query('chatSuggestedQuestions')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(limit);
-		let updated = 0;
-
-		for (const question of questions) {
-			const thai = fallbackThaiTranslationForQuestion(question.question);
-			if (!thai) continue;
-			const existingThai = question.translations?.th?.trim();
-			if (existingThai && existingThai !== question.question) continue;
-
-			await ctx.db.patch(question._id, {
-				translations: {
-					...(question.translations ?? {}),
-					en: question.question,
-					th: thai
-				}
-			});
-			updated++;
-		}
-
-		return { scanned: questions.length, updated };
+		return await backfillGeneratedSuggestionTranslations(ctx, args);
 	}
 });
 

@@ -3,7 +3,8 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
-import { normalizeSuggestedQuestion } from "./lib/chatSuggestions";
+import { normalizeSuggestedQuestion, supportedSuggestionLocales } from "./lib/chatSuggestions";
+import { curatedQuestionSeeds } from "./seeds/curatedQuestions";
 import schema from "./schema";
 
 declare global {
@@ -23,6 +24,13 @@ function adminTest(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
+function expectAllSupportedLocaleTranslations(translations?: Record<string, string>) {
+  expect(Object.keys(translations ?? {}).sort()).toEqual([...supportedSuggestionLocales].sort());
+  for (const locale of supportedSuggestionLocales) {
+    expect(translations?.[locale]?.trim()).toBeTruthy();
+  }
+}
+
 async function createLineSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
   return await t.run(async (ctx) => {
     return await ctx.db.insert("chatSessions", {
@@ -36,6 +44,76 @@ async function createLineSession(t: ReturnType<typeof convexTest>, propertySlug?
 }
 
 describe("chatSuggestions.nextForSession", () => {
+  it("seeds the global dynamic curated question bank idempotently", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+
+      await expect(
+        t.mutation(api.seed.seedCuratedQuestionBank, { dryRun: false }),
+      ).rejects.toThrow("Not authenticated");
+
+      const dryRun = await admin.mutation(api.seed.seedCuratedQuestionBank, { dryRun: true });
+      expect(dryRun).toMatchObject({
+        dryRun: true,
+        totalSeeds: 10,
+        created: 10,
+        updated: 0,
+        unchanged: 0,
+      });
+      await expect(admin.query(api.chatSuggestions.adminListCurated, { status: "active" })).resolves.toEqual([]);
+
+      const seeded = await admin.mutation(api.seed.seedCuratedQuestionBank, { dryRun: false });
+      expect(seeded).toMatchObject({
+        dryRun: false,
+        totalSeeds: 10,
+        created: 10,
+        updated: 0,
+        unchanged: 0,
+      });
+
+      const secondRun = await admin.mutation(api.seed.seedCuratedQuestionBank, { dryRun: false });
+      expect(secondRun).toMatchObject({
+        dryRun: false,
+        totalSeeds: 10,
+        created: 0,
+        updated: 0,
+        unchanged: 10,
+      });
+
+      const rows = await admin.query(api.chatSuggestions.adminListCurated, {
+        status: "active",
+        limit: 100,
+      });
+      const seededRows = rows.filter((row) =>
+        curatedQuestionSeeds.some((seed) => seed.question === row.question),
+      );
+      expect(seededRows).toHaveLength(10);
+      for (const seed of curatedQuestionSeeds) {
+        const row = seededRows.find((item) => item.question === seed.question);
+        expect(row).toMatchObject({
+          question: seed.question,
+          normalizedQuestion: normalizeSuggestedQuestion(seed.question),
+          answerMode: "dynamic",
+          dynamicIntent: seed.dynamicIntent,
+          topic: seed.topic,
+          score: seed.score,
+          status: "active",
+          createdByAdminEmail: adminEmail,
+          updatedByAdminEmail: adminEmail,
+        });
+        expect(row?.propertySlug).toBeUndefined();
+        expect(row?.answer).toBeUndefined();
+        expect(row?.answerTranslations).toBeUndefined();
+        expect(row?.translations).toEqual(seed.translations);
+        expectAllSupportedLocaleTranslations(row?.translations);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("lets admins create, update, archive, restore, and delete curated questions", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
@@ -727,7 +805,7 @@ describe("chatSuggestions.nextForSession", () => {
     });
   });
 
-  it("backfills Thai for existing generated fallback suggestions", async () => {
+  it("backfills all locales for existing generated fallback suggestions", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
       const t = convexTest(schema, modules);
@@ -763,12 +841,13 @@ describe("chatSuggestions.nextForSession", () => {
         });
       });
 
-      const result = await admin.mutation(api.chatSuggestions.adminBackfillThaiGeneratedSuggestions, {
+      const result = await admin.mutation(api.chatSuggestions.adminBackfillGeneratedSuggestionTranslations, {
         limit: 20,
       });
       const updated = await t.run(async (ctx) => await ctx.db.get(suggestionId));
 
       expect(result.updated).toBe(1);
+      expectAllSupportedLocaleTranslations(updated?.translations);
       expect(updated?.translations?.th).toBe("ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?");
     } finally {
       vi.unstubAllEnvs();
@@ -940,6 +1019,17 @@ describe("chatSuggestions.nextForSession", () => {
         "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
         "ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?",
       ]);
+
+      const generatedRows = await t.run(async (ctx) => {
+        return await ctx.db
+          .query("chatSuggestedQuestions")
+          .withIndex("by_session_and_status", (q) => q.eq("sessionId", sessionId).eq("status", "active"))
+          .take(10);
+      });
+      expect(generatedRows).toHaveLength(4);
+      for (const row of generatedRows) {
+        expectAllSupportedLocaleTranslations(row.translations);
+      }
     } finally {
       vi.unstubAllEnvs();
       vi.useRealTimers();

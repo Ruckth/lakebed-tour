@@ -34,6 +34,7 @@ import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
 import type * as properties from "../properties.js";
 import type * as seed from "../seed.js";
+import type * as seeds_curatedQuestions from "../seeds/curatedQuestions.js";
 import type * as seeds_pricing from "../seeds/pricing.js";
 import type * as seeds_properties from "../seeds/properties.js";
 import type * as seeds_recentBookings from "../seeds/recentBookings.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   properties: typeof properties;
   seed: typeof seed;
+  "seeds/curatedQuestions": typeof seeds_curatedQuestions;
   "seeds/pricing": typeof seeds_pricing;
   "seeds/properties": typeof seeds_properties;
   "seeds/recentBookings": typeof seeds_recentBookings;

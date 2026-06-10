@@ -118,6 +118,7 @@ const LOCAL_MESSAGE_CACHE_ID = "local";
 const MESSAGE_CACHE_VERSION = 1;
 const MAX_CACHED_MESSAGES = 100;
 const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
+const VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT = 2;
 const HEARTBEAT_MS = 30_000;
 const contactApps: ContactApp[] = ["whatsapp", "line"];
 const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
@@ -161,6 +162,10 @@ function renderMessage(content: string) {
       </span>
     );
   });
+}
+
+function normalizeSuggestionText(value: string) {
+  return value.trim().toLocaleLowerCase();
 }
 
 function getOrCreateVisitorId() {
@@ -824,9 +829,16 @@ function ChatExperience({
       })),
     [rankedSuggestions],
   );
-  const visibleSuggestions = rankedVisibleSuggestions.length >= 2
-    ? rankedVisibleSuggestions
-    : staticVisibleSuggestions;
+  const visibleSuggestions = useMemo((): ChatSuggestion[] => {
+    if (rankedVisibleSuggestions.length === 0) return staticVisibleSuggestions;
+
+    const seen = new Set(rankedVisibleSuggestions.map((suggestion) => normalizeSuggestionText(suggestion.text)));
+    const staticTopUp = staticVisibleSuggestions
+      .filter((suggestion) => !seen.has(normalizeSuggestionText(suggestion.text)))
+      .slice(0, Math.max(0, VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT - rankedVisibleSuggestions.length));
+
+    return [...rankedVisibleSuggestions, ...staticTopUp];
+  }, [rankedVisibleSuggestions, staticVisibleSuggestions]);
   const latestAssistantIndex = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "assistant") return index;
@@ -1113,7 +1125,7 @@ function ChatExperience({
             limit: 2,
           });
           if (cancelled) return;
-          if (nextSuggestions.length >= 2) {
+          if (nextSuggestions.length > 0) {
             await markChatSuggestionsShown(convex, {
               sessionId,
               suggestions: nextSuggestions.map((suggestion) => ({
