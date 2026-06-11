@@ -44,6 +44,8 @@ export type LineQuickAnswer = {
   quickReplyItems: LineQuickReplyItem[];
 };
 
+type QuickAnswerLocale = "en" | "th";
+
 const quickReplyButtons = [
   { label: "Check dates", intent: "availability" },
   { label: "See prices", intent: "pricing" },
@@ -158,8 +160,23 @@ function propertyLines(properties: LinePropertySummary[]) {
     .join("\n");
 }
 
+function propertyLinesThai(properties: LinePropertySummary[]) {
+  return properties
+    .map(
+      (property) =>
+        `${property.name}: ${formatBaht(property.pricePerNight)}/คืน (จองตรง ${formatBaht(
+          directRate(property),
+        )})`,
+    )
+    .join("\n");
+}
+
 function fallbackProperties(properties: LinePropertySummary[]) {
   return properties.length > 0 ? properties : [];
+}
+
+function detectQuickAnswerLocale(text?: string): QuickAnswerLocale {
+  return /[\u0E00-\u0E7F]/u.test(text ?? "") ? "th" : "en";
 }
 
 export function normalizeLineQuestion(text: string) {
@@ -207,11 +224,13 @@ function isLineIntent(value: string | null): value is LineIntent {
 
 function answerForIntent({
   intent,
+  locale,
   mode,
   properties,
   siteUrl,
 }: {
   intent: LineIntent;
+  locale: QuickAnswerLocale;
   mode: LineReplyMode;
   properties: LinePropertySummary[];
   siteUrl: string;
@@ -222,6 +241,9 @@ function answerForIntent({
   const propertyList = activeProperties.length
     ? propertyLines(activeProperties)
     : "Open the booking page to see current villa pricing.";
+  const propertyListThai = activeProperties.length
+    ? propertyLinesThai(activeProperties)
+    : "เปิดหน้าจองเพื่อดูราคาวิลล่าล่าสุดได้เลย";
   const firstVillaLink = activeProperties[0]
     ? villaUrl(siteUrl, activeProperties[0].slug)
     : `${normalizeSiteUrl(siteUrl)}/#villas`;
@@ -265,11 +287,50 @@ function answerForIntent({
             .join(", ")}.`
         : `Amenities are listed on each villa page: ${normalizeSiteUrl(siteUrl)}/#villas`,
   };
+  const thaiAnswers: Record<LineIntent, string> = {
+    welcome:
+      "ขอบคุณที่เพิ่ม Auralis Cove Retreat ครับ ผมช่วยดูห้องว่าง ราคา ทัวร์ 360 และการจองตรงได้เลย ส่งคำถามมาได้ครับ",
+    availability:
+      `เช็คห้องว่างและราคารวมตามวันที่ได้ที่นี่: ${bookingUrl(siteUrl)}\n\nถ้ามีวันที่แล้ว ส่งชื่อวิลล่า วันเช็คอิน และวันเช็คเอาต์มาได้เลยครับ`,
+    pricing:
+      `ราคาจองตรงตอนนี้:\n${propertyListThai}\n\nใช้ ${bookingUrl(
+        siteUrl,
+      )} เพื่อคำนวณราคารวมตามวันที่ต้องการได้เลยครับ`,
+    direct_booking:
+      `จองตรงประหยัด ${discount}% จากราคาปกติ และไม่เสียค่าบริการจากแพลตฟอร์ม OTA\n\nเริ่มจองได้ที่นี่: ${bookingUrl(siteUrl)}`,
+    villa_details:
+      activeProperties.length
+        ? `วิลล่าของเรา:\n${activeProperties
+            .map(
+              (property) =>
+                `${property.name}: ${property.bedrooms} ห้องนอน, ${property.bathrooms} ห้องน้ำ, พักได้สูงสุด ${property.maxGuests} คน ${villaUrl(siteUrl, property.slug)}`,
+            )
+            .join("\n")}`
+        : `ดูรายละเอียดวิลล่าได้ที่นี่: ${normalizeSiteUrl(siteUrl)}/#villas`,
+    tour:
+      `เปิดทัวร์ 360 ได้จากหน้าวิลล่าแต่ละหลัง เริ่มที่นี่: ${firstVillaLink}\n\nทัวร์ช่วยให้ดูห้องและบรรยากาศก่อนเลือกวันเข้าพักได้ครับ`,
+    contact:
+      "ส่งข้อความมาที่นี่ได้เลยครับ แจ้งวันที่ จำนวนผู้เข้าพัก และวิลล่าที่สนใจ แล้วโฮสต์จะช่วยเช็คตัวเลือกที่เหมาะที่สุดให้",
+    airport:
+      "การจองตรงรวมบริการรับจากสนามบินฟรีครับ หลังจองแล้วแจ้งเวลาถึงสนามบินเพื่อให้โฮสต์ช่วยประสานงานได้เลย",
+    cancellation:
+      "ยกเลิกฟรีได้ถึง 48 ชั่วโมงก่อนเช็คอิน หากมีเหตุจำเป็นเรื่องการเดินทาง ส่งข้อความหาโฮสต์ที่นี่ได้ครับ",
+    location:
+      `Auralis Cove Retreat เป็นคอนเซ็ปต์วิลล่าหรูในเกาะสมุย ประเทศไทย ดูข้อมูลและจองได้ที่นี่: ${normalizeSiteUrl(siteUrl)}`,
+    amenities:
+      activeProperties.length
+        ? `สิ่งอำนวยความสะดวกแตกต่างกันตามวิลล่า ไฮไลต์มี ${Array.from(
+            new Set(activeProperties.flatMap((property) => property.amenities)),
+          )
+            .slice(0, 10)
+            .join(", ")}`
+        : `ดูสิ่งอำนวยความสะดวกได้ในหน้าวิลล่าแต่ละหลัง: ${normalizeSiteUrl(siteUrl)}/#villas`,
+  };
 
   return {
     intent,
     mode,
-    text: answers[intent],
+    text: locale === "th" ? thaiAnswers[intent] : answers[intent],
     quickReplyItems,
   };
 }
@@ -288,16 +349,26 @@ export function resolveLineQuickAnswer({
   siteUrl: string;
 }) {
   if (eventType === "follow") {
-    return answerForIntent({ intent: "welcome", mode: "follow", properties, siteUrl });
+    return answerForIntent({ intent: "welcome", locale: "en", mode: "follow", properties, siteUrl });
   }
 
   if (eventType === "postback") {
     const intent = parseLineIntentFromPostback(postbackData);
-    return intent ? answerForIntent({ intent, mode: "postback", properties, siteUrl }) : null;
+    return intent
+      ? answerForIntent({ intent, locale: "en", mode: "postback", properties, siteUrl })
+      : null;
   }
 
   if (eventType !== "message" || !messageText) return null;
 
   const intent = exactQuestionIntents.get(normalizeLineQuestion(messageText));
-  return intent ? answerForIntent({ intent, mode: "exact", properties, siteUrl }) : null;
+  return intent
+    ? answerForIntent({
+        intent,
+        locale: detectQuickAnswerLocale(messageText),
+        mode: "exact",
+        properties,
+        siteUrl,
+      })
+    : null;
 }

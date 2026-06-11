@@ -32,4 +32,21 @@ describe("LINE quick answers", () => {
     });
     expect(answer?.text).toContain("Current direct booking prices");
   });
+
+  it("answers Thai exact quick answers in Thai", () => {
+    const answer = resolveLineQuickAnswer({
+      eventType: "message",
+      messageText: "ราคาเท่าไหร่",
+      properties,
+      siteUrl: "https://tour.helpgueststay.com",
+    });
+
+    expect(answer).toMatchObject({
+      mode: "exact",
+      intent: "pricing",
+    });
+    expect(answer?.text).toContain("ราคาจองตรงตอนนี้");
+    expect(answer?.text).toContain("฿12,000/คืน");
+    expect(answer?.text).toContain("จองตรง ฿10,200");
+  });
 });
