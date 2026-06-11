@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
 import {
+  detectQuickAnswerLocale,
+  localizedTimeoutFallbackReply,
+  localizedUnknownFallbackReply,
+  parseLineLocaleFromPostback,
   resolveLineQuickAnswer,
   type LinePropertySummary,
 } from "@/lib/line/quick-answers";
@@ -213,29 +217,19 @@ function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise
   });
 }
 
-function timeoutFallbackReply() {
+function timeoutFallbackReply(locale?: string) {
   return {
-    response:
-      "I'm checking that for you, but the concierge is taking longer than usual. Please send your villa, dates, and guest count here and the host can help confirm.",
+    response: localizedTimeoutFallbackReply(locale),
     model: "timeout",
   };
 }
 
 function detectFacebookLocale(messageText?: string) {
-  if (!messageText) return undefined;
-  return /[\u0E00-\u0E7F]/u.test(messageText) ? "th" : "en";
+  return detectQuickAnswerLocale(messageText);
 }
 
 function questionBankReplyMode(match: Pick<QuestionBankMatch, "source">): FacebookEventReplyMode {
   return match.source === "exact" ? "question_bank_exact" : "question_bank_semantic";
-}
-
-function unknownFallbackReply(messageText?: string) {
-  if (/[\u0E00-\u0E7F]/u.test(messageText ?? "")) {
-    return "ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว";
-  }
-
-  return "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.";
 }
 
 async function sendFacebookTextMessage({
@@ -286,7 +280,10 @@ async function resolveFacebookReply({
   sessionId: string;
   siteUrl: string;
 }): Promise<ResolvedFacebookReply> {
-  const locale = detectFacebookLocale(messageText);
+  const locale =
+    eventType === "postback"
+      ? parseLineLocaleFromPostback(postbackData)
+      : detectFacebookLocale(messageText);
   const guardrailReply =
     eventType === "message" && messageText
       ? await timeout(
@@ -325,6 +322,7 @@ async function resolveFacebookReply({
   const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
   const quickAnswer = resolveLineQuickAnswer({
     eventType,
+    ...(locale ? { locale } : {}),
     messageText,
     postbackData,
     properties,
@@ -375,6 +373,7 @@ async function resolveFacebookReply({
         userMessage: messageText ?? postbackData ?? "Facebook message",
         channel: "facebook",
         siteUrl,
+        ...(locale ? { locale } : {}),
         questionBankHint: {
           question: questionBankMatch.question,
           topic: questionBankMatch.topic,
@@ -385,11 +384,11 @@ async function resolveFacebookReply({
         },
       } as never) as Promise<GeneratedReply>,
       AI_REPLY_TIMEOUT_MS,
-      timeoutFallbackReply,
+      () => timeoutFallbackReply(locale),
     );
 
     return {
-      responseText: generated.response ?? timeoutFallbackReply().response,
+      responseText: generated.response ?? timeoutFallbackReply(locale).response,
       replyMode:
         generated.model === "timeout" ? "failed" : questionBankReplyMode(questionBankMatch),
       questionBankMatch,
@@ -404,7 +403,7 @@ async function resolveFacebookReply({
   }
 
   return {
-    responseText: unknownFallbackReply(messageText),
+    responseText: localizedUnknownFallbackReply(locale),
     replyMode: "unknown_fallback",
     questionBankMatch: null,
   };

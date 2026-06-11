@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLineQuickReplyItems,
+  parseLineLocaleFromPostback,
   normalizeLineQuestion,
   parseLineIntentFromPostback,
   resolveLineQuickAnswer,
@@ -63,22 +64,25 @@ describe("LINE webhook helpers", () => {
 
   it("maps LINE postback data to deterministic answers and quick reply buttons", () => {
     expect(parseLineIntentFromPostback("intent=tour")).toBe("tour");
+    expect(parseLineLocaleFromPostback("intent=tour&locale=fr")).toBe("fr");
     expect(parseLineIntentFromPostback("intent=unknown")).toBeNull();
 
     const postback = resolveLineQuickAnswer({
       eventType: "postback",
-      postbackData: "intent=tour",
+      postbackData: "intent=tour&locale=fr",
       properties,
       siteUrl: "https://tour.helpgueststay.com",
     });
 
     expect(postback).toMatchObject({ intent: "tour", mode: "postback" });
+    expect(postback?.text).toContain("visite 360");
     expect(buildLineQuickReplyItems().map((item) => item.action.label)).toEqual([
       "Check dates",
       "See prices",
       "View 360 tour",
       "Contact host",
     ]);
+    expect(buildLineQuickReplyItems("fr")[0]?.action.data).toBe("intent=availability&locale=fr");
   });
 
   it("builds customer links from the site origin even when SITE_URL includes the webhook path", () => {

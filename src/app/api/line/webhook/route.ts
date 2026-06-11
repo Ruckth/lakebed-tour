@@ -3,6 +3,10 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
 import { verifyLineSignature } from "@/lib/line/signature";
 import {
+  detectQuickAnswerLocale,
+  localizedTimeoutFallbackReply,
+  localizedUnknownFallbackReply,
+  parseLineLocaleFromPostback,
   resolveLineQuickAnswer,
   type LinePropertySummary,
   type LineQuickReplyItem,
@@ -236,29 +240,19 @@ function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise
   });
 }
 
-function timeoutFallbackReply() {
+function timeoutFallbackReply(locale?: string) {
   return {
-    response:
-      "I'm checking that for you, but the concierge is taking longer than usual. Please send your villa, dates, and guest count here and the host can help confirm.",
+    response: localizedTimeoutFallbackReply(locale),
     model: "timeout",
   };
 }
 
 function detectLineLocale(messageText?: string) {
-  if (!messageText) return undefined;
-  return /[\u0E00-\u0E7F]/u.test(messageText) ? "th" : "en";
+  return detectQuickAnswerLocale(messageText);
 }
 
 function questionBankReplyMode(match: Pick<QuestionBankMatch, "source">): LineEventReplyMode {
   return match.source === "exact" ? "question_bank_exact" : "question_bank_semantic";
-}
-
-function unknownFallbackReply(messageText?: string) {
-  if (/[\u0E00-\u0E7F]/u.test(messageText ?? "")) {
-    return "ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว";
-  }
-
-  return "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.";
 }
 
 async function handleLineEvent({
@@ -326,7 +320,10 @@ async function handleLineEvent({
     }
 
     const siteUrl = getSiteUrl(request);
-    const locale = detectLineLocale(messageText);
+    const locale =
+      eventType === "postback"
+        ? parseLineLocaleFromPostback(postbackData)
+        : detectLineLocale(messageText);
     const guardrailReply =
       eventType === "message" && messageText
         ? await timeout(
@@ -361,6 +358,7 @@ async function handleLineEvent({
         const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
         const quickAnswer = resolveLineQuickAnswer({
           eventType,
+          ...(locale ? { locale } : {}),
           messageText,
           postbackData,
           properties,
@@ -405,6 +403,7 @@ async function handleLineEvent({
                 userMessage: messageText ?? postbackData ?? "LINE message",
                 channel: "line",
                 siteUrl,
+                ...(locale ? { locale } : {}),
                 questionBankHint: {
                   question: questionBankMatch.question,
                   topic: questionBankMatch.topic,
@@ -415,9 +414,9 @@ async function handleLineEvent({
                 },
               } as never) as Promise<GeneratedReply>,
               AI_REPLY_TIMEOUT_MS,
-              timeoutFallbackReply,
+              () => timeoutFallbackReply(locale),
             );
-            responseText = generated.response ?? timeoutFallbackReply().response;
+            responseText = generated.response ?? timeoutFallbackReply(locale).response;
             replyMode =
               generated.model === "timeout"
                 ? "failed"
@@ -429,7 +428,7 @@ async function handleLineEvent({
                 userQuestion: messageText,
               } as never);
             }
-            responseText = unknownFallbackReply(messageText);
+            responseText = localizedUnknownFallbackReply(locale);
             replyMode = "unknown_fallback";
           }
         }

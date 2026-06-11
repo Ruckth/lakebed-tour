@@ -1514,7 +1514,6 @@ function AdminQuestionsView({
   const createAnswerFromUnknown = useAction(api.chatKnowledge.adminCreateAnswerFromUnknown);
   const resolveUnknownWithAnswer = useAction(api.chatKnowledge.adminResolveUnknownWithAnswer);
   const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
-  const backfillThaiSuggestions = useMutation(api.chatSuggestions.adminBackfillThaiGeneratedSuggestions);
   const answerRows = answers ?? [];
   const unknownRows = unknownQuestions ?? [];
   const generatedRows = questions ?? [];
@@ -1684,15 +1683,6 @@ function AdminQuestionsView({
     }
   }
 
-  async function runThaiSuggestionBackfill() {
-    setPendingAction("backfill-thai");
-    try {
-      await backfillThaiSuggestions({ limit: 100 });
-    } finally {
-      setPendingAction("");
-    }
-  }
-
   function answerStatusTone(status: KnowledgeAnswerStatus) {
     if (status === "approved") return "bg-emerald-600 text-white";
     if (status === "archived") return "bg-muted text-foreground";
@@ -1772,20 +1762,6 @@ function AdminQuestionsView({
             ) : null}
             {mode === "generated" ? (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={pendingAction === "backfill-thai"}
-                  onClick={() => void runThaiSuggestionBackfill()}
-                >
-                  {pendingAction === "backfill-thai" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" />
-                  )}
-                  Fill Thai
-                </Button>
                 <Select
                   value={selectedLocale}
                   onValueChange={(value) => setSelectedLocale(value as Locale)}

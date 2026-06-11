@@ -1244,15 +1244,6 @@ export const adminBackfillGeneratedSuggestionTranslations = mutation({
 	}
 });
 
-export const adminBackfillThaiGeneratedSuggestions = mutation({
-	args: {
-		limit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		return await backfillGeneratedSuggestionTranslations(ctx, args);
-	}
-});
-
 export const adminList = query({
 	args: {
 		limit: v.optional(v.number())
