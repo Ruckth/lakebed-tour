@@ -474,6 +474,37 @@ function parseDraftTranslations(content: string | null) {
 	}
 }
 
+function parseGeneratedSuggestionTranslations(
+	content: string | null,
+	targetLocale: string
+) {
+	if (!content) return new Map<number, string>();
+	const json = extractJsonObject(content);
+	if (!json) return new Map<number, string>();
+
+	try {
+		const parsed = JSON.parse(json) as unknown;
+		if (!parsed || typeof parsed !== 'object') return new Map<number, string>();
+
+		const row = parsed as Record<string, unknown>;
+		const rawTranslations = Array.isArray(row.translations) ? row.translations : [];
+		const translations = new Map<number, string>();
+		for (const rawTranslation of rawTranslations) {
+			if (!rawTranslation || typeof rawTranslation !== 'object') continue;
+			const translationRow = rawTranslation as Record<string, unknown>;
+			const index = translationRow.index;
+			const value = translationRow.translation ?? translationRow[targetLocale];
+			if (typeof index !== 'number' || !Number.isInteger(index)) continue;
+			if (typeof value !== 'string') continue;
+			const trimmed = value.trim();
+			if (trimmed && trimmed.length <= 160) translations.set(index, trimmed);
+		}
+		return translations;
+	} catch {
+		return new Map<number, string>();
+	}
+}
+
 function sanitizeCandidates(candidates: GeneratedQuestion[]) {
 	const seen = new Set<string>();
 	const sanitized: GeneratedQuestion[] = [];
@@ -1241,6 +1272,160 @@ export const adminBackfillGeneratedSuggestionTranslations = mutation({
 	},
 	handler: async (ctx, args) => {
 		return await backfillGeneratedSuggestionTranslations(ctx, args);
+	}
+});
+
+export const listMissingGeneratedSuggestionTranslations = internalQuery({
+	args: {
+		locale: v.string(),
+		limit: v.optional(v.number())
+	},
+	handler: async (ctx, args) => {
+		const locale = normalizeSuggestionLocale(args.locale);
+		if (locale === 'en') return [];
+
+		const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+		const questions = await ctx.db
+			.query('chatSuggestedQuestions')
+			.withIndex('by_created_at')
+			.order('desc')
+			.take(limit);
+
+		return questions
+			.filter((question) => {
+				const translated = question.translations?.[locale]?.trim();
+				return !translated || translated === question.question.trim();
+			})
+			.map((question) => ({
+				_id: question._id,
+				question: question.question,
+				translations: question.translations
+			}));
+	}
+});
+
+export const patchGeneratedSuggestionTranslations = internalMutation({
+	args: {
+		locale: v.string(),
+		patches: v.array(
+			v.object({
+				questionId: v.id('chatSuggestedQuestions'),
+				translation: v.string()
+			})
+		)
+	},
+	handler: async (ctx, args) => {
+		const locale = normalizeSuggestionLocale(args.locale);
+		if (locale === 'en') return { updated: 0 };
+
+		let updated = 0;
+		for (const patch of args.patches) {
+			const translation = patch.translation.trim();
+			if (!translation || translation.length > 160) continue;
+
+			const question = await ctx.db.get(patch.questionId);
+			if (!question) continue;
+
+			await ctx.db.patch(question._id, {
+				translations: {
+					en: question.question,
+					...(question.translations ?? {}),
+					[locale]: translation
+				}
+			});
+			updated++;
+		}
+
+		return { updated };
+	}
+});
+
+export const adminTranslateMissingGeneratedSuggestions = action({
+	args: {
+		locale: v.string(),
+		limit: v.optional(v.number())
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const locale = normalizeSuggestionLocale(args.locale);
+		if (locale === 'en') return { locale, scanned: 0, updated: 0 };
+
+		const missingRows: Array<{
+			_id: Id<'chatSuggestedQuestions'>;
+			question: string;
+			translations?: Record<string, string>;
+		}> = await ctx.runQuery(internal.chatSuggestions.listMissingGeneratedSuggestionTranslations, {
+			locale,
+			limit: args.limit
+		});
+
+		if (missingRows.length === 0) return { locale, scanned: 0, updated: 0 };
+
+		const seedPatches = missingRows.flatMap((row) => {
+			const seedTranslation = getSeedTranslations(row.question)?.[locale]?.trim();
+			return seedTranslation ? [{ questionId: row._id, translation: seedTranslation }] : [];
+		});
+		const rowsNeedingAi = missingRows.filter(
+			(row) => !seedPatches.some((patch) => patch.questionId === row._id)
+		);
+
+		let aiPatches: Array<{ questionId: Id<'chatSuggestedQuestions'>; translation: string }> = [];
+		if (rowsNeedingAi.length > 0) {
+			const apiKey = process.env.AI_API_KEY;
+			if (!apiKey && seedPatches.length === 0) {
+				throw new Error('AI_API_KEY is required to translate generated suggestions');
+			}
+
+			if (apiKey) {
+				const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
+				const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+				const messages: ChatMessage[] = [
+					{
+						role: 'system',
+						content:
+							'You translate short concierge chatbot suggestion questions. Return compact JSON only.'
+					},
+					{
+						role: 'user',
+						content: `Source language: English
+Target locale: ${locale}
+Questions:
+${rowsNeedingAi.map((row, index) => `${index}. ${row.question}`).join('\n')}
+
+Return exactly this JSON shape:
+{
+  "translations": [
+    { "index": 0, "translation": "translated question" }
+  ]
+}
+
+Rules:
+- Include one item for every question index.
+- Keep villa names, property slugs, prices, dates, currency symbols, URLs, emails, phone numbers, WhatsApp, LINE, and booking rules factually unchanged.
+- Translate only human-readable prose.
+- Each translation must be 160 characters or fewer.`
+					}
+				];
+				const response = await callAI(apiBase, apiKey, model, messages, []);
+				const translations = parseGeneratedSuggestionTranslations(response.content, locale);
+				aiPatches = rowsNeedingAi.flatMap((row, index) => {
+					const translation = translations.get(index);
+					return translation ? [{ questionId: row._id, translation }] : [];
+				});
+			}
+		}
+
+		const patches = [...seedPatches, ...aiPatches];
+		if (patches.length === 0) {
+			return { locale, scanned: missingRows.length, updated: 0 };
+		}
+
+		const result: { updated: number } = await ctx.runMutation(
+			internal.chatSuggestions.patchGeneratedSuggestionTranslations,
+			{ locale, patches }
+		);
+
+		return { locale, scanned: missingRows.length, updated: result.updated };
 	}
 });
 

@@ -36,6 +36,14 @@ type AnswerGenerationContext = {
 	topics: Doc<'chatTopics'>[];
 };
 
+type PropertyScopeSelection = {
+	propertyId?: Id<'properties'>;
+	propertySlug: string;
+	normalizedSlug: string;
+	source: 'property' | 'custom';
+	label: string;
+};
+
 function sanitizeRequiredText(value: string, field: string, maxLength: number) {
 	const trimmed = value.trim();
 	if (!trimmed) throw new Error(`${field} is required`);
@@ -56,6 +64,23 @@ function normalizeQuestion(value: string) {
 
 function normalizeTopicName(value: string) {
 	return normalizeSuggestedQuestion(value);
+}
+
+function normalizePropertySlug(value: string) {
+	return value
+		.trim()
+		.toLowerCase()
+		.replace(/[\s_]+/g, '-')
+		.replace(/[^a-z0-9-]/g, '')
+		.replace(/-+/g, '-')
+		.replace(/^-|-$/g, '');
+}
+
+function sanitizePropertySlug(value: string) {
+	const slug = normalizePropertySlug(value);
+	if (!slug) throw new Error('Property slug is required');
+	if (slug.length > 80) throw new Error('Property slug must be 80 characters or fewer');
+	return slug;
 }
 
 function uniqueQuestionTexts(values: Array<string | undefined>) {
@@ -86,18 +111,168 @@ function uniqueTopicNames(values: Array<string | undefined>) {
 	return result;
 }
 
-async function resolvePropertyId(
-	ctx: QueryCtx | MutationCtx,
-	args: { propertyId?: Id<'properties'>; propertySlug?: string }
-) {
-	if (args.propertyId) return args.propertyId;
-	const propertySlug = args.propertySlug?.trim();
-	if (!propertySlug) return undefined;
-	const property = await ctx.db
+function uniquePropertySlugs(values: Array<string | undefined>) {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const value of values) {
+		const slug = value ? sanitizePropertySlug(value) : undefined;
+		if (!slug || seen.has(slug)) continue;
+		seen.add(slug);
+		result.push(slug);
+	}
+	return result;
+}
+
+async function getPropertyBySlug(ctx: QueryCtx | MutationCtx, slug: string) {
+	return await ctx.db
 		.query('properties')
-		.withIndex('by_slug', (q) => q.eq('slug', propertySlug))
+		.withIndex('by_slug', (q) => q.eq('slug', slug))
 		.unique();
-	return property?._id;
+}
+
+async function getCustomScopeBySlug(ctx: QueryCtx | MutationCtx, slug: string) {
+	const normalizedSlug = sanitizePropertySlug(slug);
+	return await ctx.db
+		.query('chatKnowledgeScopes')
+		.withIndex('by_normalizedSlug', (q) => q.eq('normalizedSlug', normalizedSlug))
+		.unique();
+}
+
+async function ensureCustomPropertyScope(ctx: MutationCtx, slug: string, adminEmail: string) {
+	const normalizedSlug = sanitizePropertySlug(slug);
+	const existing = await getCustomScopeBySlug(ctx, normalizedSlug);
+	const now = Date.now();
+	if (existing) {
+		await ctx.db.patch(existing._id, {
+			slug: normalizedSlug,
+			label: normalizedSlug,
+			updatedAt: now,
+			updatedByAdminEmail: adminEmail
+		});
+		return existing;
+	}
+
+	const scopeId = await ctx.db.insert('chatKnowledgeScopes', {
+		slug: normalizedSlug,
+		normalizedSlug,
+		label: normalizedSlug,
+		createdAt: now,
+		updatedAt: now,
+		createdByAdminEmail: adminEmail,
+		updatedByAdminEmail: adminEmail
+	});
+	return await ctx.db.get(scopeId);
+}
+
+async function resolvePropertyScopeSelections(
+	ctx: MutationCtx,
+	args: {
+		propertyId?: Id<'properties'>;
+		propertySlug?: string;
+		propertySlugs?: string[];
+	},
+	adminEmail: string
+) {
+	const slugs = [...(args.propertySlugs ?? []), args.propertySlug];
+	if (args.propertyId) {
+		const property = await ctx.db.get(args.propertyId);
+		if (!property) throw new Error('Property not found');
+		slugs.push(property.slug);
+	}
+
+	const selections: PropertyScopeSelection[] = [];
+	for (const slug of uniquePropertySlugs(slugs)) {
+		const property = await getPropertyBySlug(ctx, slug);
+		if (property) {
+			selections.push({
+				propertyId: property._id,
+				propertySlug: property.slug,
+				normalizedSlug: sanitizePropertySlug(property.slug),
+				source: 'property',
+				label: property.name
+			});
+			continue;
+		}
+
+		const customScope = await ensureCustomPropertyScope(ctx, slug, adminEmail);
+		selections.push({
+			propertySlug: customScope?.slug ?? slug,
+			normalizedSlug: customScope?.normalizedSlug ?? sanitizePropertySlug(slug),
+			source: 'custom',
+			label: customScope?.label ?? slug
+		});
+	}
+
+	return selections;
+}
+
+function primaryPropertyIdForScopes(scopes: PropertyScopeSelection[]) {
+	return scopes.length === 1 && scopes[0]?.source === 'property' ? scopes[0].propertyId : undefined;
+}
+
+async function syncAnswerPropertyScopes(
+	ctx: MutationCtx,
+	answerId: Id<'chatAnswers'>,
+	scopes: PropertyScopeSelection[],
+	adminEmail: string
+) {
+	const existing = await ctx.db
+		.query('chatAnswerPropertyScopes')
+		.withIndex('by_answerId', (q) => q.eq('answerId', answerId))
+		.take(100);
+	for (const row of existing) {
+		await ctx.db.delete(row._id);
+	}
+
+	const now = Date.now();
+	for (const scope of scopes) {
+		await ctx.db.insert('chatAnswerPropertyScopes', {
+			propertyId: scope.propertyId,
+			answerId,
+			propertySlug: scope.propertySlug,
+			normalizedSlug: scope.normalizedSlug,
+			source: scope.source,
+			createdAt: now,
+			updatedAt: now,
+			createdByAdminEmail: adminEmail,
+			updatedByAdminEmail: adminEmail
+		});
+	}
+}
+
+async function getAnswerPropertyScopes(ctx: QueryCtx, answer: Doc<'chatAnswers'>) {
+	const scopes = await ctx.db
+		.query('chatAnswerPropertyScopes')
+		.withIndex('by_answerId', (q) => q.eq('answerId', answer._id))
+		.take(100);
+	if (scopes.length > 0) {
+		return await Promise.all(
+			scopes.map(async (scope) => {
+				const property = scope.propertyId ? await ctx.db.get(scope.propertyId) : null;
+				return {
+					...scope,
+					label: property?.name ?? scope.propertySlug
+				};
+			})
+		);
+	}
+
+	if (!answer.propertyId) return [];
+	const property = await ctx.db.get(answer.propertyId);
+	if (!property) return [];
+	return [
+		{
+			_id: `${answer._id}:legacy-property-scope`,
+			answerId: answer._id,
+			propertyId: property._id,
+			propertySlug: property.slug,
+			normalizedSlug: sanitizePropertySlug(property.slug),
+			source: 'property' as const,
+			label: property.name,
+			createdAt: answer.createdAt,
+			updatedAt: answer.updatedAt
+		}
+	];
 }
 
 async function resolveSessionProperty(
@@ -216,30 +391,115 @@ async function insertApprovedQuestion(
 	});
 }
 
+async function syncApprovedQuestions(
+	ctx: MutationCtx,
+	args: {
+		answerId: Id<'chatAnswers'>;
+		propertyId?: Id<'properties'>;
+		questionTexts: string[];
+		adminEmail: string;
+	}
+) {
+	const desiredQuestionTexts = uniqueQuestionTexts(args.questionTexts);
+	if (desiredQuestionTexts.length === 0) throw new Error('At least one approved question is required');
+
+	const existing = await ctx.db
+		.query('chatQuestions')
+		.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
+		.take(200);
+	const approvedByNormalized = new Map<string, Doc<'chatQuestions'>>();
+	for (const question of existing) {
+		if (question.status !== 'approved') continue;
+		if (!approvedByNormalized.has(question.normalizedQuestion)) {
+			approvedByNormalized.set(question.normalizedQuestion, question);
+		}
+	}
+
+	const keptQuestionIds = new Set<Id<'chatQuestions'>>();
+	const now = Date.now();
+	for (let index = 0; index < desiredQuestionTexts.length; index++) {
+		const questionText = desiredQuestionTexts[index];
+		const normalizedQuestion = normalizeQuestion(questionText);
+		if (!normalizedQuestion) continue;
+		const existingQuestion = approvedByNormalized.get(normalizedQuestion);
+		const isPrimary = index === 0;
+		if (existingQuestion) {
+			keptQuestionIds.add(existingQuestion._id);
+			await ctx.db.patch(existingQuestion._id, {
+				propertyId: args.propertyId,
+				questionText,
+				normalizedQuestion,
+				isPrimary,
+				isAiTrigger: isPrimary,
+				approvedAt: existingQuestion.approvedAt ?? now,
+				rejectedAt: undefined,
+				updatedAt: now,
+				updatedByAdminEmail: args.adminEmail
+			});
+		} else {
+			const questionId = await insertApprovedQuestion(ctx, {
+				answerId: args.answerId,
+				propertyId: args.propertyId,
+				questionText,
+				isPrimary,
+				isAiTrigger: isPrimary,
+				adminEmail: args.adminEmail
+			});
+			keptQuestionIds.add(questionId);
+		}
+	}
+
+	for (const question of existing) {
+		if (question.status === 'approved' && !keptQuestionIds.has(question._id)) {
+			await ctx.db.delete(question._id);
+		}
+	}
+}
+
 async function getExactCandidates(
 	ctx: QueryCtx,
 	normalizedQuestion: string,
-	propertyId?: Id<'properties'>
+	propertyId?: Id<'properties'>,
+	propertySlug?: string
 ) {
-	const globalQuestions = await ctx.db
+	const questions = await ctx.db
 		.query('chatQuestions')
-		.withIndex('by_status_and_normalizedQuestion_and_propertyId', (q) =>
-			q.eq('status', 'approved').eq('normalizedQuestion', normalizedQuestion).eq('propertyId', undefined)
+		.withIndex('by_status_and_normalizedQuestion', (q) =>
+			q.eq('status', 'approved').eq('normalizedQuestion', normalizedQuestion)
 		)
-		.take(20);
-	const propertyQuestions = propertyId
-		? await ctx.db
-				.query('chatQuestions')
-				.withIndex('by_status_and_normalizedQuestion_and_propertyId', (q) =>
-					q.eq('status', 'approved').eq('normalizedQuestion', normalizedQuestion).eq('propertyId', propertyId)
-				)
-				.take(20)
-		: [];
+		.take(100);
+	const normalizedPropertySlug = propertySlug ? normalizePropertySlug(propertySlug) : undefined;
+	const candidates: Array<{
+		question: Doc<'chatQuestions'>;
+		answer: Doc<'chatAnswers'>;
+		scopeRank: number;
+	}> = [];
 
-	return [
-		...propertyQuestions.map((question) => ({ question, scopeRank: 1 })),
-		...globalQuestions.map((question) => ({ question, scopeRank: 0 }))
-	].sort((left, right) => {
+	for (const question of questions) {
+		const answer = await ctx.db.get(question.answerId);
+		if (!answer || answer.status !== 'approved') continue;
+
+		const scopes = await getAnswerPropertyScopes(ctx, answer);
+		let scopeRank = -1;
+		if (scopes.length > 0) {
+			const matchesScopedProperty =
+				(normalizedPropertySlug &&
+					scopes.some((scope) => scope.normalizedSlug === normalizedPropertySlug)) ||
+				(propertyId && scopes.some((scope) => scope.propertyId === propertyId));
+			scopeRank = matchesScopedProperty ? 2 : -1;
+		} else {
+			const legacyPropertyId = question.propertyId ?? answer.propertyId;
+			if (legacyPropertyId) {
+				scopeRank = propertyId && legacyPropertyId === propertyId ? 2 : -1;
+			} else {
+				scopeRank = 1;
+			}
+		}
+
+		if (scopeRank >= 0) candidates.push({ question, answer, scopeRank });
+	}
+
+	return candidates.sort((left, right) => {
 		if (right.scopeRank !== left.scopeRank) return right.scopeRank - left.scopeRank;
 		if (Number(right.question.isAiTrigger) !== Number(left.question.isAiTrigger)) {
 			return Number(right.question.isAiTrigger) - Number(left.question.isAiTrigger);
@@ -262,24 +522,20 @@ export const resolveExact = query({
 
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) return null;
-		const { propertyId } = await resolveSessionProperty(ctx, session);
-		const candidates = await getExactCandidates(ctx, normalizedQuestion, propertyId);
+		const { propertyId, propertySlug } = await resolveSessionProperty(ctx, session);
+		const candidates = await getExactCandidates(ctx, normalizedQuestion, propertyId, propertySlug);
 
 		for (const candidate of candidates) {
-			const answer = await ctx.db.get(candidate.question.answerId);
-			if (!answer || answer.status !== 'approved') continue;
-			if (answer.propertyId && propertyId && answer.propertyId !== propertyId) continue;
-			if (answer.propertyId && !propertyId) continue;
-
 			return {
 				source: 'approved_exact' as const,
-				answerId: answer._id,
+				answerId: candidate.answer._id,
 				questionId: candidate.question._id,
-				title: answer.title,
-				answer: answer.answer,
+				title: candidate.answer.title,
+				answer: candidate.answer.answer,
 				questionText: candidate.question.questionText,
 				normalizedQuestion,
-				propertyId: answer.propertyId
+				propertyId: candidate.answer.propertyId,
+				propertySlug
 			};
 		}
 
@@ -338,6 +594,106 @@ export const recordUnknownQuestion = mutation({
 	}
 });
 
+export const adminListPropertyScopes = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+
+		const [properties, customScopes] = await Promise.all([
+			ctx.db
+				.query('properties')
+				.withIndex('by_status', (q) => q.eq('status', 'active'))
+				.take(100),
+			ctx.db.query('chatKnowledgeScopes').withIndex('by_createdAt').order('asc').take(100)
+		]);
+
+		const propertyOptions = properties.map((property) => ({
+			slug: property.slug,
+			normalizedSlug: sanitizePropertySlug(property.slug),
+			label: property.name,
+			source: 'property' as const,
+			propertyId: property._id,
+			canDelete: false
+		}));
+		const realPropertySlugs = new Set(propertyOptions.map((property) => property.normalizedSlug));
+		const customOptions = await Promise.all(
+			customScopes
+				.filter((scope) => !realPropertySlugs.has(scope.normalizedSlug))
+				.map(async (scope) => {
+					const linkedAnswer = await ctx.db
+						.query('chatAnswerPropertyScopes')
+						.withIndex('by_normalizedSlug', (q) => q.eq('normalizedSlug', scope.normalizedSlug))
+						.first();
+					return {
+						slug: scope.slug,
+						normalizedSlug: scope.normalizedSlug,
+						label: scope.label,
+						source: 'custom' as const,
+						canDelete: !linkedAnswer
+					};
+				})
+		);
+
+		return [...propertyOptions, ...customOptions].sort((left, right) => {
+			if (left.source !== right.source) return left.source === 'property' ? -1 : 1;
+			return left.slug.localeCompare(right.slug);
+		});
+	}
+});
+
+export const adminCreatePropertyScope = mutation({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const slug = sanitizePropertySlug(args.slug);
+		const property = await getPropertyBySlug(ctx, slug);
+		if (property) {
+			return {
+				slug: property.slug,
+				normalizedSlug: sanitizePropertySlug(property.slug),
+				label: property.name,
+				source: 'property' as const,
+				propertyId: property._id,
+				canDelete: false
+			};
+		}
+
+		const scope = await ensureCustomPropertyScope(ctx, slug, admin.email);
+		const linkedAnswer = await ctx.db
+			.query('chatAnswerPropertyScopes')
+			.withIndex('by_normalizedSlug', (q) => q.eq('normalizedSlug', scope?.normalizedSlug ?? slug))
+			.first();
+		return {
+			slug: scope?.slug ?? slug,
+			normalizedSlug: scope?.normalizedSlug ?? slug,
+			label: scope?.label ?? slug,
+			source: 'custom' as const,
+			canDelete: !linkedAnswer
+		};
+	}
+});
+
+export const adminDeletePropertyScope = mutation({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const slug = sanitizePropertySlug(args.slug);
+		const property = await getPropertyBySlug(ctx, slug);
+		if (property) throw new Error('Real properties cannot be deleted here');
+
+		const scope = await getCustomScopeBySlug(ctx, slug);
+		if (!scope) return { deleted: false };
+		const linkedAnswer = await ctx.db
+			.query('chatAnswerPropertyScopes')
+			.withIndex('by_normalizedSlug', (q) => q.eq('normalizedSlug', scope.normalizedSlug))
+			.first();
+		if (linkedAnswer) throw new Error('Cannot delete a property scope that is linked to an answer');
+
+		await ctx.db.delete(scope._id);
+		return { deleted: true };
+	}
+});
+
 export const adminListAnswers = query({
 	args: {
 		status: v.optional(answerStatusValidator),
@@ -366,10 +722,13 @@ export const adminListAnswers = query({
 					getAnswerTopics(ctx, answer._id),
 					answer.propertyId ? ctx.db.get(answer.propertyId) : Promise.resolve(null)
 				]);
+				const propertyScopes = await getAnswerPropertyScopes(ctx, answer);
 				return {
 					...answer,
 					propertyName: property?.name,
 					propertySlug: property?.slug,
+					propertyScopes,
+					propertySlugs: propertyScopes.map((scope) => scope.propertySlug),
 					questions,
 					topics
 				};
@@ -382,6 +741,7 @@ export const adminCreateAnswer = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
+		propertySlugs: v.optional(v.array(v.string())),
 		title: v.string(),
 		answer: v.string(),
 		status: v.optional(answerStatusValidator),
@@ -391,7 +751,8 @@ export const adminCreateAnswer = mutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		const propertyId = await resolvePropertyId(ctx, args);
+		const propertyScopes = await resolvePropertyScopeSelections(ctx, args, admin.email);
+		const propertyId = primaryPropertyIdForScopes(propertyScopes);
 		const title = sanitizeRequiredText(args.title, 'Title', 160);
 		const answer = sanitizeRequiredText(args.answer, 'Answer', 2000);
 		const status = args.status ?? 'approved';
@@ -409,16 +770,13 @@ export const adminCreateAnswer = mutation({
 		});
 
 		const questionTexts = uniqueQuestionTexts([args.primaryQuestion, ...(args.questions ?? [])]);
-		for (let index = 0; index < questionTexts.length; index++) {
-			await insertApprovedQuestion(ctx, {
-				answerId,
-				propertyId,
-				questionText: questionTexts[index],
-				isPrimary: index === 0,
-				isAiTrigger: index === 0,
-				adminEmail: admin.email
-			});
-		}
+		await syncAnswerPropertyScopes(ctx, answerId, propertyScopes, admin.email);
+		await syncApprovedQuestions(ctx, {
+			answerId,
+			propertyId,
+			questionTexts,
+			adminEmail: admin.email
+		});
 		await syncAnswerTopics(ctx, answerId, propertyId, args.topicNames);
 
 		return answerId;
@@ -430,9 +788,12 @@ export const adminUpdateAnswer = mutation({
 		answerId: v.id('chatAnswers'),
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
+		propertySlugs: v.optional(v.array(v.string())),
 		title: v.string(),
 		answer: v.string(),
 		status: answerStatusValidator,
+		primaryQuestion: v.optional(v.string()),
+		questions: v.optional(v.array(v.string())),
 		topicNames: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
@@ -440,7 +801,8 @@ export const adminUpdateAnswer = mutation({
 		const existing = await ctx.db.get(args.answerId);
 		if (!existing) throw new Error('Answer not found');
 
-		const propertyId = await resolvePropertyId(ctx, args);
+		const propertyScopes = await resolvePropertyScopeSelections(ctx, args, admin.email);
+		const propertyId = primaryPropertyIdForScopes(propertyScopes);
 		const now = Date.now();
 		await ctx.db.patch(args.answerId, {
 			propertyId,
@@ -453,6 +815,17 @@ export const adminUpdateAnswer = mutation({
 			updatedByAdminEmail: admin.email
 		});
 
+		await syncAnswerPropertyScopes(ctx, args.answerId, propertyScopes, admin.email);
+		if (args.primaryQuestion !== undefined || args.questions !== undefined) {
+			await syncApprovedQuestions(ctx, {
+				answerId: args.answerId,
+				propertyId,
+				questionTexts: [args.primaryQuestion, ...(args.questions ?? [])].filter(
+					(question): question is string => typeof question === 'string'
+				),
+				adminEmail: admin.email
+			});
+		}
 		await syncAnswerTopics(ctx, args.answerId, propertyId, args.topicNames);
 		return { updated: true };
 	}
@@ -565,9 +938,15 @@ export const createAnswerFromUnknown = internalMutation({
 	handler: async (ctx, args) => {
 		const unknown = await ctx.db.get(args.unknownQuestionId);
 		if (!unknown) throw new Error('Unknown question not found');
+		const propertyScopes = await resolvePropertyScopeSelections(
+			ctx,
+			{ propertyId: unknown.propertyId, propertySlug: unknown.propertySlug },
+			args.adminEmail
+		);
+		const propertyId = primaryPropertyIdForScopes(propertyScopes) ?? unknown.propertyId;
 		const now = Date.now();
 		const answerId = await ctx.db.insert('chatAnswers', {
-			propertyId: unknown.propertyId,
+			propertyId,
 			title: sanitizeRequiredText(args.title, 'Title', 160),
 			answer: sanitizeRequiredText(args.answer, 'Answer', 2000),
 			status: args.status ?? 'approved',
@@ -578,13 +957,14 @@ export const createAnswerFromUnknown = internalMutation({
 		});
 		const questionId = await insertApprovedQuestion(ctx, {
 			answerId,
-			propertyId: unknown.propertyId,
+			propertyId,
 			questionText: unknown.userQuestion,
 			isPrimary: true,
 			isAiTrigger: true,
 			adminEmail: args.adminEmail
 		});
-		await syncAnswerTopics(ctx, answerId, unknown.propertyId, args.topicNames);
+		await syncAnswerPropertyScopes(ctx, answerId, propertyScopes, args.adminEmail);
+		await syncAnswerTopics(ctx, answerId, propertyId, args.topicNames);
 		await ctx.db.patch(args.unknownQuestionId, {
 			status: 'resolved',
 			resolvedAnswerId: answerId,

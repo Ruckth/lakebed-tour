@@ -1,6 +1,9 @@
 import { internalMutation } from './_generated/server';
 import { v } from 'convex/values';
-import { buildAdminChatMetadataPatch } from './lib/adminChatMetadata';
+import {
+	buildAdminChatMetadataPatch,
+	getAdminChatMessageCount
+} from './lib/adminChatMetadata';
 
 // One-shot backfill: copies legacy chatSessions.messages arrays into the
 // dedicated chatMessages table, then clears the legacy field on each session.
@@ -60,17 +63,36 @@ export const backfillChatSessionAdminMetadata = internalMutation({
 
 		for (const session of page.page) {
 			scannedSessions++;
-			const messages = await ctx.db
+			const storedMessages = await ctx.db
 				.query('chatMessages')
 				.withIndex('by_session', (q) => q.eq('sessionId', session._id))
 				.order('desc')
 				.take(messageScanLimit);
 
-			const latestMessageAt = messages[0]?.timestamp;
-			const patch = buildAdminChatMetadataPatch(session, {
-				messageCount: messages.length,
+			const legacyMessages = session.messages ?? [];
+			const latestLegacyMessageAt = legacyMessages.reduce<number | undefined>(
+				(latest, message) =>
+					typeof latest === 'number' ? Math.max(latest, message.timestamp) : message.timestamp,
+				undefined
+			);
+			const latestStoredMessageAt = storedMessages[0]?.timestamp;
+			const latestMessageAt =
+				typeof latestStoredMessageAt === 'number' && typeof latestLegacyMessageAt === 'number'
+					? Math.max(latestStoredMessageAt, latestLegacyMessageAt)
+					: latestStoredMessageAt ?? latestLegacyMessageAt;
+			const scannedMessageCount = storedMessages.length + legacyMessages.length;
+			const messageCount =
+				storedMessages.length >= messageScanLimit
+					? Math.max(scannedMessageCount, getAdminChatMessageCount(session))
+					: scannedMessageCount;
+			const patch = {
+				...buildAdminChatMetadataPatch(session, {
+					messageCount,
+					latestMessageAt,
+				}),
+				messageCount,
 				latestMessageAt,
-			});
+			};
 
 			if (!args.dryRun) {
 				await ctx.db.patch(session._id, patch);

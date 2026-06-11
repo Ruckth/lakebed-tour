@@ -481,11 +481,40 @@ export default defineSchema({
 		.index('by_answerId', ['answerId'])
 		.index('by_answerId_and_status', ['answerId', 'status'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
+		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
 		.index('by_status_and_normalizedQuestion_and_propertyId', [
 			'status',
 			'normalizedQuestion',
 			'propertyId'
 		]),
+
+	chatKnowledgeScopes: defineTable({
+		slug: v.string(),
+		normalizedSlug: v.string(),
+		label: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		createdByAdminEmail: v.string(),
+		updatedByAdminEmail: v.string()
+	})
+		.index('by_normalizedSlug', ['normalizedSlug'])
+		.index('by_createdAt', ['createdAt']),
+
+	chatAnswerPropertyScopes: defineTable({
+		propertyId: v.optional(v.id('properties')),
+		answerId: v.id('chatAnswers'),
+		propertySlug: v.string(),
+		normalizedSlug: v.string(),
+		source: v.union(v.literal('property'), v.literal('custom')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		createdByAdminEmail: v.string(),
+		updatedByAdminEmail: v.string()
+	})
+		.index('by_answerId', ['answerId'])
+		.index('by_normalizedSlug', ['normalizedSlug'])
+		.index('by_propertySlug', ['propertySlug'])
+		.index('by_propertySlug_and_answerId', ['propertySlug', 'answerId']),
 
 	chatTopics: defineTable({
 		propertyId: v.optional(v.id('properties')),

@@ -28,11 +28,22 @@ import {
 } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useAction, useMutation, useQuery } from "convex/react";
-import { Component, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +62,7 @@ import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
 type EmptyChatFilter = "all" | "empty";
+type SessionChannelFilter = "all" | "web" | "line" | "facebook";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -140,11 +152,17 @@ type SessionListResult = {
   isDone: boolean;
 };
 
-type TranscriptResult = {
+type SessionDetailResult = {
   session: AdminSession;
-  messages: AdminMessage[];
   lineEvents?: AdminLineEvent[];
   facebookEvents?: AdminFacebookEvent[];
+};
+
+type TranscriptPaginationResult = {
+  results: AdminMessage[];
+  status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
+  isLoading: boolean;
+  loadMore: (numItems: number) => void;
 };
 
 type AdminSuggestedQuestion = {
@@ -195,10 +213,21 @@ type AdminKnowledgeTopic = {
   description: string;
 };
 
+type AdminKnowledgePropertyScope = {
+  slug: string;
+  normalizedSlug: string;
+  label: string;
+  source: "property" | "custom";
+  propertyId?: Id<"properties">;
+  canDelete?: boolean;
+};
+
 type AdminKnowledgeAnswer = {
   _id: Id<"chatAnswers">;
   propertyName?: string;
   propertySlug?: string;
+  propertySlugs?: string[];
+  propertyScopes?: AdminKnowledgePropertyScope[];
   title: string;
   answer: string;
   status: KnowledgeAnswerStatus;
@@ -229,9 +258,10 @@ type AnswerKnowledgeForm = {
   answer: string;
   status: KnowledgeAnswerStatus;
   primaryQuestion: string;
-  questions: string;
+  questions: string[];
+  additionalQuestionInput: string;
   topicNames: string;
-  propertySlug: string;
+  propertySlugs: string[];
 };
 
 type AdminCuratedQuestion = {
@@ -367,6 +397,28 @@ function contactLabel(session: AdminSession) {
       : "No contact app";
 }
 
+function channelLabel(channel: AdminSession["channel"] | SessionChannelFilter) {
+  if (channel === "line") return "LINE";
+  if (channel === "facebook") return "Facebook";
+  if (channel === "web") return "Web";
+  if (channel === "whatsapp") return "WhatsApp";
+  return "All";
+}
+
+function ChannelIcon({
+  channel,
+  className,
+}: {
+  channel: AdminSession["channel"] | Exclude<SessionChannelFilter, "all">;
+  className?: string;
+}) {
+  if (channel === "line" || channel === "facebook") {
+    return <ContactAppBrandIcon app={channel} className={className} />;
+  }
+  if (channel === "web") return <Globe2 className={cn("h-4 w-4", className)} aria-hidden="true" />;
+  return <MessageCircle className={cn("h-4 w-4", className)} aria-hidden="true" />;
+}
+
 function lineEventLabel(event?: AdminLineEvent | null) {
   if (!event) return "";
   const mode = event.replyMode && event.replyMode !== "failed" ? ` · ${event.replyMode}` : "";
@@ -460,10 +512,11 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
   return latest?.resetKey === resetKey ? latest.value : undefined;
 }
 
-function dateTimeInputToMillis(value: string) {
+function dateTimeInputToMillis(value: string, boundary: "start" | "end" = "start") {
   if (!value) return undefined;
   const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) ? timestamp : undefined;
+  if (!Number.isFinite(timestamp)) return undefined;
+  return boundary === "end" ? timestamp + 59_999 : timestamp;
 }
 
 function dateTimeBadgeLabel(value: string) {
@@ -568,11 +621,12 @@ function emptyFilterLabel(value: EmptyChatFilter) {
 
 function getQuestionForLocale(question: AdminSuggestedQuestion, locale: Locale) {
   if (locale === defaultLocale) return question.question;
-  return question.translations?.[locale]?.trim() || "";
+  const translated = question.translations?.[locale]?.trim() || "";
+  return translated && translated !== question.question.trim() ? translated : "";
 }
 
 function isMissingSuggestionTranslation(question: AdminSuggestedQuestion, locale: Locale) {
-  return locale !== defaultLocale && !question.translations?.[locale]?.trim();
+  return locale !== defaultLocale && !getQuestionForLocale(question, locale);
 }
 
 function getCuratedQuestionForLocale(question: AdminCuratedQuestion, locale: Locale) {
@@ -788,6 +842,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [status, setStatus] = useState<SessionStatus>("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("all");
+  const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
   const [messageStartAt, setMessageStartAt] = useState("");
   const [messageEndAt, setMessageEndAt] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
@@ -795,46 +850,73 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [selectedSessionId, setSelectedSessionId] =
     useState<Id<"chatSessions"> | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
-  const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt);
-  const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt);
+  const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
+  const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt, "end");
+  const invalidMessageDateRange =
+    typeof parsedMessageStartAt === "number" &&
+    typeof parsedMessageEndAt === "number" &&
+    parsedMessageStartAt > parsedMessageEndAt;
   const currentCursor = pageCursors[pageIndex] ?? null;
   const filterResetKey = [
     status,
     trimmedSearchQuery,
     emptyFilter,
+    channelFilter,
     messageStartAt,
     messageEndAt,
   ].join(":");
   const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
-  const liveSessionsResult = useQuery(api.adminChat.listSessions, {
-    paginationOpts: { numItems: 10, cursor: currentCursor },
-    status,
-    empty: emptyFilter,
-    searchQuery: trimmedSearchQuery || undefined,
-    messageStartAt: parsedMessageStartAt,
-    messageEndAt: parsedMessageEndAt,
-    now,
-  }) as SessionListResult | undefined;
+  const liveSessionsResult = useQuery(
+    api.adminChat.listSessions,
+    invalidMessageDateRange
+      ? "skip"
+      : {
+          paginationOpts: { numItems: 10, cursor: currentCursor },
+          status,
+          empty: emptyFilter,
+          channel: channelFilter,
+          searchQuery: trimmedSearchQuery || undefined,
+          messageStartAt: parsedMessageStartAt,
+          messageEndAt: parsedMessageEndAt,
+          now,
+        },
+  ) as SessionListResult | undefined;
   const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
-  const sessions = useMemo(() => sessionsResult?.sessions ?? [], [sessionsResult]);
-  const liveTranscript = useQuery(
-    api.adminChat.getTranscript,
+  const sessions = useMemo(
+    () => (invalidMessageDateRange ? [] : sessionsResult?.sessions ?? []),
+    [invalidMessageDateRange, sessionsResult],
+  );
+  const liveSessionDetail = useQuery(
+    api.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId, now } : "skip",
-  ) as TranscriptResult | undefined;
+  ) as SessionDetailResult | undefined;
+  const transcriptPagination = usePaginatedQuery(
+    api.adminChat.listTranscriptMessages,
+    selectedSessionId ? { sessionId: selectedSessionId } : "skip",
+    { initialNumItems: 20 },
+  ) as TranscriptPaginationResult;
   const liveQuestions = useQuery(
     api.chatSuggestions.adminList,
     view === "questions" ? { limit: 100 } : "skip",
   ) as AdminSuggestedQuestion[] | undefined;
-  const transcript = useLatestDefined(liveTranscript, selectedSessionId ?? "none");
-  const loadingSessions = liveSessionsResult === undefined && sessionsResult === undefined;
+  const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
+  const transcriptMessages = useMemo(
+    () => [...transcriptPagination.results].reverse(),
+    [transcriptPagination.results],
+  );
+  const loadingSessions =
+    !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
   const loadingTranscript =
-    Boolean(selectedSessionId) && liveTranscript === undefined && transcript === undefined;
+    Boolean(selectedSessionId) &&
+    (liveSessionDetail === undefined || transcriptPagination.status === "LoadingFirstPage") &&
+    sessionDetail === undefined &&
+    transcriptMessages.length === 0;
   const selectedSession = useMemo(
     () =>
       sessions.find((session) => session._id === selectedSessionId) ??
-      transcript?.session ??
+      sessionDetail?.session ??
       null,
-    [selectedSessionId, sessions, transcript],
+    [selectedSessionId, sessions, sessionDetail],
   );
 
   const resetSessionPaging = useCallback(() => {
@@ -956,7 +1038,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     size="icon"
                     className={cn(
                       "h-10 w-10 rounded-lg",
-                      (emptyFilter !== "all" || messageStartAt || messageEndAt) &&
+                      (emptyFilter !== "all" || channelFilter !== "all" || messageStartAt || messageEndAt) &&
                         "border-gold text-gold",
                     )}
                     aria-label="Open chat filters"
@@ -990,6 +1072,31 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       ))}
                     </div>
                   </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Channel
+                    </Label>
+                    <div className="grid grid-cols-4 rounded-lg border border-border bg-background p-1">
+                      {(["all", "web", "line", "facebook"] satisfies SessionChannelFilter[]).map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setChannelFilter(option)}
+                          className={cn(
+                            "inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-semibold transition",
+                            channelFilter === option
+                              ? "bg-navy text-white shadow-sm"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {option === "all" ? null : (
+                            <ChannelIcon channel={option} className="h-3.5 w-3.5" />
+                          )}
+                          <span>{channelLabel(option)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="grid gap-3">
                     <AdminDateTimeFilterField
                       id="admin-message-start"
@@ -1015,6 +1122,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       size="sm"
                       onClick={() => {
                         setEmptyFilter("all");
+                        setChannelFilter("all");
                         setMessageStartAt("");
                         setMessageEndAt("");
                       }}
@@ -1025,7 +1133,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 </PopoverContent>
               </Popover>
             </div>
-            {trimmedSearchQuery || emptyFilter !== "all" || messageStartAt || messageEndAt ? (
+            {trimmedSearchQuery || emptyFilter !== "all" || channelFilter !== "all" || messageStartAt || messageEndAt ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {trimmedSearchQuery ? (
                   <Badge variant="secondary" className="gap-1 rounded-full">
@@ -1047,6 +1155,20 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       type="button"
                       onClick={() => setEmptyFilter("all")}
                       aria-label="Clear empty filter"
+                      className="rounded-full p-0.5 hover:bg-background"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : null}
+                {channelFilter !== "all" ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full">
+                    <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
+                    {channelLabel(channelFilter)}
+                    <button
+                      type="button"
+                      onClick={() => setChannelFilter("all")}
+                      aria-label="Clear channel filter"
                       className="rounded-full p-0.5 hover:bg-background"
                     >
                       <X className="h-3 w-3" />
@@ -1084,13 +1206,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </div>
 
           <div className="min-h-0 overflow-y-auto">
+            {invalidMessageDateRange ? (
+              <div className="p-5 text-sm leading-6 text-red-200">
+                Message start must be before message end.
+              </div>
+            ) : null}
             {loadingSessions && sessions.length === 0 ? (
               <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading sessions
               </div>
             ) : null}
-            {!loadingSessions && sessions.length === 0 ? (
+            {!invalidMessageDateRange && !loadingSessions && sessions.length === 0 ? (
               <div className="p-5 text-sm leading-6 text-muted-foreground">
                 No chat sessions match this filter yet.
               </div>
@@ -1117,7 +1244,11 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {session.propertyName ?? session.propertySlug ?? "General site"} ·{" "}
-                      {session.channel} · {messageCountLabel(session.messageCount)}
+                      <span className="inline-flex items-center gap-1 align-middle">
+                        <ChannelIcon channel={session.channel} className="h-3.5 w-3.5" />
+                        <span className="sr-only">{channelLabel(session.channel)}</span>
+                      </span>{" "}
+                      · {messageCountLabel(session.messageCount)}
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">
@@ -1194,12 +1325,17 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </div>
         </aside>
 
-        <section className="hidden min-h-[calc(100vh-132px)] border border-border bg-card lg:block">
+        <section className="hidden h-[calc(100vh-132px)] border border-border bg-card lg:block">
           <AdminSessionDetail
+            canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
+            facebookEvents={sessionDetail?.facebookEvents}
+            lineEvents={sessionDetail?.lineEvents}
+            loadOlderMessages={() => transcriptPagination.loadMore(20)}
             loadingTranscript={loadingTranscript}
+            loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
+            messages={transcriptMessages}
             now={now}
             selectedSession={selectedSession}
-            transcript={transcript}
           />
         </section>
       </main>
@@ -1211,7 +1347,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       >
         <DialogContent
           data-testid="admin-chat-detail-dialog"
-          className="flex max-h-[calc(100svh-2rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+          className="flex h-[calc(100svh-2rem)] max-h-[calc(100svh-2rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0"
         >
           <DialogTitle className="sr-only">
             {selectedSession ? `Chat details for ${visitorLabel(selectedSession)}` : "Chat details"}
@@ -1221,10 +1357,15 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </DialogDescription>
           <AdminSessionDetail
             compact
+            canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
+            facebookEvents={sessionDetail?.facebookEvents}
+            lineEvents={sessionDetail?.lineEvents}
+            loadOlderMessages={() => transcriptPagination.loadMore(20)}
             loadingTranscript={loadingTranscript}
+            loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
+            messages={transcriptMessages}
             now={now}
             selectedSession={selectedSession}
-            transcript={transcript}
           />
         </DialogContent>
       </Dialog>
@@ -1235,18 +1376,87 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
 }
 
 function AdminSessionDetail({
+  canLoadOlderMessages,
   compact = false,
+  facebookEvents,
+  lineEvents,
+  loadOlderMessages,
   loadingTranscript,
+  loadingOlderMessages,
+  messages,
   now,
   selectedSession,
-  transcript,
 }: {
+  canLoadOlderMessages: boolean;
   compact?: boolean;
+  facebookEvents?: AdminFacebookEvent[];
+  lineEvents?: AdminLineEvent[];
+  loadOlderMessages: () => void;
   loadingTranscript: boolean;
+  loadingOlderMessages: boolean;
+  messages: AdminMessage[];
   now: number;
   selectedSession: AdminSession | null;
-  transcript?: TranscriptResult;
 }) {
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
+  const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
+  const previousMessageCountRef = useRef(0);
+  const pendingOlderScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const nearBottomRef = useRef(true);
+
+  const updateNearBottom = useCallback(() => {
+    const node = transcriptScrollRef.current;
+    if (!node) return true;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const nearBottom = distanceFromBottom < 120;
+    nearBottomRef.current = nearBottom;
+    return nearBottom;
+  }, []);
+
+  const scrollTranscriptToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const node = transcriptScrollRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior });
+    nearBottomRef.current = true;
+  }, []);
+
+  const handleTranscriptScroll = useCallback(() => {
+    const node = transcriptScrollRef.current;
+    if (!node) return;
+    updateNearBottom();
+    if (node.scrollTop > 96 || !canLoadOlderMessages || loadingOlderMessages || loadingTranscript) {
+      return;
+    }
+    pendingOlderScrollRef.current = {
+      height: node.scrollHeight,
+      top: node.scrollTop,
+    };
+    loadOlderMessages();
+  }, [canLoadOlderMessages, loadOlderMessages, loadingOlderMessages, loadingTranscript, updateNearBottom]);
+
+  useLayoutEffect(() => {
+    const node = transcriptScrollRef.current;
+    if (!node) return;
+
+    const sessionId = selectedSession?._id ?? null;
+    const sessionChanged = previousSessionIdRef.current !== sessionId;
+    const messageCountChanged = previousMessageCountRef.current !== messages.length;
+
+    if (sessionChanged) {
+      pendingOlderScrollRef.current = null;
+      scrollTranscriptToBottom();
+    } else if (pendingOlderScrollRef.current) {
+      const previous = pendingOlderScrollRef.current;
+      node.scrollTop = node.scrollHeight - previous.height + previous.top;
+      pendingOlderScrollRef.current = null;
+    } else if (messageCountChanged && nearBottomRef.current) {
+      scrollTranscriptToBottom("smooth");
+    }
+
+    previousSessionIdRef.current = sessionId;
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length, scrollTranscriptToBottom, selectedSession?._id]);
+
   if (!selectedSession) {
     return (
       <div className="grid h-full min-h-[420px] place-items-center p-6 text-center text-muted-foreground">
@@ -1255,21 +1465,30 @@ function AdminSessionDetail({
     );
   }
 
-  const latestLineEvent = transcript?.lineEvents?.[0] ?? selectedSession.latestLineEvent;
-  const latestFacebookEvent = transcript?.facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
+  const latestLineEvent = lineEvents?.[0] ?? selectedSession.latestLineEvent;
+  const latestFacebookEvent = facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
+  const propertyLabel = selectedSession.propertyName ?? selectedSession.propertySlug ?? "General";
+  const showVisitorContext = selectedSession.channel !== "line" && selectedSession.channel !== "facebook";
 
   return (
     <div
       className={cn(
-        "grid h-full grid-rows-[auto_1fr]",
-        compact ? "min-h-0" : "min-h-[calc(100vh-132px)]",
+        "grid h-full min-h-0",
+        compact
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[minmax(14rem,0.42fr)_minmax(0,1fr)] min-h-[calc(100vh-132px)]",
       )}
     >
-      <div className="border-b border-border p-4">
+      <div
+        className={cn(
+          "min-h-0 border-b border-border p-4",
+          compact ? "max-h-[42svh] overflow-y-auto" : "overflow-y-auto",
+        )}
+      >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-serif text-3xl font-semibold text-foreground">
+              <h2 className={cn("font-serif font-semibold text-foreground", compact ? "text-2xl" : "text-3xl")}>
                 {visitorLabel(selectedSession)}
               </h2>
               {selectedSession.isActive ? (
@@ -1284,7 +1503,7 @@ function AdminSessionDetail({
               Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}
             </p>
           </div>
-          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]">
+          <div className={cn("grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]", compact && "hidden")}>
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-gold" />
               {selectedSession.visitorEmail ?? "No email"}
@@ -1298,14 +1517,18 @@ function AdminSessionDetail({
               {formatDateTime(selectedSession.createdAt)}
             </div>
             <div className="flex items-center gap-2">
-              <UserRound className="h-4 w-4 text-gold" />
+              <ChannelIcon channel={selectedSession.channel} className="h-4 w-4 text-gold" />
               {truncate(selectedSession.visitorId, 28) || "No visitor ID"}
             </div>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary" className="rounded-full">
-            {selectedSession.propertyName ?? selectedSession.propertySlug ?? "General"}
+            {propertyLabel}
+          </Badge>
+          <Badge variant="secondary" className="rounded-full">
+            <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5" />
+            <span className="sr-only">{channelLabel(selectedSession.channel)}</span>
           </Badge>
           {selectedSession.currentPath ? (
             <Badge variant="outline" className="rounded-full">
@@ -1314,7 +1537,150 @@ function AdminSessionDetail({
             </Badge>
           ) : null}
         </div>
-        {selectedSession.channel === "line" && latestLineEvent ? (
+
+        {compact ? (
+          <div className="mt-3 space-y-2">
+            <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
+              <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                Contact & IDs
+              </summary>
+              <div className="mt-3 grid gap-2 text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.visitorEmail ?? "No email"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3.5 w-3.5 text-gold" />
+                  {contactLabel(selectedSession)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-gold" />
+                  {formatDateTime(selectedSession.createdAt)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5 text-gold" />
+                  {truncate(selectedSession.visitorId, 36) || "No visitor ID"}
+                </div>
+              </div>
+            </details>
+            {selectedSession.channel === "line" && latestLineEvent ? (
+              <details
+                className={cn(
+                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
+                  latestLineEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+                )}
+              >
+                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                  LINE delivery
+                </summary>
+                <div className="mt-3 space-y-2 text-muted-foreground">
+                  <Badge
+                    variant={lineEventTone(latestLineEvent)}
+                    className={cn(
+                      "rounded-full",
+                      latestLineEvent.status === "failed" && "border-red-500/50 text-red-200",
+                    )}
+                  >
+                    {lineEventLabel(latestLineEvent)}
+                  </Badge>
+                  <div>{formatDateTime(latestLineEvent.updatedAt)}</div>
+                  <div className="break-words">
+                    {latestLineEvent.messageText
+                      ? truncate(latestLineEvent.messageText, 120)
+                      : latestLineEvent.postbackData
+                        ? truncate(latestLineEvent.postbackData, 120)
+                        : latestLineEvent.eventType}
+                  </div>
+                  {latestLineEvent.error ? (
+                    <p className="break-words leading-5 text-red-200">
+                      {truncate(latestLineEvent.error, 260)}
+                    </p>
+                  ) : null}
+                </div>
+              </details>
+            ) : null}
+            {selectedSession.channel === "facebook" && latestFacebookEvent ? (
+              <details
+                className={cn(
+                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
+                  latestFacebookEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+                )}
+              >
+                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                  Facebook delivery
+                </summary>
+                <div className="mt-3 space-y-2 text-muted-foreground">
+                  <Badge
+                    variant={facebookEventTone(latestFacebookEvent)}
+                    className={cn(
+                      "rounded-full",
+                      latestFacebookEvent.status === "failed" && "border-red-500/50 text-red-200",
+                    )}
+                  >
+                    {facebookEventLabel(latestFacebookEvent)}
+                  </Badge>
+                  <div>{formatDateTime(latestFacebookEvent.updatedAt)}</div>
+                  <div className="break-words">
+                    {latestFacebookEvent.messageText
+                      ? truncate(latestFacebookEvent.messageText, 120)
+                      : latestFacebookEvent.postbackData
+                        ? truncate(latestFacebookEvent.postbackData, 120)
+                        : latestFacebookEvent.eventType}
+                  </div>
+                  {latestFacebookEvent.error ? (
+                    <p className="break-words leading-5 text-red-200">
+                      {truncate(latestFacebookEvent.error, 260)}
+                    </p>
+                  ) : null}
+                </div>
+              </details>
+            ) : null}
+            {showVisitorContext ? (
+            <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
+              <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                Visitor context
+              </summary>
+              <div className="mt-3 grid gap-2 text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Globe2 className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.timeZone ?? "Unknown timezone"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Globe2 className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.browserLanguage ?? "Unknown language"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.viewportSize
+                    ? `Viewport ${selectedSession.viewportSize}`
+                    : "Unknown viewport"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.screenSize
+                    ? `Screen ${selectedSession.screenSize}`
+                    : "Unknown screen"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <UserRound className="h-3.5 w-3.5 text-gold" />
+                  {selectedSession.platform ?? "Unknown platform"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <ExternalLink className="h-3.5 w-3.5 text-gold" />
+                  {truncate(selectedSession.referrer, 44) || "No referrer"}
+                </div>
+                <p className="break-words leading-5">
+                  {selectedSession.userAgent
+                    ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
+                    : "No user agent"}
+                </p>
+              </div>
+            </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!compact && selectedSession.channel === "line" && latestLineEvent ? (
           <div
             className={cn(
               "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
@@ -1322,7 +1688,7 @@ function AdminSessionDetail({
             )}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <MessageCircle className="h-3.5 w-3.5 text-gold" />
+              <ContactAppBrandIcon app="line" className="h-4 w-4" />
               <span className="font-semibold uppercase tracking-[0.16em] text-gold">
                 LINE delivery
               </span>
@@ -1353,7 +1719,7 @@ function AdminSessionDetail({
             ) : null}
           </div>
         ) : null}
-        {selectedSession.channel === "facebook" && latestFacebookEvent ? (
+        {!compact && selectedSession.channel === "facebook" && latestFacebookEvent ? (
           <div
             className={cn(
               "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
@@ -1361,7 +1727,7 @@ function AdminSessionDetail({
             )}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <MessageCircle className="h-3.5 w-3.5 text-gold" />
+              <ContactAppBrandIcon app="facebook" className="h-4 w-4" />
               <span className="font-semibold uppercase tracking-[0.16em] text-gold">
                 Facebook delivery
               </span>
@@ -1392,50 +1758,56 @@ function AdminSessionDetail({
             ) : null}
           </div>
         ) : null}
-        <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
-            <MapPin className="h-3.5 w-3.5" />
-            Visitor context
+        {!compact && showVisitorContext ? (
+          <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
+              <MapPin className="h-3.5 w-3.5" />
+              Visitor context
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
+              <div className="flex items-center gap-2">
+                <Globe2 className="h-3.5 w-3.5 text-gold" />
+                {selectedSession.timeZone ?? "Unknown timezone"}
+              </div>
+              <div className="flex items-center gap-2">
+                <Globe2 className="h-3.5 w-3.5 text-gold" />
+                {selectedSession.browserLanguage ?? "Unknown language"}
+              </div>
+              <div className="flex items-center gap-2">
+                <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                {selectedSession.viewportSize
+                  ? `Viewport ${selectedSession.viewportSize}`
+                  : "Unknown viewport"}
+              </div>
+              <div className="flex items-center gap-2">
+                <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                {selectedSession.screenSize
+                  ? `Screen ${selectedSession.screenSize}`
+                  : "Unknown screen"}
+              </div>
+              <div className="flex items-center gap-2">
+                <UserRound className="h-3.5 w-3.5 text-gold" />
+                {selectedSession.platform ?? "Unknown platform"}
+              </div>
+              <div className="flex items-center gap-2">
+                <ExternalLink className="h-3.5 w-3.5 text-gold" />
+                {truncate(selectedSession.referrer, 44) || "No referrer"}
+              </div>
+            </div>
+            <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
+              {selectedSession.userAgent
+                ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
+                : "No user agent"}
+            </p>
           </div>
-          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
-            <div className="flex items-center gap-2">
-              <Globe2 className="h-3.5 w-3.5 text-gold" />
-              {selectedSession.timeZone ?? "Unknown timezone"}
-            </div>
-            <div className="flex items-center gap-2">
-              <Globe2 className="h-3.5 w-3.5 text-gold" />
-              {selectedSession.browserLanguage ?? "Unknown language"}
-            </div>
-            <div className="flex items-center gap-2">
-              <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-              {selectedSession.viewportSize
-                ? `Viewport ${selectedSession.viewportSize}`
-                : "Unknown viewport"}
-            </div>
-            <div className="flex items-center gap-2">
-              <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-              {selectedSession.screenSize
-                ? `Screen ${selectedSession.screenSize}`
-                : "Unknown screen"}
-            </div>
-            <div className="flex items-center gap-2">
-              <UserRound className="h-3.5 w-3.5 text-gold" />
-              {selectedSession.platform ?? "Unknown platform"}
-            </div>
-            <div className="flex items-center gap-2">
-              <ExternalLink className="h-3.5 w-3.5 text-gold" />
-              {truncate(selectedSession.referrer, 44) || "No referrer"}
-            </div>
-          </div>
-          <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
-            {selectedSession.userAgent
-              ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
-              : "No user agent"}
-          </p>
-        </div>
+        ) : null}
       </div>
 
-      <div className="min-h-0 overflow-y-auto bg-background/50 p-4">
+      <div
+        ref={transcriptScrollRef}
+        onScroll={handleTranscriptScroll}
+        className="min-h-0 overflow-y-auto bg-background/50 p-4"
+      >
         {loadingTranscript ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1443,11 +1815,18 @@ function AdminSessionDetail({
           </div>
         ) : null}
         <div className="space-y-3">
-          {(transcript?.messages ?? []).map((message) => (
+          {loadingOlderMessages ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading older messages
+            </div>
+          ) : null}
+          {messages.map((message) => (
             <div
               key={message._id}
               className={cn(
-                "max-w-[78%] border border-border px-4 py-3 text-sm leading-6 shadow-sm",
+                "border border-border px-4 py-3 text-sm leading-6 shadow-sm",
+                compact ? "max-w-[92%]" : "max-w-[78%]",
                 message.role === "user"
                   ? "ml-auto bg-navy text-white"
                   : "bg-card text-foreground",
@@ -1460,16 +1839,199 @@ function AdminSessionDetail({
               <p className="whitespace-pre-wrap">{message.content}</p>
             </div>
           ))}
-          {!loadingTranscript && transcript?.messages.length === 0 ? (
+          {!loadingTranscript && messages.length === 0 ? (
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
               {latestLineEvent
                 ? `No transcript message is stored yet. Latest LINE event: ${lineEventLabel(latestLineEvent)}.`
                 : latestFacebookEvent
                   ? `No transcript message is stored yet. Latest Facebook event: ${facebookEventLabel(latestFacebookEvent)}.`
-                  : "This visitor opened chat but has not sent a message yet."}
+                : "This visitor opened chat but has not sent a message yet."}
             </div>
           ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function normalizePropertySlugInput(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function KnowledgePropertyScopeSelector({
+  disabled = false,
+  onChange,
+  onCreate,
+  onDelete,
+  pendingAction,
+  scopes,
+  selectedSlugs,
+}: {
+  disabled?: boolean;
+  onChange: (slugs: string[]) => void;
+  onCreate: (slug: string) => void;
+  onDelete: (slug: string) => void;
+  pendingAction: string;
+  scopes: AdminKnowledgePropertyScope[];
+  selectedSlugs: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const normalizedQuery = normalizePropertySlugInput(query);
+  const scopeBySlug = new Map(scopes.map((scope) => [scope.slug, scope]));
+  const selectedScopes = selectedSlugs.map(
+    (slug) =>
+      scopeBySlug.get(slug) ?? {
+        slug,
+        normalizedSlug: normalizePropertySlugInput(slug),
+        label: slug,
+        source: "custom" as const,
+        canDelete: true,
+      },
+  );
+  const filteredScopes = scopes.filter((scope) => {
+    const haystack = `${scope.slug} ${scope.label}`.toLowerCase();
+    return !query.trim() || haystack.includes(query.trim().toLowerCase());
+  });
+  const canCreate =
+    Boolean(normalizedQuery) &&
+    !scopes.some((scope) => scope.normalizedSlug === normalizedQuery || scope.slug === normalizedQuery);
+
+  function toggleSlug(slug: string) {
+    onChange(
+      selectedSlugs.includes(slug)
+        ? selectedSlugs.filter((item) => item !== slug)
+        : [...selectedSlugs, slug],
+    );
+  }
+
+  function createScope() {
+    if (!canCreate) return;
+    onCreate(normalizedQuery);
+    setQuery("");
+  }
+
+  return (
+    <div className={cn("rounded-lg border border-input bg-background p-2", disabled && "opacity-60")}>
+      <div className="flex min-h-9 flex-wrap items-center gap-2">
+        {selectedScopes.length === 0 ? (
+          <Badge variant="secondary" className="rounded-full">
+            All properties
+          </Badge>
+        ) : (
+          selectedScopes.map((scope) => (
+            <Badge key={scope.slug} variant="secondary" className="gap-1 rounded-full">
+              {scope.label}
+              <button
+                type="button"
+                aria-label={`Remove ${scope.label}`}
+                className="rounded-full p-0.5 hover:bg-background"
+                disabled={disabled}
+                onClick={() => toggleSlug(scope.slug)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))
+        )}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" disabled={disabled} className="ml-auto">
+              <Plus className="h-4 w-4" />
+              Properties
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[26rem] max-w-[calc(100vw-2rem)] p-3">
+            <div className="space-y-3">
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    createScope();
+                  }
+                }}
+                placeholder="Search or add a slug"
+              />
+              <div className="max-h-64 space-y-1 overflow-y-auto">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition hover:bg-muted",
+                    selectedSlugs.length === 0 && "bg-muted text-foreground",
+                  )}
+                  onClick={() => onChange([])}
+                >
+                  <span>All properties</span>
+                  {selectedSlugs.length === 0 ? <span className="text-xs text-gold">Selected</span> : null}
+                </button>
+                {filteredScopes.map((scope) => {
+                  const selected = selectedSlugs.includes(scope.slug);
+                  const deleting = pendingAction === `delete-property-scope:${scope.slug}`;
+                  return (
+                    <div key={scope.slug} className="flex items-center gap-1 rounded-lg hover:bg-muted">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left text-sm"
+                        onClick={() => toggleSlug(scope.slug)}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-foreground">{scope.label}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{scope.slug}</span>
+                        </span>
+                        {selected ? <span className="text-xs text-gold">Selected</span> : null}
+                      </button>
+                      {scope.source === "custom" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={!scope.canDelete || deleting}
+                          aria-label={`Delete ${scope.label}`}
+                          title={
+                            scope.canDelete
+                              ? `Delete ${scope.label}`
+                              : "Cannot delete while linked to an answer"
+                          }
+                          onClick={() => onDelete(scope.slug)}
+                          className="mr-1 h-8 w-8"
+                        >
+                          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {filteredScopes.length === 0 && !canCreate ? (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">No properties found</div>
+                ) : null}
+              </div>
+              {canCreate ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pendingAction === "create-property-scope"}
+                  onClick={createScope}
+                >
+                  {pendingAction === "create-property-scope" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Add {normalizedQuery}
+                </Button>
+              ) : null}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   );
@@ -1506,17 +2068,32 @@ function AdminQuestionsView({
     api.chatKnowledge.adminListUnknownQuestions,
     mode === "unknown" ? { status: unknownStatus, limit: 100 } : "skip",
   ) as AdminUnknownQuestion[] | undefined;
+  const propertyScopes = useQuery(
+    api.chatKnowledge.adminListPropertyScopes,
+    mode === "answers" || answerDialogOpen ? {} : "skip",
+  ) as AdminKnowledgePropertyScope[] | undefined;
   const createAnswer = useMutation(api.chatKnowledge.adminCreateAnswer);
   const updateAnswer = useMutation(api.chatKnowledge.adminUpdateAnswer);
   const approveQuestion = useMutation(api.chatKnowledge.adminApproveQuestion);
   const rejectQuestion = useMutation(api.chatKnowledge.adminRejectQuestion);
   const ignoreUnknown = useMutation(api.chatKnowledge.adminIgnoreUnknown);
+  const createPropertyScope = useMutation(api.chatKnowledge.adminCreatePropertyScope);
+  const deletePropertyScope = useMutation(api.chatKnowledge.adminDeletePropertyScope);
   const createAnswerFromUnknown = useAction(api.chatKnowledge.adminCreateAnswerFromUnknown);
   const resolveUnknownWithAnswer = useAction(api.chatKnowledge.adminResolveUnknownWithAnswer);
   const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
+  const translateMissingGeneratedSuggestions = useAction(
+    api.chatSuggestions.adminTranslateMissingGeneratedSuggestions,
+  );
   const answerRows = answers ?? [];
   const unknownRows = unknownQuestions ?? [];
-  const generatedRows = questions ?? [];
+  const generatedRows = useMemo(() => questions ?? [], [questions]);
+  const missingGeneratedTranslationCount = useMemo(() => {
+    if (selectedLocale === defaultLocale) return 0;
+    return generatedRows.filter((question) => isMissingSuggestionTranslation(question, selectedLocale)).length;
+  }, [generatedRows, selectedLocale]);
+  const [generatedTranslationNotice, setGeneratedTranslationNotice] = useState("");
+  const [generatedTranslationError, setGeneratedTranslationError] = useState("");
 
   function emptyKnowledgeForm(): AnswerKnowledgeForm {
     return {
@@ -1524,24 +2101,33 @@ function AdminQuestionsView({
       answer: "",
       status: "approved",
       primaryQuestion: "",
-      questions: "",
+      questions: [],
+      additionalQuestionInput: "",
       topicNames: "",
-      propertySlug: "",
+      propertySlugs: [],
     };
   }
 
   function formForKnowledgeAnswer(answer: AdminKnowledgeAnswer): AnswerKnowledgeForm {
+    const approvedQuestions = answer.questions.filter((question) => question.status === "approved");
+    const primaryQuestion =
+      approvedQuestions.find((question) => question.isPrimary) ??
+      approvedQuestions[0] ??
+      null;
     return {
       title: answer.title,
       answer: answer.answer,
       status: answer.status,
-      primaryQuestion:
-        answer.questions.find((question) => question.isPrimary)?.questionText ??
-        answer.questions.find((question) => question.status === "approved")?.questionText ??
-        "",
-      questions: "",
+      primaryQuestion: primaryQuestion?.questionText ?? "",
+      questions: approvedQuestions
+        .filter((question) => question._id !== primaryQuestion?._id)
+        .map((question) => question.questionText),
+      additionalQuestionInput: "",
       topicNames: answer.topics.map((topic) => topic.name).join(", "),
-      propertySlug: answer.propertySlug ?? "",
+      propertySlugs:
+        answer.propertySlugs ??
+        answer.propertyScopes?.map((scope) => scope.slug) ??
+        (answer.propertySlug ? [answer.propertySlug] : []),
     };
   }
 
@@ -1576,10 +2162,69 @@ function AdminQuestionsView({
       title: question.detectedTopic ? `${question.detectedTopic}: ${question.userQuestion}` : question.userQuestion,
       primaryQuestion: question.userQuestion,
       topicNames: question.detectedTopic ?? "",
-      propertySlug: question.propertySlug ?? "",
+      propertySlugs: question.propertySlug ? [question.propertySlug] : [],
     });
     setFormError("");
     setAnswerDialogOpen(true);
+  }
+
+  function addAdditionalQuestion() {
+    const question = form.additionalQuestionInput.trim();
+    if (!question) return;
+    const normalizedQuestion = question.toLowerCase().replace(/\s+/g, " ");
+    const existingQuestions = [form.primaryQuestion, ...form.questions].map((item) =>
+      item.trim().toLowerCase().replace(/\s+/g, " "),
+    );
+    if (existingQuestions.includes(normalizedQuestion)) {
+      setForm((current) => ({ ...current, additionalQuestionInput: "" }));
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      questions: [...current.questions, question],
+      additionalQuestionInput: "",
+    }));
+  }
+
+  function removeAdditionalQuestion(question: string) {
+    setForm((current) => ({
+      ...current,
+      questions: current.questions.filter((item) => item !== question),
+    }));
+  }
+
+  async function createKnowledgePropertyScope(slug: string) {
+    setPendingAction("create-property-scope");
+    setFormError("");
+    try {
+      const scope = (await createPropertyScope({ slug })) as AdminKnowledgePropertyScope;
+      setForm((current) => ({
+        ...current,
+        propertySlugs: current.propertySlugs.includes(scope.slug)
+          ? current.propertySlugs
+          : [...current.propertySlugs, scope.slug],
+      }));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to add property.");
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function deleteKnowledgePropertyScope(slug: string) {
+    setPendingAction(`delete-property-scope:${slug}`);
+    setFormError("");
+    try {
+      await deletePropertyScope({ slug });
+      setForm((current) => ({
+        ...current,
+        propertySlugs: current.propertySlugs.filter((item) => item !== slug),
+      }));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Unable to delete property.");
+    } finally {
+      setPendingAction("");
+    }
   }
 
   async function submitKnowledgeAnswer(event: FormEvent<HTMLFormElement>) {
@@ -1591,7 +2236,7 @@ function AdminQuestionsView({
       setFormError("Title and answer are required.");
       return;
     }
-    if (!editingAnswer && !sourceUnknown && !form.primaryQuestion.trim()) {
+    if (!sourceUnknown && !form.primaryQuestion.trim()) {
       setFormError("Add the primary question guests will ask.");
       return;
     }
@@ -1615,7 +2260,9 @@ function AdminQuestionsView({
           answer,
           status: form.status,
           topicNames,
-          propertySlug: form.propertySlug.trim() || undefined,
+          propertySlugs: form.propertySlugs,
+          primaryQuestion: form.primaryQuestion.trim(),
+          questions: form.questions,
         });
       } else {
         await createAnswer({
@@ -1623,9 +2270,9 @@ function AdminQuestionsView({
           answer,
           status: form.status,
           primaryQuestion: form.primaryQuestion.trim(),
-          questions: splitList(form.questions),
+          questions: form.questions,
           topicNames,
-          propertySlug: form.propertySlug.trim() || undefined,
+          propertySlugs: form.propertySlugs,
         });
       }
       setAnswerDialogOpen(false);
@@ -1678,6 +2325,32 @@ function AdminQuestionsView({
     setPendingAction(`ignore:${question._id}`);
     try {
       await ignoreUnknown({ unknownQuestionId: question._id });
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function translateMissingGeneratedForLocale() {
+    if (selectedLocale === defaultLocale || missingGeneratedTranslationCount === 0) return;
+
+    setPendingAction(`translate-generated:${selectedLocale}`);
+    setGeneratedTranslationNotice("");
+    setGeneratedTranslationError("");
+    try {
+      const result = await translateMissingGeneratedSuggestions({
+        locale: selectedLocale,
+        limit: 100,
+      });
+      const updated = typeof result?.updated === "number" ? result.updated : 0;
+      setGeneratedTranslationNotice(
+        updated > 0
+          ? `Translated ${updated} ${localeLabels[selectedLocale]} suggestion${updated === 1 ? "" : "s"}.`
+          : `No missing ${localeLabels[selectedLocale]} suggestions were updated.`,
+      );
+    } catch (error) {
+      setGeneratedTranslationError(
+        error instanceof Error ? error.message : `Unable to translate ${localeLabels[selectedLocale]} suggestions.`,
+      );
     } finally {
       setPendingAction("");
     }
@@ -1764,7 +2437,11 @@ function AdminQuestionsView({
               <>
                 <Select
                   value={selectedLocale}
-                  onValueChange={(value) => setSelectedLocale(value as Locale)}
+                  onValueChange={(value) => {
+                    setSelectedLocale(value as Locale);
+                    setGeneratedTranslationNotice("");
+                    setGeneratedTranslationError("");
+                  }}
                 >
                   <SelectTrigger className="h-10 w-[11rem] rounded-lg" aria-label="Suggested question language">
                     <SelectValue />
@@ -1777,6 +2454,27 @@ function AdminQuestionsView({
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={
+                    selectedLocale === defaultLocale ||
+                    missingGeneratedTranslationCount === 0 ||
+                    pendingAction === `translate-generated:${selectedLocale}`
+                  }
+                  onClick={() => void translateMissingGeneratedForLocale()}
+                >
+                  {pendingAction === `translate-generated:${selectedLocale}` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Globe2 className="h-4 w-4" />
+                  )}
+                  Translate missing
+                  {selectedLocale !== defaultLocale && missingGeneratedTranslationCount > 0
+                    ? ` (${missingGeneratedTranslationCount})`
+                    : ""}
+                </Button>
               </>
             ) : null}
           </div>
@@ -1880,7 +2578,20 @@ function AdminQuestionsView({
                             )}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">
-                            {answer.propertyName ?? answer.propertySlug ?? "Global"}
+                            {answer.propertyScopes && answer.propertyScopes.length > 0 ? (
+                              <div className="flex max-w-[220px] flex-wrap gap-1">
+                                {answer.propertyScopes.slice(0, 3).map((scope) => (
+                                  <Badge key={scope.slug} variant="secondary" className="rounded-full">
+                                    {scope.label}
+                                  </Badge>
+                                ))}
+                                {answer.propertyScopes.length > 3 ? (
+                                  <span className="text-xs">+{answer.propertyScopes.length - 3} more</span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              "Global"
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <Badge className={cn("rounded-full", answerStatusTone(answer.status))}>
@@ -2035,6 +2746,16 @@ function AdminQuestionsView({
 
         {mode === "generated" ? (
           <div>
+            {generatedTranslationNotice ? (
+              <div className="border-b border-border px-5 py-3 text-sm text-emerald-300">
+                {generatedTranslationNotice}
+              </div>
+            ) : null}
+            {generatedTranslationError ? (
+              <div className="border-b border-border px-5 py-3 text-sm text-destructive">
+                {generatedTranslationError}
+              </div>
+            ) : null}
             {questions === undefined ? (
               <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2066,14 +2787,20 @@ function AdminQuestionsView({
                       return (
                         <tr key={question._id} className="border-b border-border last:border-b-0">
                           <td className="max-w-[380px] px-4 py-3">
-                            <p className="font-medium text-foreground">
-                              {localizedQuestion || question.question}
-                            </p>
                             {missingTranslation ? (
-                              <p className="mt-1 text-xs font-semibold text-amber-300">
-                                Missing {localeLabels[selectedLocale]} translation
+                              <>
+                                <p className="font-medium text-amber-300">
+                                  Missing {localeLabels[selectedLocale]} translation
+                                </p>
+                                <p className="mt-1 line-clamp-2 text-sm text-foreground">
+                                  English source: {question.question}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="font-medium text-foreground">
+                                {localizedQuestion}
                               </p>
-                            ) : null}
+                            )}
                             <p className="mt-1 text-xs text-muted-foreground">
                               {truncate(question.currentPath, 72) ||
                                 truncate(question.visitorId, 32) ||
@@ -2123,26 +2850,16 @@ function AdminQuestionsView({
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submitKnowledgeAnswer}>
-            <div className="grid gap-2">
-              <Label htmlFor="knowledge-title">Title</Label>
-              <Input
-                id="knowledge-title"
-                value={form.title}
-                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Smoking policy"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="knowledge-answer">Answer</Label>
-              <textarea
-                id="knowledge-answer"
-                value={form.answer}
-                maxLength={2000}
-                onChange={(event) => setForm((current) => ({ ...current, answer: event.target.value }))}
-                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <div className="grid gap-2">
+                <Label htmlFor="knowledge-title">Title</Label>
+                <Input
+                  id="knowledge-title"
+                  value={form.title}
+                  onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Smoking policy"
+                />
+              </div>
               <div className="grid gap-2">
                 <Label htmlFor="knowledge-status">Status</Label>
                 <Select
@@ -2163,40 +2880,83 @@ function AdminQuestionsView({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="knowledge-answer">Answer</Label>
+              <textarea
+                id="knowledge-answer"
+                value={form.answer}
+                maxLength={2000}
+                onChange={(event) => setForm((current) => ({ ...current, answer: event.target.value }))}
+                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+              />
+            </div>
+            <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="knowledge-property">Property slug</Label>
-                <Input
-                  id="knowledge-property"
-                  value={form.propertySlug}
+                <Label>Properties</Label>
+                <KnowledgePropertyScopeSelector
+                  scopes={propertyScopes ?? []}
+                  selectedSlugs={form.propertySlugs}
                   disabled={Boolean(sourceUnknown)}
-                  onChange={(event) => setForm((current) => ({ ...current, propertySlug: event.target.value }))}
-                  placeholder="Leave blank for global"
+                  pendingAction={pendingAction}
+                  onChange={(propertySlugs) => setForm((current) => ({ ...current, propertySlugs }))}
+                  onCreate={(slug) => void createKnowledgePropertyScope(slug)}
+                  onDelete={(slug) => void deleteKnowledgePropertyScope(slug)}
                 />
               </div>
             </div>
-            {!editingAnswer ? (
-              <div className="grid gap-2">
-                <Label htmlFor="knowledge-primary-question">Primary question</Label>
-                <textarea
-                  id="knowledge-primary-question"
-                  value={form.primaryQuestion}
-                  maxLength={240}
-                  disabled={Boolean(sourceUnknown)}
-                  onChange={(event) => setForm((current) => ({ ...current, primaryQuestion: event.target.value }))}
-                  className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-                />
-              </div>
-            ) : null}
-            {!editingAnswer && !sourceUnknown ? (
+            <div className="grid gap-2">
+              <Label htmlFor="knowledge-primary-question">Primary question</Label>
+              <Input
+                id="knowledge-primary-question"
+                value={form.primaryQuestion}
+                maxLength={240}
+                disabled={Boolean(sourceUnknown)}
+                onChange={(event) => setForm((current) => ({ ...current, primaryQuestion: event.target.value }))}
+                placeholder="Who is the creator of this website?"
+              />
+            </div>
+            {!sourceUnknown ? (
               <div className="grid gap-2">
                 <Label htmlFor="knowledge-more-questions">Additional approved questions</Label>
-                <textarea
-                  id="knowledge-more-questions"
-                  value={form.questions}
-                  onChange={(event) => setForm((current) => ({ ...current, questions: event.target.value }))}
-                  placeholder="One per line"
-                  className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="knowledge-more-questions"
+                    value={form.additionalQuestionInput}
+                    maxLength={240}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, additionalQuestionInput: event.target.value }))
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addAdditionalQuestion();
+                      }
+                    }}
+                    placeholder="Add another way guests ask this"
+                  />
+                  <Button type="button" variant="secondary" size="icon" onClick={addAdditionalQuestion}>
+                    <Plus className="h-4 w-4" />
+                    <span className="sr-only">Add question</span>
+                  </Button>
+                </div>
+                {form.questions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {form.questions.map((question) => (
+                      <Badge key={question} variant="secondary" className="gap-1 rounded-full">
+                        {question}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${question}`}
+                          className="rounded-full p-0.5 hover:bg-background"
+                          onClick={() => removeAdditionalQuestion(question)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div className="grid gap-2">

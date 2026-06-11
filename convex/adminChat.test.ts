@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { buildAdminSearchText } from "./lib/adminChatMetadata";
 import schema from "./schema";
@@ -247,6 +247,122 @@ describe("adminChat.listSessions", () => {
 
     expect(result.sessions.map((session) => session.visitorName)).toEqual([
       "Inside range",
+    ]);
+  });
+
+  it("filters sessions by channel in normal and search results", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    await insertAdminSession(t, {
+      visitorName: "Website guest",
+      visitorEmail: "web@example.com",
+      channel: "web",
+      messageCount: 1,
+      latestMessageAt: 3_000,
+      adminSortAt: 3_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "LINE guest",
+      visitorContactHandle: "U123",
+      visitorId: "line:U123",
+      channel: "line",
+      messageCount: 1,
+      latestMessageAt: 2_000,
+      adminSortAt: 2_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "Facebook guest",
+      visitorContactHandle: "FB123",
+      visitorId: "facebook:FB123",
+      channel: "facebook",
+      messageCount: 1,
+      latestMessageAt: 1_000,
+      adminSortAt: 1_000,
+    });
+
+    const lineResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      channel: "line",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+    const facebookSearchResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      channel: "facebook",
+      searchQuery: "guest",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(lineResult.sessions.map((session) => session.channel)).toEqual(["line"]);
+    expect(facebookSearchResult.sessions.map((session) => session.visitorName)).toEqual([
+      "Facebook guest",
+    ]);
+  });
+
+  it("includes sessions at the exact latest-message end timestamp", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    await insertAdminSession(t, {
+      visitorName: "End inclusive",
+      messageCount: 1,
+      latestMessageAt: 2_999,
+      adminSortAt: 2_999,
+    });
+    await insertAdminSession(t, {
+      visitorName: "After end",
+      messageCount: 1,
+      latestMessageAt: 3_000,
+      adminSortAt: 3_000,
+    });
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      messageStartAt: 2_000,
+      messageEndAt: 2_999,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions.map((session) => session.visitorName)).toEqual([
+      "End inclusive",
+    ]);
+  });
+
+  it("uses stored transcript messages for end-only date filters when metadata is missing", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    const missingMetadataSessionId = await insertAdminSession(t, {
+      visitorName: "Stored message without metadata",
+      messageCount: 1,
+      adminSortAt: 4_000,
+      lastSeenAt: 4_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "No message date",
+      adminSortAt: 3_500,
+      lastSeenAt: 3_500,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("chatMessages", {
+        sessionId: missingMetadataSessionId,
+        role: "assistant",
+        content: "Stored transcript timestamp should drive the filter.",
+        timestamp: 3_000,
+      });
+    });
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      messageEndAt: 3_500,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions.map((session) => session.visitorName)).toEqual([
+      "Stored message without metadata",
     ]);
   });
 
@@ -496,6 +612,91 @@ describe("adminChat.listSessions", () => {
     });
 
     expect(result.sessions.map((session) => session._id)).toContain(matchingSessionId);
+  });
+
+  it("paginates transcript messages from newest to older", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const sessionId = await insertAdminSession(t, {
+      visitorName: "Long transcript",
+      messageCount: 25,
+      latestMessageAt: 1_024,
+      adminSortAt: 1_024,
+    });
+
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 25; index++) {
+        await ctx.db.insert("chatMessages", {
+          sessionId,
+          role: index % 2 === 0 ? "user" : "assistant",
+          content: `Message ${index}`,
+          timestamp: 1_000 + index,
+        });
+      }
+    });
+
+    const firstPage = await admin.query(api.adminChat.listTranscriptMessages, {
+      sessionId,
+      paginationOpts: { numItems: 20, cursor: null },
+    });
+    const secondPage = await admin.query(api.adminChat.listTranscriptMessages, {
+      sessionId,
+      paginationOpts: { numItems: 20, cursor: firstPage.continueCursor },
+    });
+
+    expect(firstPage.page).toHaveLength(20);
+    expect(firstPage.page[0]?.content).toBe("Message 24");
+    expect(firstPage.page[firstPage.page.length - 1]?.content).toBe("Message 5");
+    expect(firstPage.isDone).toBe(false);
+    expect(secondPage.page.map((message) => message.content)).toEqual([
+      "Message 4",
+      "Message 3",
+      "Message 2",
+      "Message 1",
+      "Message 0",
+    ]);
+    expect(secondPage.isDone).toBe(true);
+  });
+
+  it("backfills latest-message metadata from legacy embedded messages", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const sessionId = await t.run(async (ctx) => {
+      return await ctx.db.insert("chatSessions", {
+        channel: "web",
+        visitorName: "Legacy transcript",
+        visitorId: "legacy-transcript",
+        messageCount: 0,
+        latestMessageAt: 1_000,
+        adminSortAt: 1_000,
+        adminSearchText: "legacy transcript",
+        messages: [
+          { role: "user", content: "Old hello", timestamp: 2_000 },
+          { role: "assistant", content: "Old reply", timestamp: 3_000 },
+        ],
+        createdAt: 900,
+      });
+    });
+
+    await t.mutation(internal.migrations.backfillChatSessionAdminMetadata, {
+      limit: 10,
+      dryRun: false,
+    });
+
+    const session = await t.query(api.chat.getSession, { sessionId });
+    const filtered = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      messageStartAt: 2_500,
+      messageEndAt: 3_500,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(session?.messageCount).toBe(2);
+    expect(session?.latestMessageAt).toBe(3_000);
+    expect(session?.adminSortAt).toBe(3_000);
+    expect(filtered.sessions.map((row) => row._id)).toContain(sessionId);
   });
 });
 

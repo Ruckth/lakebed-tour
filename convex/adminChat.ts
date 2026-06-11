@@ -34,8 +34,16 @@ const emptyFilterValidator = v.union(
 	v.literal('non_empty')
 );
 
+const channelFilterValidator = v.union(
+	v.literal('all'),
+	v.literal('web'),
+	v.literal('line'),
+	v.literal('facebook')
+);
+
 type SessionStatus = 'all' | 'active' | 'inactive';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
+type ChannelFilter = 'all' | 'web' | 'line' | 'facebook';
 
 function parseSearchCursor(cursor: string | null) {
 	if (!cursor) return 0;
@@ -150,12 +158,28 @@ async function sessionHasStoredMessages(ctx: QueryCtx, session: Doc<'chatSession
 	return Boolean(message);
 }
 
+async function getSessionLatestMessageAt(ctx: QueryCtx, session: Doc<'chatSessions'>) {
+	const latestStoredMessage = await ctx.db
+		.query('chatMessages')
+		.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+		.order('desc')
+		.first();
+	const latestLegacyMessageAt = session.messages?.reduce<number | undefined>(
+		(latest, message) =>
+			typeof latest === 'number' ? Math.max(latest, message.timestamp) : message.timestamp,
+		undefined
+	);
+
+	return latestStoredMessage?.timestamp ?? latestLegacyMessageAt ?? session.latestMessageAt;
+}
+
 async function sessionMatchesFilters(
 	ctx: QueryCtx,
 	session: Doc<'chatSessions'>,
 	options: {
 		status: SessionStatus;
 		empty: EmptyFilter;
+		channel: ChannelFilter;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		now: number;
@@ -164,6 +188,7 @@ async function sessionMatchesFilters(
 	const active = isChatSessionActive(session, options.now);
 	if (options.status === 'active' && !active) return false;
 	if (options.status === 'inactive' && active) return false;
+	if (options.channel !== 'all' && session.channel !== options.channel) return false;
 
 	const messageCount = getAdminChatMessageCount(session);
 	if (options.empty === 'empty') {
@@ -180,16 +205,17 @@ async function sessionMatchesFilters(
 		typeof options.messageStartAt === 'number' ||
 		typeof options.messageEndAt === 'number'
 	) {
-		if (typeof session.latestMessageAt !== 'number') return false;
+		const latestMessageAt = await getSessionLatestMessageAt(ctx, session);
+		if (typeof latestMessageAt !== 'number') return false;
 		if (
 			typeof options.messageStartAt === 'number' &&
-			session.latestMessageAt < options.messageStartAt
+			latestMessageAt < options.messageStartAt
 		) {
 			return false;
 		}
 		if (
 			typeof options.messageEndAt === 'number' &&
-			session.latestMessageAt > options.messageEndAt
+			latestMessageAt > options.messageEndAt
 		) {
 			return false;
 		}
@@ -225,6 +251,7 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 	return {
 		...session,
 		messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
+		latestMessageAt: latestMessage?.timestamp ?? session.latestMessageAt,
 		adminSortAt: getAdminChatSortAt(session),
 		propertyName: property?.name,
 		latestMessage,
@@ -249,6 +276,7 @@ async function searchSessions(
 		cursor: string | null;
 		status: SessionStatus;
 		empty: EmptyFilter;
+		channel: ChannelFilter;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		propertySlug?: string;
@@ -326,6 +354,7 @@ async function listFilteredSessions(
 		cursor: string | null;
 		status: SessionStatus;
 		empty: EmptyFilter;
+		channel: ChannelFilter;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		propertySlug?: string;
@@ -361,26 +390,22 @@ async function listFilteredSessions(
 
 	if (matched.length < PAGE_SIZE && !sourceDone) {
 		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
+		const hasMessageDateFilter =
+			typeof options.messageStartAt === 'number' ||
+			typeof options.messageEndAt === 'number';
 		// Convex only allows one paginated query per function invocation.
 		const page =
-			options.empty === 'non_empty' ||
-					  typeof options.messageStartAt === 'number' ||
-					  typeof options.messageEndAt === 'number'
-					? await ctx.db
-							.query('chatSessions')
-							.withIndex('by_latestMessageAt', (q) => {
-								const lower = options.messageStartAt ?? 0;
-								return typeof options.messageEndAt === 'number'
-									? q.gte('latestMessageAt', lower).lte('latestMessageAt', options.messageEndAt)
-									: q.gte('latestMessageAt', lower);
-							})
-							.order('desc')
-							.paginate(paginationOpts)
-					: await ctx.db
-							.query('chatSessions')
-							.withIndex('by_adminSortAt')
-							.order('desc')
-							.paginate(paginationOpts);
+			options.empty === 'non_empty' && !hasMessageDateFilter
+				? await ctx.db
+						.query('chatSessions')
+						.withIndex('by_latestMessageAt', (q) => q.gte('latestMessageAt', 0))
+						.order('desc')
+						.paginate(paginationOpts)
+				: await ctx.db
+						.query('chatSessions')
+						.withIndex('by_adminSortAt')
+						.order('desc')
+						.paginate(paginationOpts);
 
 		cursor = page.continueCursor;
 		sourceDone = page.isDone;
@@ -409,6 +434,7 @@ export const listSessions = query({
 		paginationOpts: v.optional(paginationOptsValidator),
 		status: v.optional(sessionStatusValidator),
 		empty: v.optional(emptyFilterValidator),
+		channel: v.optional(channelFilterValidator),
 		messageStartAt: v.optional(v.number()),
 		messageEndAt: v.optional(v.number()),
 		searchQuery: v.optional(v.string()),
@@ -423,6 +449,7 @@ export const listSessions = query({
 		const now = args.now ?? Date.now();
 		const status = args.status ?? 'active';
 		const empty = args.empty ?? 'all';
+		const channel = args.channel ?? 'all';
 		const messageStartAt = args.messageStartAt;
 		const messageEndAt = args.messageEndAt;
 		const searchQuery = args.searchQuery?.trim();
@@ -439,6 +466,7 @@ export const listSessions = query({
 				cursor: paginationOpts.cursor,
 				status,
 				empty,
+				channel,
 				messageStartAt,
 				messageEndAt,
 				propertySlug: args.propertySlug,
@@ -450,11 +478,70 @@ export const listSessions = query({
 			cursor: paginationOpts.cursor,
 			status,
 			empty,
+			channel,
 			messageStartAt,
 			messageEndAt,
 			propertySlug: args.propertySlug,
 			now
 		});
+	}
+});
+
+export const getSessionDetail = query({
+	args: { sessionId: v.id('chatSessions'), now: v.optional(v.number()) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+
+		const now = args.now ?? Date.now();
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const [lineEvents, facebookEvents, property] = await Promise.all([
+			session.channel === 'line'
+				? ctx.db
+						.query('lineWebhookEvents')
+						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.order('desc')
+						.take(10)
+				: [],
+			session.channel === 'facebook'
+				? ctx.db
+						.query('facebookWebhookEvents')
+						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.order('desc')
+						.take(10)
+				: [],
+			session.propertyId ? ctx.db.get(session.propertyId) : null
+		]);
+
+		return {
+			session: {
+				...session,
+				propertyName: property?.name,
+				isActive: isChatSessionActive(session, now)
+			},
+			lineEvents,
+			facebookEvents
+		};
+	}
+});
+
+export const listTranscriptMessages = query({
+	args: {
+		sessionId: v.id('chatSessions'),
+		paginationOpts: paginationOptsValidator
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		return await ctx.db
+			.query('chatMessages')
+			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+			.order('desc')
+			.paginate(args.paginationOpts);
 	}
 });
 

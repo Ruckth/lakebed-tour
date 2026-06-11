@@ -107,6 +107,103 @@ describe("chatKnowledge approved exact matching", () => {
     }
   });
 
+  it("matches one approved answer across multiple property scopes", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const poolPropertyId = await createProperty(t, "pool-villa");
+      const gardenPropertyId = await createProperty(t, "garden-suite");
+
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Breakfast for selected villas",
+        answer: "Breakfast is included for Pool Villa and Garden Suite bookings.",
+        primaryQuestion: "Is breakfast included?",
+        propertySlugs: ["pool-villa", "garden-suite"],
+        topicNames: ["food"],
+      });
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Global breakfast",
+        answer: "Breakfast depends on your package.",
+        primaryQuestion: "Is breakfast included?",
+        topicNames: ["food"],
+      });
+
+      const poolSessionId = await createWebSession(t, {
+        propertyId: poolPropertyId,
+        propertySlug: "pool-villa",
+      });
+      const gardenSessionId = await createWebSession(t, {
+        propertyId: gardenPropertyId,
+        propertySlug: "garden-suite",
+      });
+      const globalSessionId = await createWebSession(t);
+
+      const poolMatch = await t.query(api.chatKnowledge.resolveExact, {
+        sessionId: poolSessionId,
+        messageText: "Is breakfast included?",
+      });
+      const gardenMatch = await t.query(api.chatKnowledge.resolveExact, {
+        sessionId: gardenSessionId,
+        messageText: "Is breakfast included?",
+      });
+      const globalMatch = await t.query(api.chatKnowledge.resolveExact, {
+        sessionId: globalSessionId,
+        messageText: "Is breakfast included?",
+      });
+
+      expect(poolMatch?.answer).toBe("Breakfast is included for Pool Villa and Garden Suite bookings.");
+      expect(gardenMatch?.answer).toBe("Breakfast is included for Pool Villa and Garden Suite bookings.");
+      expect(globalMatch?.answer).toBe("Breakfast depends on your package.");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("lets admins add custom property scopes but blocks deletion while linked", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+
+      const createdScope = await admin.mutation(api.chatKnowledge.adminCreatePropertyScope, {
+        slug: "Special Villa",
+      });
+      expect(createdScope).toMatchObject({
+        slug: "special-villa",
+        source: "custom",
+        canDelete: true,
+      });
+      await admin.mutation(api.chatKnowledge.adminDeletePropertyScope, {
+        slug: "special-villa",
+      });
+
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Special villa parking",
+        answer: "Special Villa includes one private parking space.",
+        primaryQuestion: "Is parking included?",
+        propertySlugs: ["special-villa"],
+      });
+      const scopes = await admin.query(api.chatKnowledge.adminListPropertyScopes, {});
+      const linkedScope = scopes.find((scope) => scope.slug === "special-villa");
+      const customSessionId = await createWebSession(t, { propertySlug: "special-villa" });
+      const customMatch = await t.query(api.chatKnowledge.resolveExact, {
+        sessionId: customSessionId,
+        messageText: "Is parking included?",
+      });
+
+      expect(linkedScope).toMatchObject({ canDelete: false });
+      expect(customMatch?.answer).toBe("Special Villa includes one private parking space.");
+      await expect(
+        admin.mutation(api.chatKnowledge.adminDeletePropertyScope, {
+          slug: "special-villa",
+        }),
+      ).rejects.toThrow(/linked to an answer/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("excludes draft and archived answers from exact replies", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {

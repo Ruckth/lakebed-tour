@@ -854,6 +854,54 @@ describe("chatSuggestions.nextForSession", () => {
     }
   });
 
+  it("translates missing generated suggestion locales through the admin action", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const now = 1_700_000_000_000;
+      const suggestionId = await t.run(async (ctx) => {
+        const sessionId = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-generated-translation",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        const assistantMessageId = await ctx.db.insert("chatMessages", {
+          sessionId,
+          role: "assistant",
+          content: "You can open the 360 tour from the villa page.",
+          timestamp: now + 1,
+        });
+        return await ctx.db.insert("chatSuggestedQuestions", {
+          sessionId,
+          assistantMessageId,
+          question: "Can I see the villa in 360?",
+          normalizedQuestion: normalizeSuggestedQuestion("Can I see the villa in 360?"),
+          translations: {
+            en: "Can I see the villa in 360?",
+          },
+          locale: "en",
+          topic: "tour",
+          score: 94,
+          status: "active",
+          createdAt: now + 2,
+        });
+      });
+
+      const result = await admin.action(api.chatSuggestions.adminTranslateMissingGeneratedSuggestions, {
+        locale: "ko",
+        limit: 20,
+      });
+      const updated = await t.run(async (ctx) => await ctx.db.get(suggestionId));
+
+      expect(result).toEqual({ locale: "ko", scanned: 1, updated: 1 });
+      expect(updated?.translations?.ko).toBe("빌라를 360도로 볼 수 있나요?");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("blocks repeats across translated variants and falls back for older rows", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;
