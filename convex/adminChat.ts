@@ -14,10 +14,11 @@ const PAGE_SIZE = 10;
 const SEARCH_SESSION_LIMIT = 50;
 const SEARCH_MESSAGE_LIMIT = 100;
 const FUZZY_SCAN_LIMIT = 200;
-const FILTER_SCAN_PAGE_LIMIT = 25;
+const FILTER_SOURCE_PAGE_SIZE = 100;
 
 type FilterCursor = {
 	sourceCursor: string | null;
+	sourceDone: boolean;
 	overflowIds: Id<'chatSessions'>[];
 };
 
@@ -53,24 +54,26 @@ function searchCursor(offset: number) {
 }
 
 function parseFilterCursor(cursor: string | null): FilterCursor {
-	if (!cursor) return { sourceCursor: null, overflowIds: [] };
+	if (!cursor) return { sourceCursor: null, sourceDone: false, overflowIds: [] };
 	try {
 		const parsed = JSON.parse(cursor) as {
 			type?: unknown;
 			sourceCursor?: unknown;
+			sourceDone?: unknown;
 			overflowIds?: unknown;
 		};
 		if (parsed.type !== 'filtered') {
-			return { sourceCursor: cursor, overflowIds: [] };
+			return { sourceCursor: cursor, sourceDone: false, overflowIds: [] };
 		}
 		return {
 			sourceCursor: typeof parsed.sourceCursor === 'string' ? parsed.sourceCursor : null,
+			sourceDone: typeof parsed.sourceDone === 'boolean' ? parsed.sourceDone : false,
 			overflowIds: Array.isArray(parsed.overflowIds)
 				? parsed.overflowIds.filter((id): id is Id<'chatSessions'> => typeof id === 'string')
 				: []
 		};
 	} catch {
-		return { sourceCursor: cursor, overflowIds: [] };
+		return { sourceCursor: cursor, sourceDone: false, overflowIds: [] };
 	}
 }
 
@@ -78,6 +81,7 @@ function filterCursor(cursor: FilterCursor) {
 	return JSON.stringify({
 		type: 'filtered',
 		sourceCursor: cursor.sourceCursor,
+		sourceDone: cursor.sourceDone,
 		overflowIds: cursor.overflowIds
 	});
 }
@@ -309,20 +313,27 @@ async function listFilteredSessions(
 
 	const parsedCursor = parseFilterCursor(options.cursor);
 	let cursor = parsedCursor.sourceCursor;
-	let isDone = false;
-	let pagesScanned = 0;
+	let sourceDone = parsedCursor.sourceDone;
 	const matched: Doc<'chatSessions'>[] = [];
+	const seen = new Set<Id<'chatSessions'>>();
+
+	const addIfMatches = (session: Doc<'chatSessions'>) => {
+		if (seen.has(session._id)) return;
+		seen.add(session._id);
+		if (options.propertySlug && session.propertySlug !== options.propertySlug) return;
+		if (!sessionMatchesFilters(session, options)) return;
+		matched.push(session);
+	};
 
 	for (const sessionId of parsedCursor.overflowIds) {
 		const session = await ctx.db.get(sessionId);
 		if (!session) continue;
-		if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
-		if (!sessionMatchesFilters(session, options)) continue;
-		matched.push(session);
+		addIfMatches(session);
 	}
 
-	while (matched.length < PAGE_SIZE && !isDone && pagesScanned < FILTER_SCAN_PAGE_LIMIT) {
-		const paginationOpts = { numItems: PAGE_SIZE, cursor };
+	if (matched.length < PAGE_SIZE && !sourceDone) {
+		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
+		// Convex only allows one paginated query per function invocation.
 		const page =
 			options.empty === 'empty'
 				? await ctx.db
@@ -351,21 +362,20 @@ async function listFilteredSessions(
 							.order('desc')
 							.paginate(paginationOpts);
 
-		pagesScanned++;
 		cursor = page.continueCursor;
-		isDone = page.isDone;
+		sourceDone = page.isDone;
 
 		for (const session of page.page) {
-			if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
-			if (!sessionMatchesFilters(session, options)) continue;
-			matched.push(session);
+			addIfMatches(session);
 		}
 	}
 
 	const pageSessions = matched.slice(0, PAGE_SIZE);
 	const overflowIds = matched.slice(PAGE_SIZE).map((session) => session._id);
-	const hasMore = overflowIds.length > 0 || !isDone;
-	const continueCursor = hasMore ? filterCursor({ sourceCursor: cursor, overflowIds }) : null;
+	const hasMore = overflowIds.length > 0 || !sourceDone;
+	const continueCursor = hasMore
+		? filterCursor({ sourceCursor: cursor, sourceDone, overflowIds })
+		: null;
 	return {
 		sessions: await decorateSessions(ctx, pageSessions, options.now),
 		continueCursor,

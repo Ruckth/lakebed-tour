@@ -239,6 +239,51 @@ describe("adminChat.listSessions", () => {
     expect(result.isDone).toBe(true);
   });
 
+  it("returns a continuation cursor for sparse filtered pages", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const now = 1_700_000_000_000;
+
+    for (let index = 0; index < 100; index++) {
+      await insertAdminSession(t, {
+        visitorName: `Active sparse ${index}`,
+        messageCount: 1,
+        latestMessageAt: now + 2_000 + index,
+        adminSortAt: now + 2_000 + index,
+        lastSeenAt: now - 1_000,
+        lastOpenedAt: now - 1_000,
+      });
+    }
+    await insertAdminSession(t, {
+      visitorName: "Inactive sparse match",
+      messageCount: 1,
+      latestMessageAt: now + 1_000,
+      adminSortAt: now + 1_000,
+      lastSeenAt: now - 300_000,
+      lastOpenedAt: now - 300_000,
+    });
+
+    const firstPage = await admin.query(api.adminChat.listSessions, {
+      status: "inactive",
+      now,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+    const secondPage = await admin.query(api.adminChat.listSessions, {
+      status: "inactive",
+      now,
+      paginationOpts: { numItems: 10, cursor: firstPage.continueCursor },
+    });
+
+    expect(firstPage.sessions).toHaveLength(0);
+    expect(firstPage.isDone).toBe(false);
+    expect(firstPage.continueCursor).toBeTruthy();
+    expect(secondPage.sessions.map((session) => session.visitorName)).toEqual([
+      "Inactive sparse match",
+    ]);
+    expect(secondPage.isDone).toBe(true);
+  });
+
   it("fills date-filtered active pages when inactive sessions are newer", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
