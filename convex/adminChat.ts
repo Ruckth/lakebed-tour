@@ -139,7 +139,19 @@ function typoTolerantContactScore(query: string, searchText?: string) {
 	return matched === queryTokens.length ? 55 + matched : 0;
 }
 
-function sessionMatchesFilters(
+async function sessionHasStoredMessages(ctx: QueryCtx, session: Doc<'chatSessions'>) {
+	if (session.messages && session.messages.length > 0) return true;
+
+	const message = await ctx.db
+		.query('chatMessages')
+		.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+		.first();
+
+	return Boolean(message);
+}
+
+async function sessionMatchesFilters(
+	ctx: QueryCtx,
 	session: Doc<'chatSessions'>,
 	options: {
 		status: SessionStatus;
@@ -154,8 +166,15 @@ function sessionMatchesFilters(
 	if (options.status === 'inactive' && active) return false;
 
 	const messageCount = getAdminChatMessageCount(session);
-	if (options.empty === 'empty' && messageCount !== 0) return false;
-	if (options.empty === 'non_empty' && messageCount === 0) return false;
+	if (options.empty === 'empty') {
+		if (messageCount !== 0) return false;
+		if (await sessionHasStoredMessages(ctx, session)) return false;
+	}
+	if (options.empty === 'non_empty') {
+		if (messageCount === 0 && !(await sessionHasStoredMessages(ctx, session))) {
+			return false;
+		}
+	}
 
 	if (
 		typeof options.messageStartAt === 'number' ||
@@ -198,7 +217,7 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 
 	return {
 		...session,
-		messageCount: getAdminChatMessageCount(session),
+		messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
 		adminSortAt: getAdminChatSortAt(session),
 		propertyName: property?.name,
 		latestMessage,
@@ -269,16 +288,17 @@ async function searchSessions(
 		)
 	).filter((session): session is Doc<'chatSessions'> => Boolean(session));
 
-	const filtered = hydrated
-		.filter((session) => {
-			if (options.propertySlug && session.propertySlug !== options.propertySlug) return false;
-			return sessionMatchesFilters(session, options);
-		})
-		.sort((a, b) => {
-			const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
-			if (scoreDelta !== 0) return scoreDelta;
-			return getAdminChatSortAt(b) - getAdminChatSortAt(a);
-		});
+	const filtered: Doc<'chatSessions'>[] = [];
+	for (const session of hydrated) {
+		if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
+		if (await sessionMatchesFilters(ctx, session, options)) filtered.push(session);
+	}
+
+	filtered.sort((a, b) => {
+		const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
+		if (scoreDelta !== 0) return scoreDelta;
+		return getAdminChatSortAt(b) - getAdminChatSortAt(a);
+	});
 
 	const offset = parseSearchCursor(options.cursor);
 	const page = filtered.slice(offset, offset + PAGE_SIZE);
@@ -317,33 +337,25 @@ async function listFilteredSessions(
 	const matched: Doc<'chatSessions'>[] = [];
 	const seen = new Set<Id<'chatSessions'>>();
 
-	const addIfMatches = (session: Doc<'chatSessions'>) => {
+	const addIfMatches = async (session: Doc<'chatSessions'>) => {
 		if (seen.has(session._id)) return;
 		seen.add(session._id);
 		if (options.propertySlug && session.propertySlug !== options.propertySlug) return;
-		if (!sessionMatchesFilters(session, options)) return;
+		if (!(await sessionMatchesFilters(ctx, session, options))) return;
 		matched.push(session);
 	};
 
 	for (const sessionId of parsedCursor.overflowIds) {
 		const session = await ctx.db.get(sessionId);
 		if (!session) continue;
-		addIfMatches(session);
+		await addIfMatches(session);
 	}
 
 	if (matched.length < PAGE_SIZE && !sourceDone) {
 		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
 		// Convex only allows one paginated query per function invocation.
 		const page =
-			options.empty === 'empty'
-				? await ctx.db
-						.query('chatSessions')
-						.withIndex('by_messageCount_and_adminSortAt', (q) =>
-							q.eq('messageCount', 0)
-						)
-						.order('desc')
-						.paginate(paginationOpts)
-				: options.empty === 'non_empty' ||
+			options.empty === 'non_empty' ||
 					  typeof options.messageStartAt === 'number' ||
 					  typeof options.messageEndAt === 'number'
 					? await ctx.db
@@ -366,7 +378,7 @@ async function listFilteredSessions(
 		sourceDone = page.isDone;
 
 		for (const session of page.page) {
-			addIfMatches(session);
+			await addIfMatches(session);
 		}
 	}
 

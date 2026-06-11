@@ -366,6 +366,11 @@ function lineEventTone(event?: AdminLineEvent | null) {
   return "secondary" as const;
 }
 
+function messageCountLabel(count?: number) {
+  const safeCount = Math.max(0, Math.floor(count ?? 0));
+  return `${safeCount} ${safeCount === 1 ? "message" : "messages"}`;
+}
+
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -1075,7 +1080,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {session.propertyName ?? session.propertySlug ?? "General site"} ·{" "}
-                      {session.channel} · {session.messageCount ?? 0} messages
+                      {session.channel} · {messageCountLabel(session.messageCount)}
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">

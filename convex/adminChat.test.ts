@@ -38,6 +38,7 @@ async function insertAdminSession(
     lastSeenAt?: number;
     lastOpenedAt?: number;
     lastClosedAt?: number;
+    omitMessageCount?: boolean;
   } = {},
 ) {
   return await t.run(async (ctx) => {
@@ -80,7 +81,7 @@ async function insertAdminSession(
       ...(typeof session.lastClosedAt === "number"
         ? { lastClosedAt: session.lastClosedAt }
         : {}),
-      messageCount: session.messageCount,
+      ...(overrides.omitMessageCount ? {} : { messageCount: session.messageCount }),
       ...(typeof session.latestMessageAt === "number"
         ? { latestMessageAt: session.latestMessageAt }
         : {}),
@@ -163,6 +164,54 @@ describe("adminChat.listSessions", () => {
     expect(result.sessions.map((session) => session.visitorName)).toEqual([
       "Empty visitor",
     ]);
+  });
+
+  it("keeps legacy empty sessions visible without including stale zero-count sessions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    await insertAdminSession(t, {
+      visitorName: "True empty visitor",
+      messageCount: 0,
+      adminSortAt: 1_700_000_000_030,
+    });
+    const staleSessionId = await insertAdminSession(t, {
+      visitorName: "Stale zero visitor",
+      messageCount: 0,
+      adminSortAt: 1_700_000_000_020,
+    });
+    await insertAdminSession(t, {
+      visitorName: "Legacy missing count visitor",
+      omitMessageCount: true,
+      adminSortAt: 1_700_000_000_010,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("chatMessages", {
+        sessionId: staleSessionId,
+        role: "assistant",
+        content: "This stored message means the thread is not empty.",
+        timestamp: 1_700_000_000_020,
+      });
+    });
+
+    const emptyResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      empty: "empty",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+    const allResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(emptyResult.sessions.map((session) => session.visitorName)).toEqual([
+      "True empty visitor",
+      "Legacy missing count visitor",
+    ]);
+    expect(
+      allResult.sessions.find((session) => session._id === staleSessionId)?.messageCount,
+    ).toBe(1);
   });
 
   it("filters by latest message date range", async () => {
