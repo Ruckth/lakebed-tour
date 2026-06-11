@@ -45,6 +45,10 @@ Set these in Vercel Production and Preview:
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
 | `LINE_CHANNEL_SECRET` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Basic settings -> Channel secret. |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
+| `FACEBOOK_ACCESS_TOKEN` | Yes for Facebook Messenger auto-replies | Meta Developers -> Messenger API settings -> Generate access tokens -> Page access token. |
+| `FACEBOOK_PAGE_ID` | Yes for Facebook Messenger setup | Meta Developers -> Messenger API settings -> connected Page ID. |
+| `FACEBOOK_VERIFY_TOKEN` | Yes for Facebook Messenger webhook verification | Custom secret you create; must exactly match the Meta webhook Verify token field. |
+| `FACEBOOK_GRAPH_API_VERSION` | No | Defaults to `v25.0`; set only when intentionally pinning another supported Graph API version. |
 | `SITE_URL` | Yes for LINE auto-replies | Use `https://tour.helpgueststay.com` in production so LINE replies include production links. |
 
 ### Convex Environment Variables
@@ -129,6 +133,29 @@ https://<your-ngrok-domain>/api/line/webhook
 ```
 
 For the full LINE automation audit checklist, including LINE OA response settings, token checks, customer link checks, and production smoke tests, see [LINE_AUTOMATION_AUDIT.md](./LINE_AUTOMATION_AUDIT.md).
+
+## Facebook Messenger Webhook
+
+After deploying production, set the Meta Developers Messenger webhook to:
+
+```txt
+https://tour.helpgueststay.com/api/facebook/webhook
+```
+
+Use the exact Vercel `FACEBOOK_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
+
+After **Verify and save** succeeds, add subscriptions for:
+
+```txt
+messages
+messaging_postbacks
+```
+
+For a quick production verification, this URL should return plain `hello` when the token matches:
+
+```txt
+https://tour.helpgueststay.com/api/facebook/webhook?hub.mode=subscribe&hub.verify_token=<FACEBOOK_VERIFY_TOKEN>&hub.challenge=hello
+```
 
 ## Deployment
 

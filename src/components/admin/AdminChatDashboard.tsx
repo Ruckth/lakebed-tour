@@ -87,13 +87,27 @@ type AdminLineEvent = {
   processedAt?: number;
 };
 
+type AdminFacebookEvent = {
+  _id: Id<"facebookWebhookEvents">;
+  eventType: "message" | "postback" | "unsupported";
+  messageText?: string;
+  postbackData?: string;
+  status: LineWebhookStatus;
+  replyMode?: Exclude<LineReplyMode, "follow">;
+  facebookReplyStatus?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  processedAt?: number;
+};
+
 type AdminSession = {
   _id: Id<"chatSessions">;
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
   visitorPhone?: string;
-  visitorContactApp?: "whatsapp" | "line";
+  visitorContactApp?: "whatsapp" | "line" | "facebook";
   visitorContactHandle?: string;
   propertySlug?: string;
   propertyName?: string;
@@ -105,7 +119,7 @@ type AdminSession = {
   screenSize?: string;
   viewportSize?: string;
   platform?: string;
-  channel: "web" | "whatsapp" | "line";
+  channel: "web" | "whatsapp" | "line" | "facebook";
   createdAt: number;
   lastSeenAt?: number;
   lastOpenedAt?: number;
@@ -116,6 +130,7 @@ type AdminSession = {
   isActive: boolean;
   latestMessage?: AdminMessage;
   latestLineEvent?: AdminLineEvent | null;
+  latestFacebookEvent?: AdminFacebookEvent | null;
 };
 
 type SessionListResult = {
@@ -129,6 +144,7 @@ type TranscriptResult = {
   session: AdminSession;
   messages: AdminMessage[];
   lineEvents?: AdminLineEvent[];
+  facebookEvents?: AdminFacebookEvent[];
 };
 
 type AdminSuggestedQuestion = {
@@ -340,7 +356,9 @@ function contactLabel(session: AdminSession) {
   const app = session.visitorContactApp
     ? session.visitorContactApp === "line"
       ? "LINE"
-      : "WhatsApp"
+      : session.visitorContactApp === "facebook"
+        ? "Facebook"
+        : "WhatsApp"
     : "Contact";
   return session.visitorContactHandle
     ? `${app}: ${session.visitorContactHandle}`
@@ -360,6 +378,25 @@ function lineEventLabel(event?: AdminLineEvent | null) {
 }
 
 function lineEventTone(event?: AdminLineEvent | null) {
+  if (!event) return "secondary" as const;
+  if (event.status === "replied") return "default" as const;
+  if (event.status === "failed") return "outline" as const;
+  return "secondary" as const;
+}
+
+function facebookEventLabel(event?: AdminFacebookEvent | null) {
+  if (!event) return "";
+  const mode = event.replyMode && event.replyMode !== "failed" ? ` · ${event.replyMode}` : "";
+  if (event.status === "failed") {
+    return `Facebook failed${event.facebookReplyStatus ? ` ${event.facebookReplyStatus}` : ""}`;
+  }
+  if (event.status === "replied") return `Facebook replied${mode}`;
+  if (event.status === "ignored") return "Facebook ignored";
+  if (event.status === "processing") return "Facebook processing";
+  return "Facebook received";
+}
+
+function facebookEventTone(event?: AdminFacebookEvent | null) {
   if (!event) return "secondary" as const;
   if (event.status === "replied") return "default" as const;
   if (event.status === "failed") return "outline" as const;
@@ -1106,6 +1143,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       ? `: ${truncate(session.latestLineEvent.error, 96)}`
                       : ""}
                   </p>
+                ) : session.latestFacebookEvent ? (
+                  <p
+                    className={cn(
+                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
+                      session.latestFacebookEvent.status === "failed" && "text-red-300",
+                    )}
+                  >
+                    {facebookEventLabel(session.latestFacebookEvent)}
+                    {session.latestFacebookEvent.error
+                      ? `: ${truncate(session.latestFacebookEvent.error, 96)}`
+                      : ""}
+                  </p>
                 ) : (
                   <p className="mt-2 text-xs text-muted-foreground">No messages yet</p>
                 )}
@@ -1207,6 +1256,7 @@ function AdminSessionDetail({
   }
 
   const latestLineEvent = transcript?.lineEvents?.[0] ?? selectedSession.latestLineEvent;
+  const latestFacebookEvent = transcript?.facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
 
   return (
     <div
@@ -1303,6 +1353,45 @@ function AdminSessionDetail({
             ) : null}
           </div>
         ) : null}
+        {selectedSession.channel === "facebook" && latestFacebookEvent ? (
+          <div
+            className={cn(
+              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
+              latestFacebookEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-gold" />
+              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
+                Facebook delivery
+              </span>
+              <Badge
+                variant={facebookEventTone(latestFacebookEvent)}
+                className={cn(
+                  "rounded-full",
+                  latestFacebookEvent.status === "failed" && "border-red-500/50 text-red-200",
+                )}
+              >
+                {facebookEventLabel(latestFacebookEvent)}
+              </Badge>
+            </div>
+            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+              <div>{formatDateTime(latestFacebookEvent.updatedAt)}</div>
+              <div className="break-words">
+                {latestFacebookEvent.messageText
+                  ? truncate(latestFacebookEvent.messageText, 120)
+                  : latestFacebookEvent.postbackData
+                    ? truncate(latestFacebookEvent.postbackData, 120)
+                    : latestFacebookEvent.eventType}
+              </div>
+            </div>
+            {latestFacebookEvent.error ? (
+              <p className="mt-2 break-words leading-5 text-red-200">
+                {truncate(latestFacebookEvent.error, 260)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
             <MapPin className="h-3.5 w-3.5" />
@@ -1375,7 +1464,9 @@ function AdminSessionDetail({
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
               {latestLineEvent
                 ? `No transcript message is stored yet. Latest LINE event: ${lineEventLabel(latestLineEvent)}.`
-                : "This visitor opened chat but has not sent a message yet."}
+                : latestFacebookEvent
+                  ? `No transcript message is stored yet. Latest Facebook event: ${facebookEventLabel(latestFacebookEvent)}.`
+                  : "This visitor opened chat but has not sent a message yet."}
             </div>
           ) : null}
         </div>

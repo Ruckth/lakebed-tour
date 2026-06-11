@@ -8,14 +8,18 @@ import { TOOLS, executeTool } from './lib/chatTools';
 import { getFallbackResponse } from './lib/chatFallback';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
-const chatChannelValidator = v.union(v.literal('web'), v.literal('line'));
+const chatChannelValidator = v.union(
+	v.literal('web'),
+	v.literal('line'),
+	v.literal('facebook')
+);
 
 type GenerateConciergeReplyArgs = {
 	sessionId: Id<'chatSessions'>;
 	userMessage: string;
 	propertySlug?: string;
 	locale?: string;
-	channel?: 'web' | 'line';
+	channel?: 'web' | 'line' | 'facebook';
 	siteUrl?: string;
 	questionBankHint?: {
 		question: string;
@@ -100,6 +104,18 @@ LINE CHANNEL:
 - If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
 - For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
 - Keep LINE responses under 120 words unless the guest explicitly asks for detail.`;
+}
+
+function facebookChannelGuidance(siteUrl?: string) {
+	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+	return `
+FACEBOOK MESSENGER CHANNEL:
+- The guest is messaging through Facebook Messenger, not the website chat widget.
+- Reply as a short plain-text Messenger message.
+- Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
+- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
+- For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
+- Keep Messenger responses under 120 words unless the guest explicitly asks for detail.`;
 }
 
 function questionBankHintPrompt(hint?: GenerateConciergeReplyArgs['questionBankHint']) {
@@ -244,7 +260,7 @@ STYLE:
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
+- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${channel === 'facebook' ? facebookChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 

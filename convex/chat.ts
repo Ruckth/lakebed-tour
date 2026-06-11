@@ -37,7 +37,12 @@ export const createSession = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
-		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line')),
+		channel: v.union(
+			v.literal('web'),
+			v.literal('whatsapp'),
+			v.literal('line'),
+			v.literal('facebook')
+		),
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
@@ -255,7 +260,9 @@ export const identifyVisitor = mutation({
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
-		contactApp: v.optional(v.union(v.literal('whatsapp'), v.literal('line'))),
+		contactApp: v.optional(
+			v.union(v.literal('whatsapp'), v.literal('line'), v.literal('facebook'))
+		),
 		contactHandle: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {

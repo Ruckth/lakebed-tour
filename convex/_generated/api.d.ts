@@ -16,6 +16,7 @@ import type * as chatAi from "../chatAi.js";
 import type * as chatKnowledge from "../chatKnowledge.js";
 import type * as chatSuggestions from "../chatSuggestions.js";
 import type * as emails from "../emails.js";
+import type * as facebook from "../facebook.js";
 import type * as leads from "../leads.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   chatKnowledge: typeof chatKnowledge;
   chatSuggestions: typeof chatSuggestions;
   emails: typeof emails;
+  facebook: typeof facebook;
   leads: typeof leads;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;

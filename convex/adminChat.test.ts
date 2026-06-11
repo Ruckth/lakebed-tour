@@ -30,7 +30,7 @@ async function insertAdminSession(
     propertySlug?: string;
     currentPath?: string;
     visitorId?: string;
-    channel?: "web" | "whatsapp" | "line";
+    channel?: "web" | "whatsapp" | "line" | "facebook";
     messageCount?: number;
     latestMessageAt?: number;
     adminSortAt?: number;
