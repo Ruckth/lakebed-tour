@@ -1,6 +1,5 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
 import {
 	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
 	isReusableChatMessageCount
@@ -369,16 +368,6 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			latestMessageAt: timestamp,
 			lastSeenAt: timestamp,
 		});
-
-		if (!args.skipSuggestions) {
-			await ctx.scheduler.runAfter(0, internal.chatSuggestions.generateForAssistant, {
-				sessionId: args.sessionId,
-				assistantMessageId: messageId,
-				userMessageId: args.replyToMessageId,
-				locale: args.locale,
-				propertySlug: args.propertySlug ?? session.propertySlug
-			});
-		}
 
 		return messageId;
 	}

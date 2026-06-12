@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { action, internalQuery, mutation, query, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
@@ -9,20 +9,14 @@ import {
 	getSuggestedQuestionForLocale,
 	normalizeSuggestedQuestion,
 	normalizeSuggestionLocale,
-	selectRankedSuggestedQuestions,
 	supportedSuggestionLocales,
 	type SuggestedQuestionTranslations
 } from './lib/chatSuggestions';
-import { getSeedTranslations } from './seeds/curatedQuestions';
 
 const DEFAULT_LIMIT = 2;
-const GENERATION_CANDIDATE_LIMIT = 5;
 const SCORE_ORDERED_CANDIDATE_SCAN_LIMIT = 100;
-const HISTORY_LIMIT = 12;
 const SEMANTIC_MATCH_CONFIDENCE_THRESHOLD = 0.82;
 const SEMANTIC_MATCH_CANDIDATE_LIMIT = 25;
-// V1 keeps the repeat check bounded to the latest session turns.
-const ASKED_MESSAGE_LOOKBACK_LIMIT = 200;
 
 type SuggestionTopic =
 	| 'villa_fit'
@@ -36,21 +30,6 @@ type SuggestionTopic =
 type CuratedAnswerMode = 'static' | 'dynamic';
 
 type DynamicIntent = 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
-
-type GenerationContext = {
-	session: Doc<'chatSessions'>;
-	assistantMessage: Doc<'chatMessages'>;
-	userMessage: Doc<'chatMessages'> | null;
-	recentMessages: Doc<'chatMessages'>[];
-	property: Doc<'properties'> | null;
-};
-
-type GeneratedQuestion = {
-	question: string;
-	translations?: SuggestedQuestionTranslations;
-	topic: string;
-	score: number;
-};
 
 type CuratedResolutionCandidate = Doc<'curatedChatQuestions'> & {
 	scopeRank: number;
@@ -87,9 +66,9 @@ const dynamicIntents = [
 	'contact'
 ] as const;
 
-const generatedSuggestionRefValidator = v.object({
-	source: v.literal('generated'),
-	suggestionId: v.id('chatSuggestedQuestions')
+const staticSuggestionRefValidator = v.object({
+	source: v.literal('static'),
+	suggestionId: v.string()
 });
 
 const curatedSuggestionRefValidator = v.object({
@@ -98,7 +77,7 @@ const curatedSuggestionRefValidator = v.object({
 });
 
 const suggestionRefValidator = v.union(
-	generatedSuggestionRefValidator,
+	staticSuggestionRefValidator,
 	curatedSuggestionRefValidator
 );
 
@@ -318,126 +297,11 @@ function parseSemanticQuestionMatch(content: string | null) {
 	}
 }
 
-function detectTopic(text: string): SuggestionTopic {
-	const lower = text.toLocaleLowerCase();
-	if (/(available|availability|date|dates|check.?in|check.?out)/i.test(lower)) return 'availability';
-	if (/(book|booking|reserve|reservation|payment|pay)/i.test(lower)) return 'booking';
-	if (/(direct|discount|price|saving|ota|fee|airport pickup)/i.test(lower)) return 'direct_booking';
-	if (/(360|tour|virtual|hotspot|view|see)/i.test(lower)) return 'tour';
-	if (/(whatsapp|line|contact|host|message)/i.test(lower)) return 'contact';
-	if (/(pool|bedroom|bathroom|amenit|breakfast|kitchen|wifi)/i.test(lower)) return 'amenities';
-	return 'villa_fit';
-}
-
-function fallbackQuestion(question: string, topic: SuggestionTopic, score: number): GeneratedQuestion {
-	return {
-		question,
-		translations: getSeedTranslations(question),
-		topic,
-		score
-	};
-}
-
-function fallbackQuestionsForEnglish(topic: SuggestionTopic): GeneratedQuestion[] {
-	const banks: Record<SuggestionTopic, GeneratedQuestion[]> = {
-		villa_fit: [
-			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 91),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 84),
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 78),
-			fallbackQuestion('How many guests can stay comfortably?', 'amenities', 70)
-		],
-		direct_booking: [
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 92),
-			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 84),
-			fallbackQuestion('What is the direct booking price?', 'direct_booking', 79),
-			fallbackQuestion('How do I book direct?', 'booking', 68)
-		],
-		tour: [
-			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 89),
-			fallbackQuestion('What is the direct booking price?', 'direct_booking', 82),
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 80),
-			fallbackQuestion('What amenities are included?', 'amenities', 72)
-		],
-		availability: [
-			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 91),
-			fallbackQuestion('What is the direct booking price?', 'direct_booking', 86),
-			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 73),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 70)
-		],
-		booking: [
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 88),
-			fallbackQuestion('Can I message the host on WhatsApp?', 'contact', 84),
-			fallbackQuestion('What is the direct booking price?', 'direct_booking', 76),
-			fallbackQuestion('What is the cancellation policy?', 'booking', 72)
-		],
-		amenities: [
-			fallbackQuestion('What amenities are included?', 'amenities', 90),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 83),
-			fallbackQuestion('How many guests can stay comfortably?', 'amenities', 76),
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 72)
-		],
-		contact: [
-			fallbackQuestion('Can I check availability for my dates?', 'availability', 88),
-			fallbackQuestion('How do I book direct?', 'booking', 82),
-			fallbackQuestion('Which villa fits my group best?', 'villa_fit', 76),
-			fallbackQuestion('Can I see the villa in 360?', 'tour', 68)
-		]
-	};
-
-	return banks[topic];
-}
-
-function extractJsonArray(value: string) {
-	const trimmed = value.trim();
-	if (trimmed.startsWith('[')) return trimmed;
-	const match = trimmed.match(/\[[\s\S]*\]/);
-	return match?.[0] ?? null;
-}
-
 function extractJsonObject(value: string) {
 	const trimmed = value.trim();
 	if (trimmed.startsWith('{')) return trimmed;
 	const match = trimmed.match(/\{[\s\S]*\}/);
 	return match?.[0] ?? null;
-}
-
-function parseGeneratedQuestions(content: string | null): GeneratedQuestion[] {
-	if (!content) return [];
-	const json = extractJsonArray(content);
-	if (!json) return [];
-
-	try {
-		const parsed = JSON.parse(json) as unknown;
-		if (!Array.isArray(parsed)) return [];
-		return parsed.flatMap((item): GeneratedQuestion[] => {
-			if (!item || typeof item !== 'object') return [];
-			const row = item as Record<string, unknown>;
-			const question = typeof row.question === 'string' ? row.question.trim() : '';
-			const topic = typeof row.topic === 'string' ? row.topic.trim() : 'villa_fit';
-			const score = typeof row.score === 'number' ? row.score : Number(row.score);
-			const translations: SuggestedQuestionTranslations = {};
-			if (row.translations && typeof row.translations === 'object') {
-				const translationRows = row.translations as Record<string, unknown>;
-				for (const locale of supportedSuggestionLocales) {
-					const translated = translationRows[locale];
-					if (typeof translated === 'string' && translated.trim().length > 0) {
-						translations[locale] = translated.trim();
-					}
-				}
-			}
-			if (!question || question.length > 160) return [];
-			return [
-				{
-					question,
-					translations: Object.keys(translations).length > 0 ? translations : undefined,
-					topic: topic || 'villa_fit',
-					score: clampSuggestionScore(score)
-				}
-			];
-		});
-	} catch {
-		return [];
-	}
 }
 
 function parseDraftTranslations(content: string | null) {
@@ -473,246 +337,6 @@ function parseDraftTranslations(content: string | null) {
 		return { questionTranslations: {}, answerTranslations: {} };
 	}
 }
-
-function parseGeneratedSuggestionTranslations(
-	content: string | null,
-	targetLocale: string
-) {
-	if (!content) return new Map<number, string>();
-	const json = extractJsonObject(content);
-	if (!json) return new Map<number, string>();
-
-	try {
-		const parsed = JSON.parse(json) as unknown;
-		if (!parsed || typeof parsed !== 'object') return new Map<number, string>();
-
-		const row = parsed as Record<string, unknown>;
-		const rawTranslations = Array.isArray(row.translations) ? row.translations : [];
-		const translations = new Map<number, string>();
-		for (const rawTranslation of rawTranslations) {
-			if (!rawTranslation || typeof rawTranslation !== 'object') continue;
-			const translationRow = rawTranslation as Record<string, unknown>;
-			const index = translationRow.index;
-			const value = translationRow.translation ?? translationRow[targetLocale];
-			if (typeof index !== 'number' || !Number.isInteger(index)) continue;
-			if (typeof value !== 'string') continue;
-			const trimmed = value.trim();
-			if (trimmed && trimmed.length <= 160) translations.set(index, trimmed);
-		}
-		return translations;
-	} catch {
-		return new Map<number, string>();
-	}
-}
-
-function sanitizeCandidates(candidates: GeneratedQuestion[]) {
-	const seen = new Set<string>();
-	const sanitized: GeneratedQuestion[] = [];
-
-	for (const candidate of candidates) {
-		const question = candidate.question.trim();
-		const normalized = normalizeSuggestedQuestion(question);
-		if (!question || !normalized || seen.has(normalized)) continue;
-		seen.add(normalized);
-		const translations: SuggestedQuestionTranslations = { en: question };
-		for (const locale of supportedSuggestionLocales) {
-			if (locale === 'en') continue;
-			const translated = candidate.translations?.[locale]?.trim();
-			if (translated && translated.length <= 160 && translated !== question) {
-				translations[locale] = translated;
-			}
-		}
-		sanitized.push({
-			question,
-			translations,
-			topic: candidate.topic.trim() || 'villa_fit',
-			score: clampSuggestionScore(candidate.score)
-		});
-		if (sanitized.length >= GENERATION_CANDIDATE_LIMIT) break;
-	}
-
-	return sanitized;
-}
-
-function sameGeneratedTranslations(
-	left: Record<string, string> | undefined,
-	right: Record<string, string>
-) {
-	return supportedSuggestionLocales.every((locale) => left?.[locale]?.trim() === right[locale]);
-}
-
-async function generateQuestionsWithAi(context: GenerationContext, locale: string) {
-	const apiKey = process.env.AI_API_KEY;
-	if (!apiKey) return [];
-
-	const propertyLine = context.property
-		? `${context.property.name}: ${context.property.tagline}. ฿${context.property.pricePerNight}/night, ${context.property.maxGuests} guests max.`
-		: 'The guest is browsing all villas.';
-	const transcript = context.recentMessages
-		.map((message) => `${message.role}: ${message.content}`)
-		.join('\n');
-	const targetLocales = supportedSuggestionLocales.join(', ');
-	const messages: ChatMessage[] = [
-		{
-			role: 'system',
-			content:
-				'You generate next suggested questions for a luxury villa concierge chat. Return JSON only.'
-		},
-		{
-			role: 'user',
-			content: `Locale: ${locale}
-Supported locales: ${targetLocales}
-Property context: ${propertyLine}
-
-Recent transcript:
-${transcript}
-
-Latest assistant reply:
-${context.assistantMessage.content}
-
-Create 3 to 5 concise visitor follow-up questions for the next chat chips.
-Rules:
-- The top-level question field must be English.
-- Include a translations object with keys for every supported locale.
-- translations.en must exactly match question.
-- Translate only the question text. Do not translate villa names, price amounts, currency symbols, or factual rules.
-- Each question must be useful after the assistant reply.
-- Do not repeat a question the visitor already asked.
-- Do not invent resort facts.
-- Return a JSON array of objects with question, translations, topic, and score.
-- topic must be one of villa_fit, direct_booking, tour, availability, booking, amenities, contact.
-- score is 0-100, higher means more useful next.`
-		}
-	];
-
-	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-	const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
-	const response = await callAI(apiBase, apiKey, model, messages, []);
-	return parseGeneratedQuestions(response.content);
-}
-
-export const getGenerationContext = internalQuery({
-	args: {
-		sessionId: v.id('chatSessions'),
-		assistantMessageId: v.id('chatMessages'),
-		userMessageId: v.optional(v.id('chatMessages'))
-	},
-	handler: async (ctx, args): Promise<GenerationContext | null> => {
-		const [session, assistantMessage, userMessage] = await Promise.all([
-			ctx.db.get(args.sessionId),
-			ctx.db.get(args.assistantMessageId),
-			args.userMessageId ? ctx.db.get(args.userMessageId) : Promise.resolve(null)
-		]);
-		if (!session || !assistantMessage || assistantMessage.role !== 'assistant') return null;
-
-		const recentMessages = await ctx.db
-			.query('chatMessages')
-			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-			.order('desc')
-			.take(HISTORY_LIMIT);
-		const property = session.propertyId ? await ctx.db.get(session.propertyId) : null;
-
-		return {
-			session,
-			assistantMessage,
-			userMessage: userMessage?.role === 'user' ? userMessage : null,
-			recentMessages: recentMessages.reverse(),
-			property
-		};
-	}
-});
-
-export const storeGenerated = internalMutation({
-	args: {
-		sessionId: v.id('chatSessions'),
-		assistantMessageId: v.id('chatMessages'),
-		userMessageId: v.optional(v.id('chatMessages')),
-		locale: v.string(),
-		propertySlug: v.optional(v.string()),
-		candidates: v.array(
-			v.object({
-				question: v.string(),
-				translations: v.optional(v.record(v.string(), v.string())),
-				topic: v.string(),
-				score: v.number()
-			})
-		)
-	},
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('chatSuggestedQuestions')
-			.withIndex('by_session_and_assistant', (q) =>
-				q.eq('sessionId', args.sessionId).eq('assistantMessageId', args.assistantMessageId)
-			)
-			.take(1);
-		if (existing.length > 0) return { inserted: 0 };
-
-		const now = Date.now();
-		let inserted = 0;
-		for (const candidate of sanitizeCandidates(args.candidates)) {
-			await ctx.db.insert('chatSuggestedQuestions', {
-				sessionId: args.sessionId,
-				assistantMessageId: args.assistantMessageId,
-				userMessageId: args.userMessageId,
-				question: candidate.question,
-				normalizedQuestion: normalizeSuggestedQuestion(candidate.question),
-				...(candidate.translations ? { translations: candidate.translations } : {}),
-				locale: args.locale,
-				propertySlug: args.propertySlug,
-				topic: candidate.topic,
-				score: candidate.score,
-				status: 'active',
-				createdAt: now
-			});
-			inserted++;
-		}
-
-		return { inserted };
-	}
-});
-
-export const generateForAssistant = internalAction({
-	args: {
-		sessionId: v.id('chatSessions'),
-		assistantMessageId: v.id('chatMessages'),
-		userMessageId: v.optional(v.id('chatMessages')),
-		locale: v.optional(v.string()),
-		propertySlug: v.optional(v.string())
-	},
-	handler: async (ctx, args) => {
-		const context: GenerationContext | null = await ctx.runQuery(
-			internal.chatSuggestions.getGenerationContext,
-			{
-				sessionId: args.sessionId,
-				assistantMessageId: args.assistantMessageId,
-				userMessageId: args.userMessageId
-			}
-		);
-		if (!context) return { inserted: 0 };
-
-		const locale = normalizeSuggestionLocale(args.locale);
-		const textForTopic = `${context.userMessage?.content ?? ''} ${context.assistantMessage.content}`;
-		let candidates = await generateQuestionsWithAi(context, locale).catch(() => []);
-		if (candidates.length === 0) {
-			candidates = fallbackQuestionsForEnglish(detectTopic(textForTopic));
-		}
-		const sanitized = sanitizeCandidates(candidates);
-		if (sanitized.length === 0) return { inserted: 0 };
-
-		const result: { inserted: number } = await ctx.runMutation(
-			internal.chatSuggestions.storeGenerated,
-			{
-				sessionId: args.sessionId,
-				assistantMessageId: args.assistantMessageId,
-				userMessageId: args.userMessageId,
-				locale,
-				propertySlug: args.propertySlug ?? context.session.propertySlug,
-				candidates: sanitized
-			}
-		);
-		return result;
-	}
-});
 
 export const getCuratedResolutionContext = internalQuery({
 	args: {
@@ -1050,105 +674,36 @@ export const adminDeleteArchivedCurated = mutation({
 export const nextForSession = query({
 	args: {
 		sessionId: v.id('chatSessions'),
-		locale: v.optional(v.string()),
+		candidateSuggestionIds: v.array(v.string()),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), 5);
-		const locale = normalizeSuggestionLocale(args.locale);
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) return [];
 
-		const [activeQuestions, clickedQuestions, messages, globalCuratedQuestions, propertyCuratedQuestions, interactions] = await Promise.all([
-			ctx.db
-				.query('chatSuggestedQuestions')
-				.withIndex('by_session_status_score', (q) =>
-					q.eq('sessionId', args.sessionId).eq('status', 'active')
-				)
-				.order('desc')
-				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT),
-			ctx.db
-				.query('chatSuggestedQuestions')
-				.withIndex('by_session_and_status', (q) =>
-					q.eq('sessionId', args.sessionId).eq('status', 'clicked')
-				)
-				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT),
-			ctx.db
-				.query('chatMessages')
-				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-				.order('desc')
-				.take(ASKED_MESSAGE_LOOKBACK_LIMIT),
-			ctx.db
-				.query('curatedChatQuestions')
-				.withIndex('by_status_and_propertySlug_and_score', (q) =>
-					q.eq('status', 'active').eq('propertySlug', undefined)
-				)
-				.order('desc')
-				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT),
-			session.propertySlug
-				? ctx.db
-						.query('curatedChatQuestions')
-						.withIndex('by_status_and_propertySlug_and_score', (q) =>
-							q.eq('status', 'active').eq('propertySlug', session.propertySlug)
-						)
-						.order('desc')
-						.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT)
-				: Promise.resolve([]),
-			ctx.db
-				.query('chatQuestionInteractions')
-				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-				.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT)
-		]);
-		const clickedCuratedIds = new Set(
+		const interactions = await ctx.db
+			.query('chatStaticSuggestionInteractions')
+			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+			.take(SCORE_ORDERED_CANDIDATE_SCAN_LIMIT);
+		const hiddenSuggestionKeys = new Set(
 			interactions
-				.filter((interaction) => interaction.clickedAt)
-				.map((interaction) => interaction.questionId)
+				.filter((interaction) => interaction.shownAt || interaction.clickedAt)
+				.map((interaction) => interaction.suggestionKey)
 		);
-		const curatedQuestions = [...globalCuratedQuestions, ...propertyCuratedQuestions];
+		const seenCandidateKeys = new Set<string>();
+		const selected = [];
+		for (const suggestionId of args.candidateSuggestionIds) {
+			const trimmed = suggestionId.trim();
+			if (!trimmed || seenCandidateKeys.has(trimmed) || hiddenSuggestionKeys.has(trimmed)) {
+				continue;
+			}
+			seenCandidateKeys.add(trimmed);
+			selected.push({ source: 'static' as const, suggestionId: trimmed });
+			if (selected.length >= limit) break;
+		}
 
-		const selected = selectRankedSuggestedQuestions({
-			candidates: [
-				...activeQuestions.map((question) => ({
-				...question,
-					_id: question._id,
-					source: 'generated' as const,
-					suggestionId: question._id
-				})),
-				...curatedQuestions.map((question) => ({
-					...question,
-					_id: question._id,
-					source: 'curated' as const,
-					suggestionId: question._id,
-					status: clickedCuratedIds.has(question._id) ? ('clicked' as const) : question.status
-				}))
-			],
-			askedQuestions: messages
-				.filter((message) => message.role === 'user')
-				.map((message) => message.content),
-			clickedQuestions: clickedQuestions.flatMap((question) => [
-				question.question,
-				...Object.values(question.translations ?? {})
-			]),
-			limit
-		});
-
-		return selected.map((question) => {
-			const isCurated = question.source === 'curated';
-			const answerMode = isCurated
-				? (question.answerMode ?? (question.answer ? 'static' : 'dynamic'))
-				: undefined;
-			return {
-				...question,
-				question: getSuggestedQuestionForLocale(question, locale),
-				...(isCurated
-					? {
-							answerMode,
-							answer: answerMode === 'static' ? getSuggestedAnswerForLocale(question, locale) : undefined,
-							dynamicIntent: answerMode === 'dynamic' ? question.dynamicIntent : undefined
-						}
-					: {})
-			};
-		});
+		return selected;
 	}
 });
 
@@ -1161,10 +716,31 @@ export const markShown = mutation({
 		const now = Date.now();
 		let updated = 0;
 		for (const suggestionRef of args.suggestions.slice(0, 5)) {
-			if (suggestionRef.source === 'generated') {
-				const suggestion = await ctx.db.get(suggestionRef.suggestionId);
-				if (!suggestion || suggestion.sessionId !== args.sessionId || suggestion.shownAt) continue;
-				await ctx.db.patch(suggestionRef.suggestionId, { shownAt: now });
+			if (suggestionRef.source === 'static') {
+				const suggestionKey = suggestionRef.suggestionId.trim();
+				if (!suggestionKey) continue;
+				const existing = await ctx.db
+					.query('chatStaticSuggestionInteractions')
+					.withIndex('by_session_and_suggestionKey', (q) =>
+						q.eq('sessionId', args.sessionId).eq('suggestionKey', suggestionKey)
+					)
+					.take(1);
+				const interaction = existing[0];
+				if (interaction?.shownAt) continue;
+				if (interaction) {
+					await ctx.db.patch(interaction._id, {
+						shownAt: now,
+						updatedAt: now
+					});
+				} else {
+					await ctx.db.insert('chatStaticSuggestionInteractions', {
+						sessionId: args.sessionId,
+						suggestionKey,
+						shownAt: now,
+						createdAt: now,
+						updatedAt: now
+					});
+				}
 				updated++;
 				continue;
 			}
@@ -1201,13 +777,32 @@ export const markClicked = mutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
-		if (args.suggestion.source === 'generated') {
-			const suggestion = await ctx.db.get(args.suggestion.suggestionId);
-			if (!suggestion || suggestion.sessionId !== args.sessionId) return { clicked: false };
-			await ctx.db.patch(args.suggestion.suggestionId, {
-				status: 'clicked',
-				clickedAt: now
-			});
+		if (args.suggestion.source === 'static') {
+			const suggestionKey = args.suggestion.suggestionId.trim();
+			if (!suggestionKey) return { clicked: false };
+			const existing = await ctx.db
+				.query('chatStaticSuggestionInteractions')
+				.withIndex('by_session_and_suggestionKey', (q) =>
+					q.eq('sessionId', args.sessionId).eq('suggestionKey', suggestionKey)
+				)
+				.take(1);
+			const interaction = existing[0];
+			if (interaction) {
+				await ctx.db.patch(interaction._id, {
+					shownAt: interaction.shownAt ?? now,
+					clickedAt: now,
+					updatedAt: now
+				});
+			} else {
+				await ctx.db.insert('chatStaticSuggestionInteractions', {
+					sessionId: args.sessionId,
+					suggestionKey,
+					shownAt: now,
+					clickedAt: now,
+					createdAt: now,
+					updatedAt: now
+				});
+			}
 			return { clicked: true };
 		}
 
@@ -1235,224 +830,5 @@ export const markClicked = mutation({
 			});
 		}
 		return { clicked: true };
-	}
-});
-
-async function backfillGeneratedSuggestionTranslations(
-	ctx: MutationCtx,
-	args: { limit?: number }
-) {
-	await requireAdmin(ctx);
-
-	const limit = Math.min(Math.max(args.limit ?? 100, 1), 200);
-	const questions = await ctx.db
-		.query('chatSuggestedQuestions')
-		.withIndex('by_created_at')
-		.order('desc')
-		.take(limit);
-	let updated = 0;
-
-	for (const question of questions) {
-		const translations = getSeedTranslations(question.question);
-		if (!translations) continue;
-		if (sameGeneratedTranslations(question.translations, translations)) continue;
-
-		await ctx.db.patch(question._id, {
-			translations
-		});
-		updated++;
-	}
-
-	return { scanned: questions.length, updated };
-}
-
-export const adminBackfillGeneratedSuggestionTranslations = mutation({
-	args: {
-		limit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		return await backfillGeneratedSuggestionTranslations(ctx, args);
-	}
-});
-
-export const listMissingGeneratedSuggestionTranslations = internalQuery({
-	args: {
-		locale: v.string(),
-		limit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		const locale = normalizeSuggestionLocale(args.locale);
-		if (locale === 'en') return [];
-
-		const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
-		const questions = await ctx.db
-			.query('chatSuggestedQuestions')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(limit);
-
-		return questions
-			.filter((question) => {
-				const translated = question.translations?.[locale]?.trim();
-				return !translated || translated === question.question.trim();
-			})
-			.map((question) => ({
-				_id: question._id,
-				question: question.question,
-				translations: question.translations
-			}));
-	}
-});
-
-export const patchGeneratedSuggestionTranslations = internalMutation({
-	args: {
-		locale: v.string(),
-		patches: v.array(
-			v.object({
-				questionId: v.id('chatSuggestedQuestions'),
-				translation: v.string()
-			})
-		)
-	},
-	handler: async (ctx, args) => {
-		const locale = normalizeSuggestionLocale(args.locale);
-		if (locale === 'en') return { updated: 0 };
-
-		let updated = 0;
-		for (const patch of args.patches) {
-			const translation = patch.translation.trim();
-			if (!translation || translation.length > 160) continue;
-
-			const question = await ctx.db.get(patch.questionId);
-			if (!question) continue;
-
-			await ctx.db.patch(question._id, {
-				translations: {
-					en: question.question,
-					...(question.translations ?? {}),
-					[locale]: translation
-				}
-			});
-			updated++;
-		}
-
-		return { updated };
-	}
-});
-
-export const adminTranslateMissingGeneratedSuggestions = action({
-	args: {
-		locale: v.string(),
-		limit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const locale = normalizeSuggestionLocale(args.locale);
-		if (locale === 'en') return { locale, scanned: 0, updated: 0 };
-
-		const missingRows: Array<{
-			_id: Id<'chatSuggestedQuestions'>;
-			question: string;
-			translations?: Record<string, string>;
-		}> = await ctx.runQuery(internal.chatSuggestions.listMissingGeneratedSuggestionTranslations, {
-			locale,
-			limit: args.limit
-		});
-
-		if (missingRows.length === 0) return { locale, scanned: 0, updated: 0 };
-
-		const seedPatches = missingRows.flatMap((row) => {
-			const seedTranslation = getSeedTranslations(row.question)?.[locale]?.trim();
-			return seedTranslation ? [{ questionId: row._id, translation: seedTranslation }] : [];
-		});
-		const rowsNeedingAi = missingRows.filter(
-			(row) => !seedPatches.some((patch) => patch.questionId === row._id)
-		);
-
-		let aiPatches: Array<{ questionId: Id<'chatSuggestedQuestions'>; translation: string }> = [];
-		if (rowsNeedingAi.length > 0) {
-			const apiKey = process.env.AI_API_KEY;
-			if (!apiKey && seedPatches.length === 0) {
-				throw new Error('AI_API_KEY is required to translate generated suggestions');
-			}
-
-			if (apiKey) {
-				const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-				const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
-				const messages: ChatMessage[] = [
-					{
-						role: 'system',
-						content:
-							'You translate short concierge chatbot suggestion questions. Return compact JSON only.'
-					},
-					{
-						role: 'user',
-						content: `Source language: English
-Target locale: ${locale}
-Questions:
-${rowsNeedingAi.map((row, index) => `${index}. ${row.question}`).join('\n')}
-
-Return exactly this JSON shape:
-{
-  "translations": [
-    { "index": 0, "translation": "translated question" }
-  ]
-}
-
-Rules:
-- Include one item for every question index.
-- Keep villa names, property slugs, prices, dates, currency symbols, URLs, emails, phone numbers, WhatsApp, LINE, and booking rules factually unchanged.
-- Translate only human-readable prose.
-- Each translation must be 160 characters or fewer.`
-					}
-				];
-				const response = await callAI(apiBase, apiKey, model, messages, []);
-				const translations = parseGeneratedSuggestionTranslations(response.content, locale);
-				aiPatches = rowsNeedingAi.flatMap((row, index) => {
-					const translation = translations.get(index);
-					return translation ? [{ questionId: row._id, translation }] : [];
-				});
-			}
-		}
-
-		const patches = [...seedPatches, ...aiPatches];
-		if (patches.length === 0) {
-			return { locale, scanned: missingRows.length, updated: 0 };
-		}
-
-		const result: { updated: number } = await ctx.runMutation(
-			internal.chatSuggestions.patchGeneratedSuggestionTranslations,
-			{ locale, patches }
-		);
-
-		return { locale, scanned: missingRows.length, updated: result.updated };
-	}
-});
-
-export const adminList = query({
-	args: {
-		limit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-
-		const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
-		const questions = await ctx.db
-			.query('chatSuggestedQuestions')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(limit);
-
-		return await Promise.all(
-			questions.map(async (question) => {
-				const session = await ctx.db.get(question.sessionId);
-				return {
-					...question,
-					propertySlug: question.propertySlug ?? session?.propertySlug,
-					visitorId: session?.visitorId,
-					currentPath: session?.currentPath
-				};
-			})
-		);
 	}
 });

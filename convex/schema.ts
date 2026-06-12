@@ -403,6 +403,17 @@ export default defineSchema({
 		.index('by_created_at', ['createdAt'])
 		.index('by_status_and_created_at', ['status', 'createdAt']),
 
+	chatStaticSuggestionInteractions: defineTable({
+		sessionId: v.id('chatSessions'),
+		suggestionKey: v.string(),
+		shownAt: v.optional(v.number()),
+		clickedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_session', ['sessionId'])
+		.index('by_session_and_suggestionKey', ['sessionId', 'suggestionKey']),
+
 	curatedChatQuestions: defineTable({
 		question: v.string(),
 		normalizedQuestion: v.string(),

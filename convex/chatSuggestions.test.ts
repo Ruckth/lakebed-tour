@@ -187,7 +187,7 @@ describe("chatSuggestions.nextForSession", () => {
     }
   });
 
-  it("returns localized static answers and dynamic intent metadata for curated questions", async () => {
+  it("keeps curated answers resolved through exact matches, not public static chips", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
       const t = convexTest(schema, modules);
@@ -221,25 +221,39 @@ describe("chatSuggestions.nextForSession", () => {
         });
       });
 
-      const selected = await t.query(api.chatSuggestions.nextForSession, {
+      const exactStatic = await t.query(api.chatSuggestions.resolveCuratedExact, {
         sessionId,
+        messageText: "Is this place real?",
         locale: "th",
+      });
+      const exactDynamic = await t.query(api.chatSuggestions.resolveCuratedExact, {
+        sessionId,
+        messageText: "What is the direct booking price?",
+        locale: "en",
+      });
+      const chips = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 5,
       });
 
-      expect(selected[0]).toMatchObject({
+      expect(exactStatic).toMatchObject({
         question: "ที่พักนี้มีอยู่จริงไหม?",
         answer: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา",
         answerMode: "static",
-        source: "curated",
+        source: "exact",
       });
-      expect(selected[1]).toMatchObject({
+      expect(exactDynamic).toMatchObject({
         question: "What is the direct booking price?",
         answerMode: "dynamic",
         dynamicIntent: "pricing",
-        source: "curated",
+        source: "exact",
       });
-      expect(selected[1]).not.toHaveProperty("answer");
+      expect(exactDynamic).not.toHaveProperty("answer");
+      expect(chips).toEqual([
+        { source: "static", suggestionId: "availability" },
+        { source: "static", suggestionId: "totalPrice" },
+      ]);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -526,55 +540,28 @@ describe("chatSuggestions.nextForSession", () => {
     }
   });
 
-  it("merges active curated questions into public ranked suggestions", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    try {
-      const t = convexTest(schema, modules);
-      const admin = adminTest(t);
-      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
-        question: "Can I check availability for my dates?",
-        translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
-        topic: "availability",
-        score: 99,
+  it("returns ordered static suggestion keys for a session", async () => {
+    const t = convexTest(schema, modules);
+    const now = 1_700_000_000_000;
+    const sessionId = await t.run(async (ctx) => {
+      return await ctx.db.insert("chatSessions", {
+        channel: "web",
+        visitorId: "visitor-static-suggestions",
+        lastSeenAt: now,
+        createdAt: now,
       });
-      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
-        question: "Can I tour the Pool Villa before booking?",
-        topic: "tour",
-        score: 98,
-        propertySlug: "pool-villa",
-      });
-      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
-        question: "Should not show for this property?",
-        topic: "villa_fit",
-        score: 100,
-        propertySlug: "garden-villa",
-      });
+    });
 
-      const now = 1_700_000_000_000;
-      const sessionId = await t.run(async (ctx) => {
-        return await ctx.db.insert("chatSessions", {
-          channel: "web",
-          visitorId: "visitor-curated",
-          propertySlug: "pool-villa",
-          lastSeenAt: now,
-          createdAt: now,
-        });
-      });
+    const selected = await t.query(api.chatSuggestions.nextForSession, {
+      sessionId,
+      candidateSuggestionIds: ["availability", "totalPrice", "direct"],
+      limit: 2,
+    });
 
-      const selected = await t.query(api.chatSuggestions.nextForSession, {
-        sessionId,
-        locale: "th",
-        limit: 5,
-      });
-
-      expect(selected.map((question) => question.question)).toEqual([
-        "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-        "Can I tour the Pool Villa before booking?",
-      ]);
-      expect(selected.map((question) => question.source)).toEqual(["curated", "curated"]);
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    expect(selected).toEqual([
+      { source: "static", suggestionId: "availability" },
+      { source: "static", suggestionId: "totalPrice" },
+    ]);
   });
 
   it("tracks curated clicks per session without archiving the global question", async () => {
@@ -608,362 +595,116 @@ describe("chatSuggestions.nextForSession", () => {
         sessionId: firstSessionId,
         suggestion: { source: "curated", suggestionId: questionId },
       });
-
-      const firstSelected = await t.query(api.chatSuggestions.nextForSession, {
-        sessionId: firstSessionId,
-        limit: 5,
-      });
-      const secondSelected = await t.query(api.chatSuggestions.nextForSession, {
-        sessionId: secondSessionId,
-        limit: 5,
-      });
       const rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      const interactions = await t.run(async (ctx) => {
+        return await ctx.db
+          .query("chatQuestionInteractions")
+          .withIndex("by_session_and_question", (q) =>
+            q.eq("sessionId", firstSessionId).eq("questionId", questionId),
+          )
+          .take(1);
+      });
 
-      expect(firstSelected.map((question) => question.question)).toEqual([]);
-      expect(secondSelected.map((question) => question.question)).toEqual([
-        "Can I check availability for my dates?",
-      ]);
+      expect(interactions[0]?.clickedAt).toBeTruthy();
       expect(rows[0]?.status).toBe("active");
+      expect(secondSessionId).toBeTruthy();
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
-  it("excludes previously asked questions and returns the top two scores", async () => {
+  it("does not return static suggestion keys that were already shown", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;
     const sessionId = await t.run(async (ctx) => {
-      const session = await ctx.db.insert("chatSessions", {
+      return await ctx.db.insert("chatSessions", {
         channel: "web",
-        visitorId: "visitor-test",
+        visitorId: "visitor-static-repeat",
         lastSeenAt: now,
         createdAt: now,
       });
-      await ctx.db.insert("chatMessages", {
-        sessionId: session,
-        role: "user",
-        content: "What's included when booking direct?",
-        timestamp: now + 1,
-      });
-      const assistantMessage = await ctx.db.insert("chatMessages", {
-        sessionId: session,
-        role: "assistant",
-        content: "Direct booking includes host support and better pricing.",
-        timestamp: now + 2,
-      });
-
-      const lowScoreCandidates = Array.from({ length: 105 }, (_, index) => ({
-        question: `Low priority question ${index + 1}?`,
-        score: 10,
-      }));
-      const candidates = [
-        ...lowScoreCandidates,
-        { question: "What is included when booking direct?", score: 100 },
-        { question: "Can I check availability for my dates?", score: 95 },
-        { question: "Which villa fits my group best?", score: 87 },
-        { question: "Can I see the villa in 360?", score: 76 },
-      ];
-
-      for (const candidate of candidates) {
-        await ctx.db.insert("chatSuggestedQuestions", {
-          sessionId: session,
-          assistantMessageId: assistantMessage,
-          question: candidate.question,
-          normalizedQuestion: normalizeSuggestedQuestion(candidate.question),
-          locale: "en",
-          topic: "availability",
-          score: candidate.score,
-          status: "active",
-          createdAt: now + candidate.score,
-        });
-      }
-
-      return session;
     });
-
-    const selected = await t.query(api.chatSuggestions.nextForSession, {
+    const firstSelected = await t.query(api.chatSuggestions.nextForSession, {
       sessionId,
+      candidateSuggestionIds: ["availability", "totalPrice", "direct"],
+      limit: 2,
+    });
+    await t.mutation(api.chatSuggestions.markShown, {
+      sessionId,
+      suggestions: firstSelected,
+    });
+    const secondSelected = await t.query(api.chatSuggestions.nextForSession, {
+      sessionId,
+      candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
     });
 
-    expect(selected.map((question) => question.question)).toEqual([
-      "Can I check availability for my dates?",
-      "Which villa fits my group best?",
+    expect(firstSelected.map((suggestion) => suggestion.suggestionId)).toEqual([
+      "availability",
+      "totalPrice",
     ]);
+    expect(secondSelected.map((suggestion) => suggestion.suggestionId)).toEqual(["direct"]);
   });
 
-  it("returns the requested locale question when translations exist", async () => {
+  it("records static suggestion clicks and hides clicked keys", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;
     const sessionId = await t.run(async (ctx) => {
-      const session = await ctx.db.insert("chatSessions", {
+      return await ctx.db.insert("chatSessions", {
         channel: "web",
-        visitorId: "visitor-locale",
+        visitorId: "visitor-static-click",
         lastSeenAt: now,
         createdAt: now,
       });
-      const assistantMessage = await ctx.db.insert("chatMessages", {
-        sessionId: session,
-        role: "assistant",
-        content: "Direct booking includes better pricing.",
-        timestamp: now + 1,
-      });
-
-      await ctx.db.insert("chatSuggestedQuestions", {
-        sessionId: session,
-        assistantMessageId: assistantMessage,
-        question: "Can I check availability for my dates?",
-        normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
-        translations: {
-          en: "Wrong English should not override the canonical question",
-          th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-        },
-        locale: "en",
-        topic: "availability",
-        score: 95,
-        status: "active",
-        createdAt: now + 2,
-      });
-
-      return session;
     });
 
+    await t.mutation(api.chatSuggestions.markClicked, {
+      sessionId,
+      suggestion: { source: "static", suggestionId: "availability" },
+    });
     const selected = await t.query(api.chatSuggestions.nextForSession, {
       sessionId,
-      locale: "th",
-      limit: 1,
+      candidateSuggestionIds: ["availability", "totalPrice"],
+      limit: 2,
     });
-
-    expect(selected.map((question) => question.question)).toEqual([
-      "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-    ]);
-
-    const englishSelected = await t.query(api.chatSuggestions.nextForSession, {
-      sessionId,
-      locale: "en",
-      limit: 1,
-    });
-
-    expect(englishSelected.map((question) => question.question)).toEqual([
-      "Can I check availability for my dates?",
-    ]);
-  });
-
-  it("stores generated Thai translations without faking missing Thai as English", async () => {
-    const t = convexTest(schema, modules);
-    const now = 1_700_000_000_000;
-    const { sessionId, assistantMessageId } = await t.run(async (ctx) => {
-      const sessionId = await ctx.db.insert("chatSessions", {
-        channel: "web",
-        visitorId: "visitor-generated-thai-storage",
-        lastSeenAt: now,
-        createdAt: now,
-      });
-      const assistantMessageId = await ctx.db.insert("chatMessages", {
-        sessionId,
-        role: "assistant",
-        content: "Direct booking includes host support.",
-        timestamp: now + 1,
-      });
-      return { sessionId, assistantMessageId };
-    });
-
-    await t.mutation(internal.chatSuggestions.storeGenerated, {
-      sessionId,
-      assistantMessageId,
-      locale: "th",
-      candidates: [
-        {
-          question: "Can I check availability for my dates?",
-          translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
-          topic: "availability",
-          score: 95,
-        },
-        {
-          question: "Can I message the host on WhatsApp?",
-          topic: "contact",
-          score: 80,
-        },
-      ],
-    });
-
-    const rows = await t.run(async (ctx) => {
+    const interactions = await t.run(async (ctx) => {
       return await ctx.db
-        .query("chatSuggestedQuestions")
-        .withIndex("by_session_and_assistant", (q) =>
-          q.eq("sessionId", sessionId).eq("assistantMessageId", assistantMessageId),
+        .query("chatStaticSuggestionInteractions")
+        .withIndex("by_session_and_suggestionKey", (q) =>
+          q.eq("sessionId", sessionId).eq("suggestionKey", "availability"),
         )
-        .take(10);
+        .take(1);
     });
 
-    expect(rows.find((row) => row.question === "Can I check availability for my dates?")?.translations).toMatchObject({
-      en: "Can I check availability for my dates?",
-      th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-    });
-    expect(rows.find((row) => row.question === "Can I message the host on WhatsApp?")?.translations).toEqual({
-      en: "Can I message the host on WhatsApp?",
-    });
+    expect(interactions[0]?.shownAt).toBeTruthy();
+    expect(interactions[0]?.clickedAt).toBeTruthy();
+    expect(selected).toEqual([{ source: "static", suggestionId: "totalPrice" }]);
   });
 
-  it("backfills all locales for existing generated fallback suggestions", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    try {
-      const t = convexTest(schema, modules);
-      const admin = adminTest(t);
-      const now = 1_700_000_000_000;
-      const suggestionId = await t.run(async (ctx) => {
-        const sessionId = await ctx.db.insert("chatSessions", {
-          channel: "web",
-          visitorId: "visitor-generated-thai-backfill",
-          lastSeenAt: now,
-          createdAt: now,
-        });
-        const assistantMessageId = await ctx.db.insert("chatMessages", {
-          sessionId,
-          role: "assistant",
-          content: "Direct booking includes host support.",
-          timestamp: now + 1,
-        });
-        return await ctx.db.insert("chatSuggestedQuestions", {
-          sessionId,
-          assistantMessageId,
-          question: "Can I check availability for my dates?",
-          normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
-          translations: {
-            en: "Can I check availability for my dates?",
-            th: "Can I check availability for my dates?",
-          },
-          locale: "en",
-          topic: "availability",
-          score: 95,
-          status: "active",
-          createdAt: now + 2,
-        });
-      });
-
-      const result = await admin.mutation(api.chatSuggestions.adminBackfillGeneratedSuggestionTranslations, {
-        limit: 20,
-      });
-      const updated = await t.run(async (ctx) => await ctx.db.get(suggestionId));
-
-      expect(result.updated).toBe(1);
-      expectAllSupportedLocaleTranslations(updated?.translations);
-      expect(updated?.translations?.th).toBe("ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?");
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("translates missing generated suggestion locales through the admin action", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    try {
-      const t = convexTest(schema, modules);
-      const admin = adminTest(t);
-      const now = 1_700_000_000_000;
-      const suggestionId = await t.run(async (ctx) => {
-        const sessionId = await ctx.db.insert("chatSessions", {
-          channel: "web",
-          visitorId: "visitor-generated-translation",
-          lastSeenAt: now,
-          createdAt: now,
-        });
-        const assistantMessageId = await ctx.db.insert("chatMessages", {
-          sessionId,
-          role: "assistant",
-          content: "You can open the 360 tour from the villa page.",
-          timestamp: now + 1,
-        });
-        return await ctx.db.insert("chatSuggestedQuestions", {
-          sessionId,
-          assistantMessageId,
-          question: "Can I see the villa in 360?",
-          normalizedQuestion: normalizeSuggestedQuestion("Can I see the villa in 360?"),
-          translations: {
-            en: "Can I see the villa in 360?",
-          },
-          locale: "en",
-          topic: "tour",
-          score: 94,
-          status: "active",
-          createdAt: now + 2,
-        });
-      });
-
-      const result = await admin.action(api.chatSuggestions.adminTranslateMissingGeneratedSuggestions, {
-        locale: "ko",
-        limit: 20,
-      });
-      const updated = await t.run(async (ctx) => await ctx.db.get(suggestionId));
-
-      expect(result).toEqual({ locale: "ko", scanned: 1, updated: 1 });
-      expect(updated?.translations?.ko).toBe("빌라를 360도로 볼 수 있나요?");
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("blocks repeats across translated variants and falls back for older rows", async () => {
+  it("returns no static suggestions after every candidate has been shown", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;
     const sessionId = await t.run(async (ctx) => {
-      const session = await ctx.db.insert("chatSessions", {
+      return await ctx.db.insert("chatSessions", {
         channel: "web",
-        visitorId: "visitor-repeat",
+        visitorId: "visitor-static-exhausted",
         lastSeenAt: now,
         createdAt: now,
       });
-      await ctx.db.insert("chatMessages", {
-        sessionId: session,
-        role: "user",
-        content: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-        timestamp: now + 1,
-      });
-      const assistantMessage = await ctx.db.insert("chatMessages", {
-        sessionId: session,
-        role: "assistant",
-        content: "Use the booking card to choose dates.",
-        timestamp: now + 2,
-      });
-
-      await ctx.db.insert("chatSuggestedQuestions", {
-        sessionId: session,
-        assistantMessageId: assistantMessage,
-        question: "Can I check availability for my dates?",
-        normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
-        translations: {
-          en: "Can I check availability for my dates?",
-          th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-        },
-        locale: "en",
-        topic: "availability",
-        score: 99,
-        status: "active",
-        createdAt: now + 3,
-      });
-      await ctx.db.insert("chatSuggestedQuestions", {
-        sessionId: session,
-        assistantMessageId: assistantMessage,
-        question: "Which villa fits my group best?",
-        normalizedQuestion: normalizeSuggestedQuestion("Which villa fits my group best?"),
-        locale: "en",
-        topic: "villa_fit",
-        score: 80,
-        status: "active",
-        createdAt: now + 4,
-      });
-
-      return session;
     });
+    const candidates = ["availability", "totalPrice"];
 
+    await t.mutation(api.chatSuggestions.markShown, {
+      sessionId,
+      suggestions: candidates.map((suggestionId) => ({ source: "static" as const, suggestionId })),
+    });
     const selected = await t.query(api.chatSuggestions.nextForSession, {
       sessionId,
-      locale: "th",
+      candidateSuggestionIds: candidates,
       limit: 2,
     });
 
-    expect(selected.map((question) => question.question)).toEqual([
-      "Which villa fits my group best?",
-    ]);
+    expect(selected).toEqual([]);
   });
 
   it("does not generate ranked suggestions from public assistant messages", async () => {
@@ -990,15 +731,19 @@ describe("chatSuggestions.nextForSession", () => {
 
       const selected = await t.query(api.chatSuggestions.nextForSession, {
         sessionId,
+        candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 5,
       });
-      expect(selected).toEqual([]);
+      expect(selected).toEqual([
+        { source: "static", suggestionId: "availability" },
+        { source: "static", suggestionId: "totalPrice" },
+      ]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("generates ranked suggestions from trusted internal assistant messages", async () => {
+  it("does not store generated suggestions from trusted internal assistant messages", async () => {
     vi.useFakeTimers();
     vi.stubEnv("AI_API_KEY", "");
     try {
@@ -1023,61 +768,21 @@ describe("chatSuggestions.nextForSession", () => {
 
       const selected = await t.query(api.chatSuggestions.nextForSession, {
         sessionId,
+        candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 2,
       });
-      expect(selected.map((question) => question.question)).toEqual([
-        "Can I check availability for my dates?",
-        "Can I message the host on WhatsApp?",
-      ]);
-    } finally {
-      vi.unstubAllEnvs();
-      vi.useRealTimers();
-    }
-  });
-
-  it("generates Thai fallback suggestions from trusted internal assistant messages", async () => {
-    vi.useFakeTimers();
-    vi.stubEnv("AI_API_KEY", "");
-    try {
-      const t = convexTest(schema, modules);
-      const sessionId = await t.mutation(api.chat.createSession, {
-        channel: "web",
-        visitorId: "visitor-internal-assistant-thai",
-      });
-      const userMessageId = await t.mutation(api.chat.addMessage, {
-        sessionId,
-        role: "user",
-        content: "What's included when booking direct?",
-      });
-
-      await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
-        sessionId,
-        content: "Direct booking includes host support and better pricing.",
-        locale: "th",
-        replyToMessageId: userMessageId,
-      });
-      await finishScheduledWork(t);
-
-      const selected = await t.query(api.chatSuggestions.nextForSession, {
-        sessionId,
-        locale: "th",
-        limit: 2,
-      });
-      expect(selected.map((question) => question.question)).toEqual([
-        "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
-        "ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?",
-      ]);
-
       const generatedRows = await t.run(async (ctx) => {
         return await ctx.db
           .query("chatSuggestedQuestions")
           .withIndex("by_session_and_status", (q) => q.eq("sessionId", sessionId).eq("status", "active"))
           .take(10);
       });
-      expect(generatedRows).toHaveLength(4);
-      for (const row of generatedRows) {
-        expectAllSupportedLocaleTranslations(row.translations);
-      }
+
+      expect(selected).toEqual([
+        { source: "static", suggestionId: "availability" },
+        { source: "static", suggestionId: "totalPrice" },
+      ]);
+      expect(generatedRows).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
       vi.useRealTimers();

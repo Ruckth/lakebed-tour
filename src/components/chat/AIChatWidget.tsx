@@ -39,7 +39,6 @@ import {
   markChatSuggestionClicked,
   markChatSuggestionsShown,
   touchChatSession,
-  type RankedChatSuggestion,
 } from "@/lib/react/convex-api";
 import {
   selectChatSuggestions,
@@ -77,19 +76,7 @@ type Message = { role: "user" | "assistant"; content: string; action?: ChatActio
 type ContactApp = "whatsapp" | "line";
 type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
 type StaticChatSuggestion = ChatSuggestionCandidate & { answer: string; source: "static" };
-type RankedVisibleSuggestion = {
-  id: string;
-  text: string;
-  source: "ranked";
-  suggestionSource: RankedChatSuggestion["source"];
-  suggestionId: RankedChatSuggestion["suggestionId"];
-  answer?: string;
-  answerMode?: RankedChatSuggestion["answerMode"];
-  dynamicIntent?: RankedChatSuggestion["dynamicIntent"];
-  topic: string;
-  score: number;
-};
-type ChatSuggestion = StaticChatSuggestion | RankedVisibleSuggestion;
+type ChatSuggestion = StaticChatSuggestion;
 type ChatExperienceMode = "overlay" | "page";
 type FooterFocusScope = "composer" | "contact" | null;
 type KeyboardLayoutMode = "none" | "resizedViewport" | "overlayInset" | "overlayFallback";
@@ -163,10 +150,6 @@ function renderMessage(content: string) {
       </span>
     );
   });
-}
-
-function normalizeSuggestionText(value: string) {
-  return value.trim().toLocaleLowerCase();
 }
 
 function getOrCreateVisitorId() {
@@ -677,7 +660,7 @@ function ChatExperience({
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(null);
-  const [rankedSuggestions, setRankedSuggestions] = useState<RankedChatSuggestion[]>([]);
+  const [trackedSuggestionIds, setTrackedSuggestionIds] = useState<ChatSuggestionId[] | null>(null);
   const [contactForm, setContactForm] = useState<ContactForm>({
     email: "",
     preferredApp: "whatsapp",
@@ -803,7 +786,7 @@ function ChatExperience({
     ],
     [t],
   );
-  const staticVisibleSuggestions = useMemo(
+  const orderedStaticSuggestions = useMemo(
     () =>
       selectChatSuggestions({
         candidates: suggestions,
@@ -811,35 +794,22 @@ function ChatExperience({
         latestUserMessage: latestExchange?.userMessage,
         latestAssistantMessage: latestExchange?.assistantMessage,
         clickedSuggestionId: latestExchange?.clickedSuggestionId,
+        limit: suggestions.length,
       }) as StaticChatSuggestion[],
     [activePropertySlug, latestExchange, suggestions],
   );
-  const rankedVisibleSuggestions = useMemo(
-    (): RankedVisibleSuggestion[] =>
-      rankedSuggestions.map((suggestion) => ({
-        id: suggestion._id,
-        text: suggestion.question,
-        source: "ranked",
-        suggestionSource: suggestion.source,
-        suggestionId: suggestion.suggestionId,
-        answer: suggestion.answer,
-        answerMode: suggestion.answerMode,
-        dynamicIntent: suggestion.dynamicIntent,
-        topic: suggestion.topic,
-        score: suggestion.score,
-      })),
-    [rankedSuggestions],
+  const visibleSuggestionLimit = latestExchange?.assistantMessage ? VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT : 6;
+  const fallbackVisibleSuggestions = useMemo(
+    () => orderedStaticSuggestions.slice(0, visibleSuggestionLimit),
+    [orderedStaticSuggestions, visibleSuggestionLimit],
   );
   const visibleSuggestions = useMemo((): ChatSuggestion[] => {
-    if (rankedVisibleSuggestions.length === 0) return staticVisibleSuggestions;
-
-    const seen = new Set(rankedVisibleSuggestions.map((suggestion) => normalizeSuggestionText(suggestion.text)));
-    const staticTopUp = staticVisibleSuggestions
-      .filter((suggestion) => !seen.has(normalizeSuggestionText(suggestion.text)))
-      .slice(0, Math.max(0, VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT - rankedVisibleSuggestions.length));
-
-    return [...rankedVisibleSuggestions, ...staticTopUp];
-  }, [rankedVisibleSuggestions, staticVisibleSuggestions]);
+    if (!trackedSuggestionIds) return fallbackVisibleSuggestions;
+    const byId = new Map(suggestions.map((suggestion) => [suggestion.id, suggestion]));
+    return trackedSuggestionIds
+      .map((id) => byId.get(id))
+      .filter((suggestion): suggestion is StaticChatSuggestion => Boolean(suggestion));
+  }, [fallbackVisibleSuggestions, suggestions, trackedSuggestionIds]);
   const latestAssistantIndex = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "assistant") return index;
@@ -1107,54 +1077,8 @@ function ChatExperience({
     if (previousPropertySlugRef.current === activePropertySlug) return;
     previousPropertySlugRef.current = activePropertySlug;
     setLatestExchange(null);
-    setRankedSuggestions([]);
+    setTrackedSuggestionIds(null);
   }, [activePropertySlug]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadRankedSuggestions() {
-      setRankedSuggestions([]);
-      if (!convex || !sessionId || !latestExchange?.assistantMessage) return;
-
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        if (attempt > 0) await wait(750);
-        try {
-          const nextSuggestions = await getNextChatSuggestions(convex, {
-            sessionId,
-            locale,
-            limit: 2,
-          });
-          if (cancelled) return;
-          if (nextSuggestions.length > 0) {
-            await markChatSuggestionsShown(convex, {
-              sessionId,
-              suggestions: nextSuggestions.map((suggestion) => ({
-                source: suggestion.source,
-                suggestionId: suggestion.suggestionId,
-              })),
-            }).catch(() => null);
-            if (cancelled) return;
-            setRankedSuggestions(nextSuggestions);
-            return;
-          }
-        } catch {
-          if (cancelled) return;
-        }
-      }
-    }
-
-    void loadRankedSuggestions();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    convex,
-    latestExchange?.assistantMessage,
-    latestExchange?.userMessage,
-    locale,
-    sessionId,
-  ]);
 
   const createFreshSession = useCallback(async (generation = chatGenerationRef.current) => {
     if (!convex) return null;
@@ -1323,6 +1247,52 @@ function ChatExperience({
   );
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadTrackedStaticSuggestions() {
+      setTrackedSuggestionIds(null);
+      if (!convex || !sessionId || orderedStaticSuggestions.length === 0) return;
+
+      try {
+        const nextSuggestions = await getNextChatSuggestions(convex, {
+          sessionId,
+          candidateSuggestionIds: orderedStaticSuggestions.map((suggestion) => suggestion.id),
+          limit: visibleSuggestionLimit,
+        });
+        if (cancelled) return;
+
+        if (nextSuggestions.length > 0) {
+          await markChatSuggestionsShown(convex, {
+            sessionId,
+            suggestions: nextSuggestions,
+          }).catch(() => null);
+          if (cancelled) return;
+        }
+
+        const validIds = new Set(suggestions.map((suggestion) => suggestion.id));
+        setTrackedSuggestionIds(
+          nextSuggestions
+            .map((suggestion) => suggestion.suggestionId)
+            .filter((id): id is ChatSuggestionId => validIds.has(id as ChatSuggestionId)),
+        );
+      } catch {
+        if (!cancelled) setTrackedSuggestionIds(null);
+      }
+    }
+
+    void loadTrackedStaticSuggestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    convex,
+    orderedStaticSuggestions,
+    sessionId,
+    suggestions,
+    visibleSuggestionLimit,
+  ]);
+
+  useEffect(() => {
     if (mode !== "page" || !browserGateVisible || !messageCacheReady) return;
     if (browserGateAttemptedRef.current) return;
     browserGateAttemptedRef.current = true;
@@ -1421,7 +1391,7 @@ function ChatExperience({
     setSessionId(null);
     setMessages([]);
     setLatestExchange(null);
-    setRankedSuggestions([]);
+    setTrackedSuggestionIds(null);
     setInput("");
     setIsTyping(false);
     setContactStatus("idle");
@@ -1748,8 +1718,6 @@ function ChatExperience({
 
   async function sendMessage(inputOrSuggestion: string | ChatSuggestion) {
     const generation = chatGenerationRef.current;
-    const selectedSuggestion =
-      typeof inputOrSuggestion === "string" ? null : inputOrSuggestion;
     const text =
       typeof inputOrSuggestion === "string"
         ? inputOrSuggestion
@@ -1758,17 +1726,14 @@ function ChatExperience({
     if (!clean || chatInputDisabled) return;
     setInput("");
     setLatestExchange(null);
-    setRankedSuggestions([]);
+    setTrackedSuggestionIds(null);
     setMessages((items) => [...items, { role: "user", content: clean }]);
 
-    const rankedSuggestion =
-      selectedSuggestion?.source === "ranked" ? selectedSuggestion : null;
-    const preset = rankedSuggestion ? undefined : suggestions.find((item) => item.text === clean);
+    const preset = suggestions.find((item) => item.text === clean);
     const selectedActionHint = resolveChatActionHint({
       latestUserMessage: clean,
       activePropertySlug: activePropertySlug || undefined,
       clickedSuggestionId: preset?.id,
-      rankedSuggestionTopic: rankedSuggestion?.dynamicIntent ?? rankedSuggestion?.topic,
     });
     if (preset) {
       const assistantMessage = preset.answer;
@@ -1786,6 +1751,14 @@ function ChatExperience({
           const id = await ensureSession({ markOpen: true, generation });
           if (generation !== chatGenerationRef.current) return;
           if (id) {
+            await markChatSuggestionClicked(convex, {
+              sessionId: id,
+              suggestion: {
+                source: "static",
+                suggestionId: preset.id,
+              },
+            }).catch(() => null);
+            if (generation !== chatGenerationRef.current) return;
             await addChatMessage(convex, {
               sessionId: id,
               role: "user",
@@ -1801,49 +1774,6 @@ function ChatExperience({
           }
         } catch {
           // The visitor still sees the local answer if persistence is temporarily unavailable.
-        }
-      }
-      return;
-    }
-
-    if (rankedSuggestion?.answerMode === "static" && rankedSuggestion.answer?.trim()) {
-      const assistantMessage = rankedSuggestion.answer.trim();
-      setMessages((items) => [
-        ...items,
-        createAssistantMessage(assistantMessage, selectedActionHint),
-      ]);
-      setLatestExchange({
-        userMessage: clean,
-        assistantMessage,
-      });
-      if (convex) {
-        try {
-          const id = await ensureSession({ markOpen: true, generation });
-          if (generation !== chatGenerationRef.current) return;
-          if (id) {
-            await markChatSuggestionClicked(convex, {
-              sessionId: id,
-              suggestion: {
-                source: rankedSuggestion.suggestionSource,
-                suggestionId: rankedSuggestion.suggestionId,
-              },
-            }).catch(() => null);
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "user",
-              content: clean,
-            });
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "assistant",
-              content: assistantMessage,
-              ...(selectedActionHint ? { action: selectedActionHint } : {}),
-            });
-          }
-        } catch {
-          // The visitor still sees the saved answer if persistence is temporarily unavailable.
         }
       }
       return;
@@ -1878,16 +1808,6 @@ function ChatExperience({
       id = await ensureSession({ markOpen: true, generation });
       if (generation !== chatGenerationRef.current) return;
       if (!id) throw new Error("No chat session");
-      if (rankedSuggestion) {
-        await markChatSuggestionClicked(convex, {
-          sessionId: id,
-          suggestion: {
-            source: rankedSuggestion.suggestionSource,
-            suggestionId: rankedSuggestion.suggestionId,
-          },
-        }).catch(() => null);
-      }
-      if (generation !== chatGenerationRef.current) return;
       const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,

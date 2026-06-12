@@ -67,26 +67,17 @@ export type ChatTranscriptMessage = {
   timestamp?: number;
 };
 
-export type RankedChatSuggestion = {
-  _id: string;
-  source: "generated" | "curated";
+export type StaticChatSuggestionRef = {
+  source: "static";
   suggestionId: string;
-  question: string;
-  translations?: Record<string, string>;
-  answer?: string;
-  answerTranslations?: Record<string, string>;
-  answerMode?: "static" | "dynamic";
-  dynamicIntent?: "availability" | "pricing" | "property_details" | "booking_help" | "contact";
-  topic: string;
-  score: number;
-  locale: string;
-  status: "active" | "clicked" | "archived";
-  createdAt: number;
-  shownAt?: number;
-  clickedAt?: number;
 };
 
-export type RankedChatSuggestionRef = Pick<RankedChatSuggestion, "source" | "suggestionId">;
+export type ChatSuggestionRef =
+  | StaticChatSuggestionRef
+  | {
+      source: "curated";
+      suggestionId: string;
+    };
 
 export type ReusableChatSession = {
   _id: string;
@@ -314,17 +305,17 @@ export async function askConcierge(
 
 export async function getNextChatSuggestions(
   client: ConvexReactClient,
-  args: { sessionId: string; locale?: string; limit?: number },
+  args: { sessionId: string; candidateSuggestionIds: string[]; limit?: number },
 ) {
   return (await withConvexTimeout(
     client.query(api.chatSuggestions.nextForSession, args as never),
     "Loading suggested questions",
-  )) as RankedChatSuggestion[];
+  )) as StaticChatSuggestionRef[];
 }
 
 export async function markChatSuggestionsShown(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestions: RankedChatSuggestionRef[] },
+  args: { sessionId: string; suggestions: ChatSuggestionRef[] },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markShown, args as never),
@@ -334,7 +325,7 @@ export async function markChatSuggestionsShown(
 
 export async function markChatSuggestionClicked(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestion: RankedChatSuggestionRef },
+  args: { sessionId: string; suggestion: ChatSuggestionRef },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markClicked, args as never),
