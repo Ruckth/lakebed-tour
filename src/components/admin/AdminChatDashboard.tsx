@@ -254,6 +254,7 @@ type AnswerKnowledgeForm = {
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
+const channelFilterOptions = ["all", "web", "line", "facebook"] satisfies SessionChannelFilter[];
 const PRESENCE_CLOCK_MS = 10_000;
 const timeHours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const timeMinutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
@@ -945,12 +946,14 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Channel
                     </Label>
-                    <div className="grid grid-cols-5 rounded-lg border border-border bg-background p-1">
-                      {(["all", "web", "line", "facebook", "whatsapp"] satisfies SessionChannelFilter[]).map((option) => (
+                    <div className="grid grid-cols-4 rounded-lg border border-border bg-background p-1">
+                      {channelFilterOptions.map((option) => (
                         <button
                           key={option}
                           type="button"
                           onClick={() => setChannelFilter(option)}
+                          aria-label={`Filter by ${channelLabel(option)} channel`}
+                          title={channelLabel(option)}
                           className={cn(
                             "inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-semibold transition",
                             channelFilter === option
@@ -961,7 +964,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                           {option === "all" ? null : (
                             <ChannelIcon channel={option} className="h-3.5 w-3.5" />
                           )}
-                          <span>{channelLabel(option)}</span>
+                          <span className={option === "all" ? undefined : "sr-only"}>{channelLabel(option)}</span>
                         </button>
                       ))}
                     </div>
@@ -1033,7 +1036,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 {channelFilter !== "all" ? (
                   <Badge variant="secondary" className="gap-1 rounded-full">
                     <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
-                    {channelLabel(channelFilter)}
+                    <span className="sr-only">{channelLabel(channelFilter)}</span>
                     <button
                       type="button"
                       onClick={() => setChannelFilter("all")}
