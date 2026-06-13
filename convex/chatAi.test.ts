@@ -51,8 +51,62 @@ describe("chat AI guardrails", () => {
     expect(reply).toContain("ไม่ควรยืนยันว่าเป็นรีสอร์ตจริง");
   });
 
+  it.each([
+    {
+      locale: "zh-CN",
+      message: "Auralis Cove Retreat 是真的吗？",
+      expected: "演示/预览",
+    },
+    {
+      locale: "ja",
+      message: "Auralis Cove Retreat は本当にあるリゾートですか？",
+      expected: "デモ/プレビュー",
+    },
+    {
+      locale: "ko",
+      message: "Auralis Cove Retreat는 진짜 리조트인가요?",
+      expected: "데모/미리보기",
+    },
+    {
+      locale: "fr",
+      message: "Auralis Cove Retreat est-il un vrai resort ?",
+      expected: "démonstration/aperçu",
+    },
+    {
+      locale: "de",
+      message: "Ist Auralis Cove Retreat ein echtes Resort?",
+      expected: "Demo-/Vorschau",
+    },
+    {
+      locale: "es",
+      message: "¿Es real Auralis Cove Retreat?",
+      expected: "demo/vista previa",
+    },
+    {
+      locale: "ru",
+      message: "Auralis Cove Retreat настоящий курорт?",
+      expected: "демо/предпросмотр",
+    },
+    {
+      locale: "it",
+      message: "Auralis Cove Retreat è un resort reale?",
+      expected: "demo/anteprima",
+    },
+    {
+      locale: "hi",
+      message: "क्या Auralis Cove Retreat असली resort है?",
+      expected: "demo/preview",
+    },
+  ])("does not claim real-world verification for $locale reality questions", ({ message, expected }) => {
+    const reply = getResortRealityDisclosure(message);
+
+    expect(reply).toContain(expected);
+    expect(reply).toContain("Auralis Cove Retreat");
+  });
+
   it("does not intercept ordinary villa questions", () => {
     expect(getResortRealityDisclosure("Which villa is best for 4 adults?")).toBeNull();
+    expect(getResortRealityDisclosure("Can I book the Pool Villa tomorrow?")).toBeNull();
   });
 });
 

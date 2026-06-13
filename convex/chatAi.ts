@@ -69,22 +69,131 @@ function isThaiText(text: string) {
 	return /[\u0E00-\u0E7F]/u.test(text);
 }
 
-export function getResortRealityDisclosure(message: string, siteUrl?: string) {
-	const normalized = message.trim().toLocaleLowerCase();
-	const asksRealWorldStatus =
-		/\b(real|legit|genuine|actual|exist|exists|scam|fake)\b/i.test(normalized) ||
-		/(จริงไหม|มีอยู่จริง|ที่พักจริง|รีสอร์ตจริง|หลอกลวง|ปลอม)/u.test(message);
+type RealityGuardrailLocale =
+	| 'en'
+	| 'th'
+	| 'zh-CN'
+	| 'ja'
+	| 'ko'
+	| 'fr'
+	| 'de'
+	| 'es'
+	| 'ru'
+	| 'it'
+	| 'hi';
 
-	if (!asksRealWorldStatus) return null;
+const realityGuardrailPatterns: Array<{
+	locale: RealityGuardrailLocale;
+	patterns: RegExp[];
+}> = [
+	{
+		locale: 'th',
+		patterns: [/(จริงไหม|มีอยู่จริง|ที่พักจริง|รีสอร์ตจริง|หลอกลวง|ปลอม)/u]
+	},
+	{
+		locale: 'zh-CN',
+		patterns: [/(真的|真实吗|是真的吗|真实存在|存在吗|骗局|诈骗|虚假|假的|假的吗)/u]
+	},
+	{
+		locale: 'ja',
+		patterns: [/(本当|実在|存在しますか|ありますか|詐欺|偽物|本物|本当にある)/u]
+	},
+	{
+		locale: 'ko',
+		patterns: [/(진짜|실제|실존|존재|있나요|사기|가짜|정말 있는)/u]
+	},
+	{
+		locale: 'hi',
+		patterns: [/(असली|वास्तविक|सच में|मौजूद|धोखा|घोटाला|नकली|फर्जी)/u]
+	},
+	{
+		locale: 'ru',
+		patterns: [/(настоящ|реальн|существу|мошенничеств|скам|фейк|подделк|легитим)/u]
+	},
+	{
+		locale: 'fr',
+		patterns: [/\b(réel|réelle|vrai|vraie|existe|arnaque|faux|fausse|authentique|légitime)\b/u]
+	},
+	{
+		locale: 'es',
+		patterns: [
+			/\b(existe|estafa|falso|falsa|auténtico|auténtica|legítimo|legítima|verdadero|verdadera)\b/u,
+			/\b(es|esto|lugar|sitio)\b.*\breal\b/u,
+			/\breal\b.*\b(es|esto|lugar|sitio)\b/u
+		]
+	},
+	{
+		locale: 'it',
+		patterns: [
+			/\b(esiste|truffa|falso|falsa|autentico|autentica|legittimo|legittima|vero|vera)\b/u,
+			/(?:^|\s)(è|e|questo|questa|posto|sito)(?:\s|$).*\breale?\b/u,
+			/\breale?\b.*(?:^|\s)(è|e|questo|questa|posto|sito)(?:\s|$)/u
+		]
+	},
+	{
+		locale: 'de',
+		patterns: [
+			/\b(echt\w*|wirklich|existiert|betrug|legitim)\b/u,
+			/\b(ist|das|seite)\b.*\breal\b/u,
+			/\breal\b.*\b(ist|das|seite)\b/u
+		]
+	},
+	{
+		locale: 'en',
+		patterns: [
+			/\b(is|this|it|place|resort|villa|property|business|site)\b.*\b(real|legit|genuine|exist|exists|scam|fake|authentic|verified)\b/u,
+			/\b(real|legit|genuine|authentic|verified)\b.*\b(place|resort|villa|property|business|site)\b/u,
+			/\b(scam|fake|legit|genuine|authentic|verified)\b/u
+		]
+	}
+];
+
+const realityDisclosureByLocale: Record<RealityGuardrailLocale, (linkText: string) => string> = {
+	en: (linkText) =>
+		`Auralis Cove Retreat is presented here as a demo/preview experience for booking and 360° villa tours, so I should not claim it is a real-world verified resort from this chat. I can still help you explore the demo villas, pricing, availability, and tour links${linkText}.`,
+	th: (linkText) =>
+		`Auralis Cove Retreat ในเว็บไซต์นี้เป็นประสบการณ์เดโม/พรีวิวสำหรับการจองและทัวร์ 360° จึงไม่ควรยืนยันว่าเป็นรีสอร์ตจริงจากแชทนี้ได้ครับ ผมช่วยดูข้อมูลเดโมวิลล่า ราคา ห้องว่าง และลิงก์ทัวร์ให้ได้${linkText}`,
+	'zh-CN': (linkText) =>
+		`Auralis Cove Retreat 在这里是一个用于预订和 360° 别墅导览的演示/预览体验，所以我不能在聊天中声称它是经过现实世界独立验证的度假村。我仍然可以帮您了解演示别墅、价格、可订情况和 360° 导览链接${linkText}。`,
+	ja: (linkText) =>
+		`Auralis Cove Retreat は、このサイトでは予約と360°ヴィラツアー用のデモ/プレビュー体験として表示されています。そのため、このチャットで実在確認済みのリゾートだとは断言できません。デモヴィラ、料金、空室状況、360°ツアーリンクの案内はできます${linkText}。`,
+	ko: (linkText) =>
+		`Auralis Cove Retreat는 이 사이트에서 예약과 360° 빌라 투어를 위한 데모/미리보기 경험으로 제공됩니다. 따라서 이 채팅에서 실제로 독립 검증된 리조트라고 말할 수는 없습니다. 대신 데모 빌라, 가격, 예약 가능 여부, 360° 투어 링크는 도와드릴 수 있습니다${linkText}.`,
+	fr: (linkText) =>
+		`Auralis Cove Retreat est présenté ici comme une expérience de démonstration/aperçu pour la réservation et les visites de villas à 360°. Je ne dois donc pas affirmer dans ce chat qu'il s'agit d'un resort vérifié dans le monde réel. Je peux toutefois vous aider avec les villas de démonstration, les prix, les disponibilités et les liens de visite 360°${linkText}.`,
+	de: (linkText) =>
+		`Auralis Cove Retreat wird hier als Demo-/Vorschau-Erlebnis für Buchungen und 360°-Villentouren präsentiert. Deshalb sollte ich in diesem Chat nicht behaupten, dass es ein real verifiziertes Resort ist. Ich kann Ihnen aber mit den Demo-Villen, Preisen, Verfügbarkeit und 360°-Tour-Links helfen${linkText}.`,
+	es: (linkText) =>
+		`Auralis Cove Retreat se presenta aquí como una experiencia demo/vista previa para reservas y tours de villas en 360°. Por eso no debo afirmar en este chat que sea un resort verificado en el mundo real. Sí puedo ayudarle con las villas demo, precios, disponibilidad y enlaces al tour 360°${linkText}.`,
+	ru: (linkText) =>
+		`Auralis Cove Retreat здесь представлен как демо/предпросмотр для бронирования и 360°-туров по виллам. Поэтому в этом чате я не должен утверждать, что это независимо проверенный реальный курорт. Я могу помочь с демо-виллами, ценами, доступностью и ссылками на 360°-тур${linkText}.`,
+	it: (linkText) =>
+		`Auralis Cove Retreat qui è presentato come esperienza demo/anteprima per prenotazioni e tour delle ville a 360°. Per questo non devo affermare in chat che sia un resort verificato nel mondo reale. Posso comunque aiutarti con le ville demo, i prezzi, la disponibilità e i link ai tour 360°${linkText}.`,
+	hi: (linkText) =>
+		`Auralis Cove Retreat यहां booking और 360° villa tours के लिए demo/preview experience के रूप में दिखाया गया है, इसलिए मैं इस chat में यह दावा नहीं कर सकता कि यह real-world verified resort है। मैं फिर भी demo villas, pricing, availability और 360° tour links में मदद कर सकता हूं${linkText}.`
+};
+
+function detectRealityGuardrailLocale(message: string): RealityGuardrailLocale | null {
+	const normalized = message.normalize('NFKC').trim().toLocaleLowerCase();
+	if (!normalized) return null;
+
+	for (const candidate of realityGuardrailPatterns) {
+		if (candidate.patterns.some((pattern) => pattern.test(normalized))) {
+			return candidate.locale;
+		}
+	}
+
+	return null;
+}
+
+export function getResortRealityDisclosure(message: string, siteUrl?: string) {
+	const locale = detectRealityGuardrailLocale(message);
+	if (!locale) return null;
 
 	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
 	const linkText = normalizedSiteUrl ? ` ${normalizedSiteUrl}` : '';
 
-	if (isThaiText(message)) {
-		return `Auralis Cove Retreat ในเว็บไซต์นี้เป็นประสบการณ์เดโม/พรีวิวสำหรับการจองและทัวร์ 360° จึงไม่ควรยืนยันว่าเป็นรีสอร์ตจริงจากแชทนี้ได้ครับ ผมช่วยดูข้อมูลเดโมวิลล่า ราคา ห้องว่าง และลิงก์ทัวร์ให้ได้${linkText}`;
-	}
-
-	return `Auralis Cove Retreat is presented here as a demo/preview experience for booking and 360° villa tours, so I should not claim it is a real-world verified resort from this chat. I can still help you explore the demo villas, pricing, availability, and tour links${linkText}.`;
+	return realityDisclosureByLocale[locale](linkText);
 }
 
 export function getUnknownFallbackResponse(message: string) {

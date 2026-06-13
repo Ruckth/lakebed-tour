@@ -105,6 +105,43 @@ describe("adminChat.listSessions", () => {
     ).rejects.toThrow(/Not authenticated/);
   });
 
+  it("defaults to non-empty sessions ordered by latest message time", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    await insertAdminSession(t, {
+      visitorName: "Recent empty activity",
+      messageCount: 0,
+      adminSortAt: 5_000,
+      lastSeenAt: 5_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "Older message",
+      messageCount: 1,
+      latestMessageAt: 2_000,
+      adminSortAt: 2_000,
+      lastSeenAt: 8_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "Newer message",
+      messageCount: 1,
+      latestMessageAt: 3_000,
+      adminSortAt: 1_000,
+      lastSeenAt: 1_000,
+    });
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions.map((session) => session.visitorName)).toEqual([
+      "Newer message",
+      "Older message",
+    ]);
+  });
+
   it("returns 10 sessions per cursor page", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
@@ -179,6 +216,7 @@ describe("adminChat.listSessions", () => {
     const staleSessionId = await insertAdminSession(t, {
       visitorName: "Stale zero visitor",
       messageCount: 0,
+      latestMessageAt: 1_700_000_000_020,
       adminSortAt: 1_700_000_000_020,
     });
     await insertAdminSession(t, {
@@ -349,29 +387,22 @@ describe("adminChat.listSessions", () => {
     ]);
   });
 
-  it("uses stored transcript messages for end-only date filters when metadata is missing", async () => {
+  it("excludes sessions without latest-message metadata from date filters", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
     const admin = adminTest(t);
 
-    const missingMetadataSessionId = await insertAdminSession(t, {
-      visitorName: "Stored message without metadata",
+    await insertAdminSession(t, {
+      visitorName: "Message without metadata",
       messageCount: 1,
       adminSortAt: 4_000,
       lastSeenAt: 4_000,
     });
     await insertAdminSession(t, {
-      visitorName: "No message date",
-      adminSortAt: 3_500,
-      lastSeenAt: 3_500,
-    });
-    await t.run(async (ctx) => {
-      await ctx.db.insert("chatMessages", {
-        sessionId: missingMetadataSessionId,
-        role: "assistant",
-        content: "Stored transcript timestamp should drive the filter.",
-        timestamp: 3_000,
-      });
+      visitorName: "Message with metadata",
+      messageCount: 1,
+      latestMessageAt: 3_000,
+      adminSortAt: 3_000,
     });
 
     const result = await admin.query(api.adminChat.listSessions, {
@@ -381,7 +412,7 @@ describe("adminChat.listSessions", () => {
     });
 
     expect(result.sessions.map((session) => session.visitorName)).toEqual([
-      "Stored message without metadata",
+      "Message with metadata",
     ]);
   });
 
@@ -596,6 +627,38 @@ describe("adminChat.listSessions", () => {
 
     expect(direct.sessions.map((session) => session.visitorName)).toContain("Maya Chen");
     expect(typo.sessions.map((session) => session.visitorName)).toContain("Maya Chen");
+  });
+
+  it("sorts equal-score search results by latest message time", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+
+    await insertAdminSession(t, {
+      visitorName: "Older same match",
+      propertySlug: "shared-query",
+      messageCount: 1,
+      latestMessageAt: 2_000,
+      adminSortAt: 9_000,
+    });
+    await insertAdminSession(t, {
+      visitorName: "Newer same match",
+      propertySlug: "shared-query",
+      messageCount: 1,
+      latestMessageAt: 3_000,
+      adminSortAt: 1_000,
+    });
+
+    const result = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      searchQuery: "shared-query",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(result.sessions.map((session) => session.visitorName)).toEqual([
+      "Newer same match",
+      "Older same match",
+    ]);
   });
 
   it("searches message transcript content", async () => {

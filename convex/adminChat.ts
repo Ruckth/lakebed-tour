@@ -148,6 +148,10 @@ function typoTolerantContactScore(query: string, searchText?: string) {
 	return matched === queryTokens.length ? 55 + matched : 0;
 }
 
+function getSessionLatestMessageSortAt(session: Doc<'chatSessions'>) {
+	return session.latestMessageAt ?? Number.NEGATIVE_INFINITY;
+}
+
 async function sessionHasStoredMessages(ctx: QueryCtx, session: Doc<'chatSessions'>) {
 	if (session.messages && session.messages.length > 0) return true;
 
@@ -342,7 +346,7 @@ async function searchSessions(
 	filtered.sort((a, b) => {
 		const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
 		if (scoreDelta !== 0) return scoreDelta;
-		return getAdminChatSortAt(b) - getAdminChatSortAt(a);
+		return getSessionLatestMessageSortAt(b) - getSessionLatestMessageSortAt(a);
 	});
 
 	const offset = parseSearchCursor(options.cursor);
@@ -399,15 +403,17 @@ async function listFilteredSessions(
 
 	if (matched.length < PAGE_SIZE && !sourceDone) {
 		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
-		const hasMessageDateFilter =
-			typeof options.messageStartAt === 'number' ||
-			typeof options.messageEndAt === 'number';
 		// Convex only allows one paginated query per function invocation.
 		const page =
-			options.empty === 'non_empty' && !hasMessageDateFilter
+			options.empty === 'non_empty'
 				? await ctx.db
 						.query('chatSessions')
-						.withIndex('by_latestMessageAt', (q) => q.gte('latestMessageAt', 0))
+						.withIndex('by_latestMessageAt', (q) => {
+							const range = q.gte('latestMessageAt', options.messageStartAt ?? 0);
+							return typeof options.messageEndAt === 'number'
+								? range.lte('latestMessageAt', options.messageEndAt)
+								: range;
+						})
 						.order('desc')
 						.paginate(paginationOpts)
 				: await ctx.db
@@ -457,7 +463,7 @@ export const listSessions = query({
 
 		const now = args.now ?? Date.now();
 		const status = args.status ?? 'active';
-		const empty = args.empty ?? 'all';
+		const empty = args.empty ?? 'non_empty';
 		const channel = args.channel ?? 'all';
 		const messageStartAt = args.messageStartAt;
 		const messageEndAt = args.messageEndAt;

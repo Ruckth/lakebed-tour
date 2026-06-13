@@ -54,11 +54,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
-type EmptyChatFilter = "all" | "empty";
+type EmptyChatFilter = "non_empty" | "empty";
 type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp";
 type AdminDashboardView = "chats" | "questions";
 
@@ -291,10 +292,7 @@ function parseDateTimeValue(value: string, defaultHour: string, defaultMinute: s
 }
 
 function visitorLabel(session?: AdminSession | null) {
-  if (!session) return "Visitor";
-  if (session.visitorName) return session.visitorName;
-  if (session.visitorEmail) return session.visitorEmail;
-  return `Visitor ${session.visitorId?.slice(0, 8) ?? session._id.slice(-6)}`;
+  return adminChatVisitorLabel(session);
 }
 
 function relativeTime(timestamp?: number, now = Date.now()) {
@@ -574,7 +572,7 @@ function AdminDateTimeFilterField({
 
 function emptyFilterLabel(value: EmptyChatFilter) {
   if (value === "empty") return "Empty only";
-  return "All threads";
+  return "Not empty";
 }
 
 function AdminQueryError({ error }: { error: Error }) {
@@ -715,7 +713,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
   const [searchQuery, setSearchQuery] = useState("");
-  const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("all");
+  const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("non_empty");
   const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
   const [messageStartAt, setMessageStartAt] = useState("");
   const [messageEndAt, setMessageEndAt] = useState("");
@@ -908,7 +906,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     size="icon"
                     className={cn(
                       "h-10 w-10 rounded-lg",
-                      (emptyFilter !== "all" || channelFilter !== "all" || messageStartAt || messageEndAt) &&
+                      (emptyFilter !== "non_empty" || channelFilter !== "all" || messageStartAt || messageEndAt) &&
                         "border-gold text-gold",
                     )}
                     aria-label="Open chat filters"
@@ -922,10 +920,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Empty thread
+                      Message status
                     </Label>
                     <div className="grid grid-cols-2 rounded-lg border border-border bg-background p-1">
-                      {(["all", "empty"] satisfies EmptyChatFilter[]).map((option) => (
+                      {(["non_empty", "empty"] satisfies EmptyChatFilter[]).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -937,7 +935,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                               : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                         >
-                          {option === "all" ? "All" : "Empty"}
+                          {option === "non_empty" ? "Not empty" : "Empty"}
                         </button>
                       ))}
                     </div>
@@ -972,7 +970,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   <div className="grid gap-3">
                     <AdminDateTimeFilterField
                       id="admin-message-start"
-                      label="Message start"
+                      label="Latest message start"
                       value={messageStartAt}
                       onChange={setMessageStartAt}
                       defaultHour="00"
@@ -980,7 +978,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     />
                     <AdminDateTimeFilterField
                       id="admin-message-end"
-                      label="Message end"
+                      label="Latest message end"
                       value={messageEndAt}
                       onChange={setMessageEndAt}
                       defaultHour="23"
@@ -993,7 +991,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setEmptyFilter("all");
+                        setEmptyFilter("non_empty");
                         setChannelFilter("all");
                         setMessageStartAt("");
                         setMessageEndAt("");
@@ -1005,7 +1003,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 </PopoverContent>
               </Popover>
             </div>
-            {trimmedSearchQuery || emptyFilter !== "all" || channelFilter !== "all" || messageStartAt || messageEndAt ? (
+            {trimmedSearchQuery || emptyFilter !== "non_empty" || channelFilter !== "all" || messageStartAt || messageEndAt ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {trimmedSearchQuery ? (
                   <Badge variant="secondary" className="gap-1 rounded-full">
@@ -1020,12 +1018,12 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     </button>
                   </Badge>
                 ) : null}
-                {emptyFilter !== "all" ? (
+                {emptyFilter !== "non_empty" ? (
                   <Badge variant="secondary" className="gap-1 rounded-full">
                     {emptyFilterLabel(emptyFilter)}
                     <button
                       type="button"
-                      onClick={() => setEmptyFilter("all")}
+                      onClick={() => setEmptyFilter("non_empty")}
                       aria-label="Clear empty filter"
                       className="rounded-full p-0.5 hover:bg-background"
                     >
@@ -1080,7 +1078,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           <div className="min-h-0 overflow-y-auto">
             {invalidMessageDateRange ? (
               <div className="p-5 text-sm leading-6 text-red-200">
-                Message start must be before message end.
+                Latest message start must be before latest message end.
               </div>
             ) : null}
             {loadingSessions && sessions.length === 0 ? (
@@ -1125,7 +1123,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {relativeTime(
-                      session.latestMessageAt ?? session.lastSeenAt ?? session.createdAt,
+                      session.latestMessageAt,
                       now,
                     )}
                   </span>
@@ -1418,10 +1416,10 @@ function AdminSessionDetail({
           <Badge variant="secondary" className="rounded-full">
             {propertyLabel}
           </Badge>
-          <Badge variant="secondary" className="rounded-full">
+          <span className="inline-flex items-center text-muted-foreground">
             <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5" />
             <span className="sr-only">{channelLabel(selectedSession.channel)}</span>
-          </Badge>
+          </span>
           {selectedSession.currentPath ? (
             <Badge variant="outline" className="rounded-full">
               <ExternalLink className="mr-1 h-3 w-3" />
@@ -1432,7 +1430,7 @@ function AdminSessionDetail({
 
         {compact ? (
           <div className="mt-3 space-y-2">
-            <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
+            <details className="px-0 py-1 text-xs">
               <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
                 Contact & IDs
               </summary>
@@ -1456,12 +1454,7 @@ function AdminSessionDetail({
               </div>
             </details>
             {selectedSession.channel === "line" && latestLineEvent ? (
-              <details
-                className={cn(
-                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
-                  latestLineEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-                )}
-              >
+              <details className="px-0 py-1 text-xs">
                 <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
                   LINE delivery
                 </summary>
@@ -1492,12 +1485,7 @@ function AdminSessionDetail({
               </details>
             ) : null}
             {selectedSession.channel === "facebook" && latestFacebookEvent ? (
-              <details
-                className={cn(
-                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
-                  latestFacebookEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-                )}
-              >
+              <details className="px-0 py-1 text-xs">
                 <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
                   Facebook delivery
                 </summary>
@@ -1528,12 +1516,7 @@ function AdminSessionDetail({
               </details>
             ) : null}
             {selectedSession.channel === "whatsapp" && latestWhatsAppEvent ? (
-              <details
-                className={cn(
-                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
-                  latestWhatsAppEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-                )}
-              >
+              <details className="px-0 py-1 text-xs">
                 <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
                   WhatsApp delivery
                 </summary>
