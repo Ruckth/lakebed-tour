@@ -2155,6 +2155,8 @@ function AdminQuestionsView() {
   const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
   const answerRows = answers ?? [];
   const unknownRows = unknownQuestions ?? [];
+  const linkableAnswersLoading = mode === "unknown" && answers === undefined;
+  const hasLinkableAnswers = answerRows.length > 0;
 
   function emptyKnowledgeForm(): AnswerKnowledgeForm {
     return {
@@ -2666,6 +2668,7 @@ function AdminQuestionsView() {
                             <div className="flex gap-2">
                               <Select
                                 value={linkAnswerIds[question._id] ?? ""}
+                                disabled={linkableAnswersLoading || !hasLinkableAnswers}
                                 onValueChange={(value) =>
                                   setLinkAnswerIds((current) => ({
                                     ...current,
@@ -2674,21 +2677,35 @@ function AdminQuestionsView() {
                                 }
                               >
                                 <SelectTrigger className="h-9 min-w-[180px] rounded-lg" aria-label="Link answer">
-                                  <SelectValue placeholder="Select answer" />
+                                  <SelectValue
+                                    placeholder={
+                                      linkableAnswersLoading
+                                        ? "Loading answers"
+                                        : hasLinkableAnswers
+                                          ? "Select answer"
+                                          : "No approved answers"
+                                    }
+                                  />
                                 </SelectTrigger>
-                                <SelectContent>
-                                  {answerRows.map((answer) => (
-                                    <SelectItem key={answer._id} value={answer._id}>
-                                      {answer.title}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
+                                {hasLinkableAnswers ? (
+                                  <SelectContent>
+                                    {answerRows.map((answer) => (
+                                      <SelectItem key={answer._id} value={answer._id}>
+                                        {answer.title}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                ) : null}
                               </Select>
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="secondary"
-                                disabled={!linkAnswerIds[question._id] || pendingAction === `link:${question._id}`}
+                                disabled={
+                                  !hasLinkableAnswers ||
+                                  !linkAnswerIds[question._id] ||
+                                  pendingAction === `link:${question._id}`
+                                }
                                 onClick={() => void linkUnknownQuestion(question)}
                               >
                                 Link

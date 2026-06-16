@@ -33,4 +33,20 @@ describe("admin chat dashboard source", () => {
     expect(dashboardSource).not.toContain("adminBackfillThaiGeneratedSuggestions");
     expect(suggestionsSource).not.toContain("adminBackfillThaiGeneratedSuggestions");
   });
+
+  it("does not show an empty link-answer select when no approved answers exist", () => {
+    const dashboardSource = readFileSync(
+      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
+      "utf8",
+    );
+    const selectSource = readFileSync(
+      new URL("../../src/components/ui/select.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(dashboardSource).toContain("No approved answers");
+    expect(dashboardSource).toContain("disabled={linkableAnswersLoading || !hasLinkableAnswers}");
+    expect(dashboardSource).toContain("{hasLinkableAnswers ? (");
+    expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
+  });
 });
