@@ -1,24 +1,34 @@
-# 360 Tour
+# Lakebed Tour
 
-Immersive direct-booking site for boutique resort stays, combining villa pages, 360-degree tours, booking flows, concierge chat, and admin operations.
+Lakebed-style preview site built from the former `360-tour` Next.js app foundation.
 
-Production: https://tour.helpgueststay.com
+The public preview presents Lakebed as an agent-native CLI and runtime for small full-stack TypeScript apps called capsules. The existing Convex, admin, and webhook code remains in the repo, but the first preview build is frontend-only and does not require a Convex deployment key.
 
 ## Stack
 
 - Next.js App Router
-- Convex backend functions and data
-- Vercel deployment
-- Clerk-powered admin access
-- React Three Fiber and Three.js for 360 tour experiences
+- Tailwind CSS v4
+- Vercel preview deployments
+- Convex code retained for later backend work
 
 ## Commands
 
 ```sh
 pnpm install
 pnpm dev
-pnpm verify
-pnpm seed
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm test:e2e
+pnpm build
 ```
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for environment variables, release flow, and production verification details.
+## Preview Deploy
+
+Vercel should use:
+
+- Install command: `pnpm install`
+- Build command: `pnpm build`
+- Output directory: unset
+
+Set `NEXT_PUBLIC_CONVEX_URL=placeholder` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=placeholder` only if a hosting environment requires those keys to exist. They are not required for the public Lakebed preview.

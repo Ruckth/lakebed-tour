@@ -2,19 +2,12 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
-import { Cormorant_Garamond, Manrope } from "next/font/google";
+import { Manrope, Roboto_Mono } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
 import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
-import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
-
-const serif = Cormorant_Garamond({
-  subsets: ["latin"],
-  variable: "--font-serif",
-  display: "swap",
-});
 
 const sans = Manrope({
   subsets: ["latin"],
@@ -22,15 +15,18 @@ const sans = Manrope({
   display: "swap",
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale();
-  const resort = getLocalizedResort(locale);
-  const seo = getPublicMessages(locale).SEO;
+const mono = Roboto_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
+export async function generateMetadata(): Promise<Metadata> {
   return {
-    metadataBase: new URL("https://seaviewresidence.com"),
-    title: seo.rootTitle,
-    description: seo.rootDescription,
+    metadataBase: new URL("https://lakebed.dev"),
+    title: "Lakebed [alpha] - Agent-native app runtime",
+    description:
+      "Lakebed is an agent-native CLI and runtime for building small full-stack TypeScript apps called capsules.",
     icons: {
       icon: [
         { url: "/favicon.ico", sizes: "256x256" },
@@ -39,16 +35,16 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       type: "website",
-      siteName: resort.name,
-      title: seo.rootOgTitle,
-      description: seo.rootDescription,
-      images: ["/garden-image.webp"],
+      siteName: "Lakebed",
+      title: "Lakebed [alpha]",
+      description:
+        "Let agents build small full-stack TypeScript apps called capsules, then inspect, iterate, and deploy without leaving code.",
     },
     twitter: {
-      card: "summary_large_image",
-      title: seo.rootOgTitle,
-      description: seo.rootDescription,
-      images: ["/garden-image.webp"],
+      card: "summary",
+      title: "Lakebed [alpha]",
+      description:
+        "Agent-native CLI and runtime for building small full-stack TypeScript apps.",
     },
   };
 }
@@ -75,7 +71,7 @@ export default async function RootLayout({
       lang={locale}
       suppressHydrationWarning
       data-scroll-behavior="smooth"
-      className={`${serif.variable} ${sans.variable}`}
+      className={`${sans.variable} ${mono.variable}`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

@@ -1,5 +1,5 @@
 {
-  "name": "360-tour",
+  "name": "lakebed-tour",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "npx convex dev --once && next dev",
+    "dev": "next dev",
     "dev:convex": "npx convex dev",
     "dev:full": "npx convex dev & next dev",
     "build": "next build",
@@ -20,7 +20,7 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "verify": "pnpm check && pnpm lint && pnpm test:unit && pnpm build",
-    "vercel-build": "npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'",
+    "vercel-build": "pnpm build",
     "seed": "npx convex run seed:seedAll"
   },
   "devDependencies": {
