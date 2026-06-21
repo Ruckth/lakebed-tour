@@ -1,34 +1,44 @@
 # Lakebed Tour
 
-Lakebed-style preview site built from the former `360-tour` Next.js app foundation.
+A real Lakebed capsule for trying Lakebed auth and database behavior.
 
-The public preview presents Lakebed as an agent-native CLI and runtime for small full-stack TypeScript apps called capsules. The existing Convex, admin, and webhook code remains in the repo, but the first preview build is frontend-only and does not require a Convex deployment key.
+The app includes:
 
-## Stack
+- Lakebed guest auth and Google sign-in.
+- A private notes table filtered by the current `ctx.auth.userId`.
+- A shared guestbook table that stores trusted author metadata from `ctx.auth`.
+- A status endpoint at `/api/status`.
 
-- Next.js App Router
-- Tailwind CSS v4
-- Vercel preview deployments
-- Convex code retained for later backend work
-
-## Commands
+## Run Locally
 
 ```sh
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm test:unit
-pnpm test:e2e
-pnpm build
+npx lakebed auth as alice
+npx lakebed dev
 ```
 
-## Preview Deploy
+Open:
 
-Vercel should use:
+```txt
+http://localhost:3000
+```
 
-- Install command: `pnpm install`
-- Build command: `pnpm build`
-- Output directory: unset
+To compare users in different tabs:
 
-Set `NEXT_PUBLIC_CONVEX_URL=placeholder` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=placeholder` only if a hosting environment requires those keys to exist. They are not required for the public Lakebed preview.
+```txt
+http://localhost:3000/?lakebed_guest=alice
+http://localhost:3000/?lakebed_guest=bob
+```
+
+Inspect local state while the dev server is running:
+
+```sh
+npx lakebed db list --port 3000
+npx lakebed db dump --port 3000
+npx lakebed logs --port 3000
+```
+
+## Deploy
+
+```sh
+npx lakebed deploy . --public-inspect
+```
