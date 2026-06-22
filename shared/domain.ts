@@ -43,6 +43,11 @@ export type PropertyRecord = {
   youtubeUrl: string;
   floorPlanUrl: string;
   primaryImageUrl: string;
+  contactName: string;
+  contactPhone: string;
+  contactWhatsappPhone: string;
+  contactLineUrl: string;
+  contactInstagramUrl: string;
   createdBy: string;
   updatedBy: string;
   createdAt: string;

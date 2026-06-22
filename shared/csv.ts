@@ -36,11 +36,16 @@ export const csvHeaders = [
   "primaryImageUrl",
   "photoUrls",
   "floorPlanUrl",
-  "youtubeUrl"
+  "youtubeUrl",
+  "contactName",
+  "contactPhone",
+  "contactWhatsappPhone",
+  "contactLineUrl",
+  "contactInstagramUrl"
 ];
 
 export const csvTemplate = `${csvHeaders.join(",")}
-riverfront-loft,Riverfront Loft,rent,condo,published,2400,USD,2400,Pet fee may apply,2,2,1140,sqft,"201 River Walk, Austin, TX",Austin,Downtown,Texas,United States,https://www.google.com/maps/search/?api=1&query=Austin+River+Walk,Available now,2026-07-01,"parking|gym|balcony","Bright condo with river views and walkable dining.",https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80,"https://images.unsplash.com/photo-1560185127-6ed189bf02f4?auto=format&fit=crop&w=1200&q=80|https://images.unsplash.com/photo-1560185893-a55cbc8c57e8?auto=format&fit=crop&w=1200&q=80",https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf,https://www.youtube.com/watch?v=ysz5S6PUM-U`;
+riverfront-loft,Riverfront Loft,rent,condo,published,2400,USD,2400,Pet fee may apply,2,2,1140,sqft,"201 River Walk, Austin, TX",Austin,Downtown,Texas,United States,https://www.google.com/maps/search/?api=1&query=Austin+River+Walk,Available now,2026-07-01,"parking|gym|balcony","Bright condo with river views and walkable dining.",https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80,"https://images.unsplash.com/photo-1560185127-6ed189bf02f4?auto=format&fit=crop&w=1200&q=80|https://images.unsplash.com/photo-1560185893-a55cbc8c57e8?auto=format&fit=crop&w=1200&q=80",https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf,https://www.youtube.com/watch?v=ysz5S6PUM-U,Maya Chen,+15125550119,+15125550119,https://line.me/R/ti/p/@openhouse,https://ig.me/m/openhousedesk`;
 
 export function propertyInputFromCsvRow(row: Record<string, string>): PropertyInput {
   return {
@@ -69,7 +74,12 @@ export function propertyInputFromCsvRow(row: Record<string, string>): PropertyIn
     description: row.description,
     primaryImageUrl: row.primaryImageUrl,
     floorPlanUrl: row.floorPlanUrl,
-    youtubeUrl: row.youtubeUrl
+    youtubeUrl: row.youtubeUrl,
+    contactName: row.contactName,
+    contactPhone: row.contactPhone,
+    contactWhatsappPhone: row.contactWhatsappPhone,
+    contactLineUrl: row.contactLineUrl,
+    contactInstagramUrl: row.contactInstagramUrl
   };
 }
 
@@ -113,6 +123,14 @@ export function validateCsvRow(row: Record<string, string>, rowNumber: number): 
 
   if (!isYouTubeUrl(row.youtubeUrl)) {
     errors.push(`Row ${rowNumber}: youtubeUrl must be a YouTube URL.`);
+  }
+
+  if (!isHttpUrl(row.contactLineUrl)) {
+    errors.push(`Row ${rowNumber}: contactLineUrl must be a URL.`);
+  }
+
+  if (!isHttpUrl(row.contactInstagramUrl)) {
+    errors.push(`Row ${rowNumber}: contactInstagramUrl must be a URL.`);
   }
 
   for (const url of splitMultiValue(row.photoUrls)) {

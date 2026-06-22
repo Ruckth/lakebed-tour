@@ -285,6 +285,11 @@ export default capsule({
       youtubeUrl: string().default(""),
       floorPlanUrl: string().default(""),
       primaryImageUrl: string().default(""),
+      contactName: string().default(""),
+      contactPhone: string().default(""),
+      contactWhatsappPhone: string().default(""),
+      contactLineUrl: string().default(""),
+      contactInstagramUrl: string().default(""),
       createdBy: string().default(""),
       updatedBy: string().default("")
     }),

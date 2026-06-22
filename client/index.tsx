@@ -54,16 +54,6 @@ type DashboardData = {
   latestImport: CsvImportRecord | null;
 };
 
-type InquiryFormState = {
-  name: string;
-  email: string;
-  phone: string;
-  preferredContactMethod: string;
-  moveInTimeline: string;
-  budget: string;
-  message: string;
-};
-
 const emptyProperty: PropertyInput = {
   slug: "",
   title: "",
@@ -90,7 +80,12 @@ const emptyProperty: PropertyInput = {
   amenities: "",
   youtubeUrl: "",
   floorPlanUrl: "",
-  primaryImageUrl: ""
+  primaryImageUrl: "",
+  contactName: "",
+  contactPhone: "",
+  contactWhatsappPhone: "",
+  contactLineUrl: "",
+  contactInstagramUrl: ""
 };
 
 function cx(...classes: Array<string | false | null | undefined>): string {
@@ -108,8 +103,6 @@ const textLink = `font-semibold text-[#0f766d] underline-offset-4 hover:text-[#0
 const fieldClass = `min-h-11 rounded-md border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 ${focusRing}`;
 const surfaceClass = "rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.07)]";
 const mutedPanelClass = "rounded-md bg-neutral-50 p-3";
-const agencyPhoneNumber = "+15125550119";
-const agencyPhoneDisplay = "(512) 555-0119";
 
 function underlineTabClass(active: boolean, extra?: string): string {
   return cx(
@@ -404,31 +397,6 @@ function smoothScrollToHash(event: MouseEvent, href: string) {
   event.preventDefault();
   history.pushState(null, "", href);
   target.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function inquiryErrors(form: InquiryFormState): Partial<Record<keyof InquiryFormState, string>> {
-  const errors: Partial<Record<keyof InquiryFormState, string>> = {};
-  const email = cleanText(form.email);
-  const phone = cleanText(form.phone);
-
-  if (!cleanText(form.name)) {
-    errors.name = "Name is required.";
-  }
-
-  if (!email && !phone) {
-    errors.email = "Add email or phone.";
-    errors.phone = "Add email or phone.";
-  }
-
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errors.email = "Email format looks invalid.";
-  }
-
-  if (!cleanText(form.message)) {
-    errors.message = "Message is required.";
-  }
-
-  return errors;
 }
 
 function isDeskHash(hash: string): boolean {
@@ -1017,139 +985,144 @@ function PropertyGallery({ media, property }: { media: PropertyMediaRecord[]; pr
   );
 }
 
-function InquiryForm({ prefillMessage, property }: { prefillMessage: string; property: PropertyRecord }) {
-  const createInquiry = useMutation<[input: InquiryFormState & { propertyId: string; sourcePage: string }], MutationResult<{ id: string; propertyTitle: string }>>("createInquiry");
-  const messageTemplate = listingContactTemplate(property);
-  const encodedTemplate = encodeURIComponent(messageTemplate);
-  const whatsappNumber = agencyPhoneNumber.replace(/\D/g, "");
-  const contactActions = [
-    { label: "Call", href: `tel:${agencyPhoneNumber}`, helper: agencyPhoneDisplay },
-    { label: "WhatsApp", href: `https://wa.me/${whatsappNumber}?text=${encodedTemplate}`, helper: "Prefilled", external: true },
-    { label: "LINE", href: `https://line.me/R/msg/text/?${encodedTemplate}`, helper: "Prefilled", external: true },
-    { label: "Message", href: `sms:${agencyPhoneNumber}?&body=${encodedTemplate}`, helper: "Prefilled" },
-    { label: "Instagram", href: "https://ig.me/m/openhousedesk", helper: "Use template", external: true }
-  ];
-  const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<InquiryFormState>({
-    name: "",
-    email: "",
-    phone: "",
-    preferredContactMethod: "email",
-    moveInTimeline: "",
-    budget: "",
-    message: messageTemplate
-  });
-  const [result, setResult] = useState<MutationResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [attempted, setAttempted] = useState(false);
-  const setField = (field: keyof InquiryFormState, value: string) => setForm((current) => ({ ...current, [field]: value }));
-  const errors = attempted ? inquiryErrors(form) : {};
+type ContactActionIcon = "phone" | "sms" | "whatsapp" | "line" | "instagram";
 
-  useEffect(() => {
-    if (!prefillMessage) {
-      return;
-    }
+type ContactAction = {
+  icon: ContactActionIcon;
+  label: string;
+  helper: string;
+  href: string;
+  external?: boolean;
+  primary?: boolean;
+};
 
-    setForm((current) => ({ ...current, message: prefillMessage }));
-    setFormOpen(true);
-    setResult(null);
-  }, [prefillMessage]);
+function normalizePhone(value: unknown): string {
+  return cleanText(value, 80).replace(/[^\d+]/g, "");
+}
 
-  async function submit(event: Event) {
-    event.preventDefault();
-    setAttempted(true);
-    const validationErrors = inquiryErrors(form);
-    if (Object.keys(validationErrors).length) {
-      setResult({ ok: false, errors: Object.values(validationErrors).filter(Boolean) });
-      return;
-    }
+function whatsappPhone(value: unknown): string {
+  return cleanText(value, 80).replace(/\D/g, "");
+}
 
-    setSubmitting(true);
-    const response = await createInquiry({
-      ...form,
-      propertyId: property.id,
-      sourcePage: `/property/${property.slug}`
-    });
-    setResult(response);
-    setSubmitting(false);
-    if (response.ok) {
-      setForm((current) => ({ ...current, message: messageTemplate }));
-    }
+function formatPhoneDisplay(value: unknown): string {
+  const phone = normalizePhone(value);
+  const match = phone.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return match ? `(${match[1]}) ${match[2]}-${match[3]}` : phone;
+}
+
+function externalContactUrl(value: unknown): string {
+  const url = cleanText(value, 2000);
+  return /^https?:\/\//.test(url) ? url : "";
+}
+
+function contactActionsForProperty(property: PropertyRecord, message: string): ContactAction[] {
+  const encodedMessage = encodeURIComponent(message);
+  const phone = normalizePhone(property.contactPhone);
+  const whatsapp = whatsappPhone(property.contactWhatsappPhone);
+  const lineUrl = externalContactUrl(property.contactLineUrl);
+  const instagramUrl = externalContactUrl(property.contactInstagramUrl);
+  const actions: ContactAction[] = [];
+
+  if (phone) {
+    actions.push({ icon: "phone", label: "Call", helper: formatPhoneDisplay(phone), href: `tel:${phone}`, primary: true });
+    actions.push({ icon: "sms", label: "SMS", helper: "Prefilled", href: `sms:${phone}?&body=${encodedMessage}` });
   }
+
+  if (whatsapp) {
+    actions.push({ icon: "whatsapp", label: "WhatsApp", helper: "Prefilled", href: `https://wa.me/${whatsapp}?text=${encodedMessage}`, external: true });
+  }
+
+  if (lineUrl) {
+    actions.push({ icon: "line", label: "LINE", helper: "Open app", href: lineUrl, external: true });
+  }
+
+  if (instagramUrl) {
+    actions.push({ icon: "instagram", label: "Instagram", helper: "Open DM", href: instagramUrl, external: true });
+  }
+
+  return actions;
+}
+
+function ContactIcon({ icon }: { icon: ContactActionIcon }) {
+  if (icon === "whatsapp") {
+    return (
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <path d="M6.8 18.1 4 19l.9-2.6a8 8 0 1 1 1.9 1.7Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        <path d="M9 8.8c.4-.4.7-.4 1-.1l.9 1.2c.2.3.2.6-.1.9l-.4.4c.6 1 1.4 1.8 2.5 2.4l.5-.5c.2-.2.5-.3.8-.1l1.3.8c.3.2.4.6.1 1-.4.6-1 .9-1.7.8-2.8-.3-5.4-2.8-5.6-5.6 0-.5.2-.9.7-1.2Z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (icon === "line") {
+    return (
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <rect height="15" rx="5" stroke="currentColor" strokeWidth="1.8" width="18" x="3" y="4" />
+        <path d="M8 10v4h2.2M12 10v4M15 10v4M18 10v4h-2v-4h2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+
+  if (icon === "instagram") {
+    return (
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <rect height="15" rx="4" stroke="currentColor" strokeWidth="1.8" width="15" x="4.5" y="4.5" />
+        <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="16.7" cy="7.3" fill="currentColor" r="1" />
+      </svg>
+    );
+  }
+
+  if (icon === "sms") {
+    return (
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <path d="M5 6.5h14v9H9l-4 3v-12Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        <path d="M8.5 10h7M8.5 13h4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <path d="M7.1 5.2 9.4 4l2.1 4.8-1.5 1c.8 1.7 2.1 3 3.9 3.9l1-1.5 4.8 2.1-1.2 2.3c-.5 1-1.7 1.5-2.8 1.1-4.4-1.4-7.9-4.9-9.3-9.3-.4-1.1.1-2.3.7-3.2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ListingContactPanel({ prefillMessage, property }: { prefillMessage: string; property: PropertyRecord }) {
+  const contactName = cleanText(property.contactName, 120);
+  const contactLabel = contactName || "the agency";
+  const message = cleanLongText(prefillMessage, 4000) || listingContactTemplate(property);
+  const contactActions = contactActionsForProperty(property, message);
 
   return (
     <section id="inquiry" className={cx("grid scroll-mt-20 gap-4", surfaceClass)}>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#0d6b63]">Contact agency</p>
-        <h2 className="mt-1 text-2xl font-semibold">Ask about {property.title}</h2>
-        <p className="mt-1 text-sm leading-6 text-neutral-600">Use a quick channel now, or open the desk inquiry form when you want a tracked follow-up.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#0d6b63]">Contact listing person</p>
+        <h2 className="mt-1 text-2xl font-semibold">Contact {contactLabel} about {property.title}</h2>
+        <p className="mt-1 text-sm leading-6 text-neutral-600">Use one of the configured channels for this listing to confirm availability, costs, and viewing options.</p>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {contactActions.map((action) => (
-          <a
-            key={action.label}
-            className={cx(action.label === "Call" ? primaryButton : secondaryButton, "min-h-12 flex-col gap-0.5 px-2 py-2 text-center")}
-            href={action.href}
-            rel={action.external ? "noreferrer" : undefined}
-            target={action.external ? "_blank" : undefined}
-          >
-            <span>{action.label}</span>
-            <span className={cx("text-[11px] font-medium", action.label === "Call" ? "text-white/80" : "text-neutral-500")}>{action.helper}</span>
-          </a>
-        ))}
-      </div>
-      <div className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-700 ring-1 ring-inset ring-neutral-100">
-        <p className="font-semibold text-neutral-950">Message template</p>
-        <p className="mt-1">{messageTemplate}</p>
-      </div>
-      <button className={formOpen ? secondaryButton : ctaButton} type="button" onClick={() => setFormOpen((current) => !current)}>
-        {formOpen ? "Hide inquiry form" : "Open inquiry form"}
-      </button>
-      {formOpen || result ? <ResultMessage result={result} /> : null}
-      {result?.ok ? (
-        <div className="grid gap-2 rounded-md bg-emerald-50 p-3 text-sm text-emerald-900 ring-1 ring-inset ring-emerald-200">
-          <p className="font-semibold">Inquiry received for {property.title}.</p>
-          <p>The agency will confirm current availability, move-in costs, and viewing options using your preferred contact method.</p>
-          <button className={cx(secondaryButton, "min-h-8 justify-self-start px-3 py-1.5 text-xs text-emerald-900")} type="button" onClick={() => {
-            setAttempted(false);
-            setResult(null);
-            setFormOpen(true);
-          }}>
-            Send another question
-          </button>
+      {contactActions.length ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {contactActions.map((action) => (
+            <a
+              key={action.label}
+              aria-label={`${action.label} ${contactLabel} about ${property.title}`}
+              className={cx(action.primary ? primaryButton : secondaryButton, "min-h-16 flex-col gap-1 px-2 py-3 text-center")}
+              href={action.href}
+              rel={action.external ? "noreferrer" : undefined}
+              target={action.external ? "_blank" : undefined}
+            >
+              <ContactIcon icon={action.icon} />
+              <span className="text-sm leading-tight">{action.label}</span>
+              <span className={cx("text-[11px] font-medium leading-tight", action.primary ? "text-white/80" : "text-neutral-500")}>{action.helper}</span>
+            </a>
+          ))}
         </div>
-      ) : null}
-      {formOpen && !result?.ok ? (
-        <form className="grid gap-3 border-t border-neutral-100 pt-4" onSubmit={(event) => void submit(event)}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field error={errors.name} label="Name" name="name" value={form.name} onInput={(value) => setField("name", value)} />
-            <Field error={errors.email} label="Email" name="email" type="email" value={form.email} onInput={(value) => setField("email", value)} />
-            <Field error={errors.phone} label="Phone" name="phone" value={form.phone} onInput={(value) => setField("phone", value)} />
-            <SelectField
-              label="Preferred contact"
-              name="preferredContactMethod"
-              value={form.preferredContactMethod}
-              options={[
-                { label: "Email", value: "email" },
-                { label: "Phone", value: "phone" },
-                { label: "Text", value: "text" }
-              ]}
-              onInput={(value) => setField("preferredContactMethod", value)}
-            />
-          </div>
-          <TextAreaField error={errors.message} label="Message" name="message" rows={4} value={form.message} onInput={(value) => setField("message", value)} />
-          <details className="rounded-md bg-neutral-50 p-3">
-            <summary className="cursor-pointer text-sm font-semibold text-neutral-800">Optional details</summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Move-in timeline" name="moveInTimeline" value={form.moveInTimeline} onInput={(value) => setField("moveInTimeline", value)} />
-              <Field label="Budget" name="budget" value={form.budget} onInput={(value) => setField("budget", value)} />
-            </div>
-          </details>
-          <button className={cx(ctaButton, "w-full sm:w-auto")} disabled={submitting} type="submit">
-            {submitting ? "Sending..." : "Send inquiry"}
-          </button>
-        </form>
-      ) : null}
+      ) : (
+        <div className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-600 ring-1 ring-inset ring-neutral-100">
+          The agency has not published contact channels for this listing yet.
+        </div>
+      )}
     </section>
   );
 }
@@ -1245,6 +1218,29 @@ function DetailAnchorNav({ hasFloorPlan, hasMap }: { hasFloorPlan: boolean; hasM
   );
 }
 
+function PropertyBreadcrumb({ title }: { title: string }) {
+  return (
+    <nav className="flex flex-wrap items-center gap-2 text-sm font-semibold" aria-label="Breadcrumb">
+      <Link className={textLink} to="/">
+        Listings
+      </Link>
+      <span className="text-neutral-300" aria-hidden="true">/</span>
+      <span className="text-neutral-500">{title}</span>
+    </nav>
+  );
+}
+
+function UpdatedDatePill({ updatedAt }: { updatedAt: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-500">
+      <span className="uppercase tracking-[0.12em]">Updated</span>
+      <span className="rounded-full bg-white px-2.5 py-1 text-neutral-800 shadow-sm shadow-neutral-200/60 ring-1 ring-inset ring-neutral-100">
+        {shortDate(updatedAt) || "Recently"}
+      </span>
+    </div>
+  );
+}
+
 function ResourceLink({ description, href, label }: { description: string; href: string; label: string }) {
   return (
     <a className={cx("grid gap-1 rounded-md bg-neutral-50 p-4 text-sm transition hover:bg-[#eef8fa]", focusRing)} href={href} rel="noreferrer" target="_blank">
@@ -1334,11 +1330,11 @@ function PropertyDetailPage() {
   const media = useQuery<PropertyMediaRecord[]>("listPublishedPropertyMedia") ?? [];
   const faqs = useQuery<FaqRecord[]>("listActiveFaqs") ?? defaultFaqs;
   const property = properties.find((item) => item.slug === slug);
-  const [inquiryPrefill, setInquiryPrefill] = useState("");
+  const [contactPrefill, setContactPrefill] = useState("");
 
   function sendFaqToInquiry(question: string) {
     const prompt = question.startsWith("I ") ? question : `I still need help with: ${question}`;
-    setInquiryPrefill(prompt);
+    setContactPrefill(`${listingContactTemplate(property as PropertyRecord)} ${prompt}`);
     setTimeout(() => document.getElementById("inquiry")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
@@ -1359,21 +1355,16 @@ function PropertyDetailPage() {
 
   return (
     <section className="mx-auto grid max-w-7xl gap-7 px-4 pb-28 pt-6 md:px-6 lg:pb-12">
-      <Link className={cx(textLink, "text-sm")} to="/">
-        Back to listings
-      </Link>
+      <PropertyBreadcrumb title={property.title} />
 
       <div id="overview" className="grid scroll-mt-20 gap-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_360px] lg:items-end">
+        <div className="grid gap-3">
           <div>
             <p className="text-sm font-semibold text-[#0d6b63]">{locationText(property, true)}</p>
             <h1 className="mt-1 text-3xl font-semibold leading-tight tracking-normal md:text-5xl">{property.title}</h1>
             <p className="mt-3 max-w-3xl leading-7 text-neutral-600">{property.description || "The agency has not added a full description yet."}</p>
           </div>
-          <div className="rounded-lg bg-white p-4 shadow-sm shadow-neutral-200/80">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Availability updated</p>
-            <p className="mt-1 font-semibold text-neutral-950">{shortDate(property.updatedAt) || "Recently"}</p>
-          </div>
+          <UpdatedDatePill updatedAt={property.updatedAt} />
         </div>
         <DetailAnchorNav hasFloorPlan={Boolean(property.floorPlanUrl)} hasMap={Boolean(mapUrl || mapsQuery(property))} />
       </div>
@@ -1406,11 +1397,6 @@ function PropertyDetailPage() {
             <a className={ctaButton} href="#inquiry" onClick={(event) => smoothScrollToHash(event, "#inquiry")}>
               Contact agency
             </a>
-            {mapUrl ? (
-              <a className={secondaryButton} href={mapUrl} rel="noreferrer" target="_blank">
-                Open in Google Maps
-              </a>
-            ) : null}
           </div>
           <p className="text-xs leading-5 text-neutral-500">Agency confirmation is required before applications, payments, or viewing plans.</p>
         </aside>
@@ -1476,7 +1462,7 @@ function PropertyDetailPage() {
           <RelatedListings current={property} properties={properties} />
         </div>
         <div className="grid content-start gap-6">
-          <InquiryForm prefillMessage={inquiryPrefill} property={property} />
+          <ListingContactPanel prefillMessage={contactPrefill} property={property} />
           <FaqChat faqs={faqs} onNeedHelp={sendFaqToInquiry} property={property} />
         </div>
       </div>
@@ -1850,6 +1836,16 @@ function AdminListings() {
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Floor plan URL" name="floorPlanUrl" value={cleanText(form.floorPlanUrl)} onInput={(value) => setField("floorPlanUrl", value)} />
           <Field label="YouTube URL" name="youtubeUrl" value={cleanText(form.youtubeUrl)} onInput={(value) => setField("youtubeUrl", value)} />
+        </div>
+        <div className="grid gap-3 rounded-md bg-neutral-50 p-4">
+          <h3 className="font-semibold">Listing contact</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Contact name" name="contactName" value={cleanText(form.contactName)} onInput={(value) => setField("contactName", value)} />
+            <Field label="Contact phone" name="contactPhone" value={cleanText(form.contactPhone)} onInput={(value) => setField("contactPhone", value)} />
+            <Field label="WhatsApp phone" name="contactWhatsappPhone" value={cleanText(form.contactWhatsappPhone)} onInput={(value) => setField("contactWhatsappPhone", value)} />
+            <Field label="LINE URL" name="contactLineUrl" value={cleanText(form.contactLineUrl)} onInput={(value) => setField("contactLineUrl", value)} />
+            <Field label="Instagram URL" name="contactInstagramUrl" value={cleanText(form.contactInstagramUrl)} onInput={(value) => setField("contactInstagramUrl", value)} />
+          </div>
         </div>
         <div className="rounded-md bg-neutral-50 p-4">
           <h3 className="font-semibold">Publishing checklist</h3>

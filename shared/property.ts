@@ -161,6 +161,14 @@ export function propertyQualityIssues(input: PropertyInput, status: ListingStatu
     issues.push("YouTube URL must be a YouTube link.");
   }
 
+  if (!isHttpUrl(input.contactLineUrl)) {
+    issues.push("LINE contact URL must be a valid URL.");
+  }
+
+  if (!isHttpUrl(input.contactInstagramUrl)) {
+    issues.push("Instagram contact URL must be a valid URL.");
+  }
+
   return issues;
 }
 
@@ -195,6 +203,11 @@ export function normalizePropertyInput(input: PropertyInput, actorId: string, ex
     youtubeUrl: cleanText(input.youtubeUrl ?? existing?.youtubeUrl, 2000),
     floorPlanUrl: cleanText(input.floorPlanUrl ?? existing?.floorPlanUrl, 2000),
     primaryImageUrl: cleanText(input.primaryImageUrl ?? existing?.primaryImageUrl, 2000),
+    contactName: cleanText(input.contactName ?? existing?.contactName, 120),
+    contactPhone: cleanText(input.contactPhone ?? existing?.contactPhone, 80),
+    contactWhatsappPhone: cleanText(input.contactWhatsappPhone ?? existing?.contactWhatsappPhone, 80),
+    contactLineUrl: cleanText(input.contactLineUrl ?? existing?.contactLineUrl, 2000),
+    contactInstagramUrl: cleanText(input.contactInstagramUrl ?? existing?.contactInstagramUrl, 2000),
     createdBy: existing?.createdBy || actorId,
     updatedBy: actorId
   };
