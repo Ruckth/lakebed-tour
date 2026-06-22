@@ -1,18 +1,19 @@
 # Lakebed Tour
 
-A real Lakebed capsule for trying Lakebed auth and database behavior.
+A Lakebed capsule for a rental-first real estate agency workspace.
 
 The app includes:
 
-- Lakebed guest auth and Google sign-in.
-- A private notes table filtered by the current `ctx.auth.userId`.
-- A shared guestbook table that stores trusted author metadata from `ctx.auth`.
-- A status endpoint at `/api/status`.
+- Public listing browse, search, filters, details, media, floor plan links, map links, and inquiry capture.
+- Google-authenticated admin listing management for owned rows.
+- CSV listing import with shared client/server parsing and validation.
+- Inquiry inbox and lead status tracking for owned properties.
+- Admin-managed FAQ records plus controlled public FAQ answers.
+- A status endpoint at `/api/status` and a CSV template endpoint at `/api/csv-template`.
 
 ## Run Locally
 
 ```sh
-npx lakebed auth as alice
 npx lakebed dev
 ```
 
@@ -22,23 +23,20 @@ Open:
 http://localhost:3000
 ```
 
-To compare users in different tabs:
-
-```txt
-http://localhost:3000/?lakebed_guest=alice
-http://localhost:3000/?lakebed_guest=bob
-```
-
 Inspect local state while the dev server is running:
 
 ```sh
-npx lakebed db list --port 3000
 npx lakebed db dump --port 3000
-npx lakebed logs --port 3000
+```
+
+## Build
+
+```sh
+npx lakebed build . --target anonymous --json
 ```
 
 ## Deploy
 
 ```sh
-npx lakebed deploy . --public-inspect
+npx lakebed deploy . --public-inspect --json
 ```
