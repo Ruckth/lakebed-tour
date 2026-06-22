@@ -108,6 +108,8 @@ const textLink = `font-semibold text-[#0f766d] underline-offset-4 hover:text-[#0
 const fieldClass = `min-h-11 rounded-md border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 ${focusRing}`;
 const surfaceClass = "rounded-lg bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.07)]";
 const mutedPanelClass = "rounded-md bg-neutral-50 p-3";
+const agencyPhoneNumber = "+15125550119";
+const agencyPhoneDisplay = "(512) 555-0119";
 
 function underlineTabClass(active: boolean, extra?: string): string {
   return cx(
@@ -389,6 +391,21 @@ function externalMapsUrl(property: PropertyRecord): string {
   return property.googleMapsUrl || (query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "");
 }
 
+function listingContactTemplate(property: PropertyRecord): string {
+  return `Hi, I am interested in ${property.title}. I would like to confirm availability, fees, and viewing options. My preferred viewing time is [day/time]. My move-in timeline is [timeline].`;
+}
+
+function smoothScrollToHash(event: MouseEvent, href: string) {
+  const target = document.getElementById(href.replace(/^#/, ""));
+  if (!target) {
+    return;
+  }
+
+  event.preventDefault();
+  history.pushState(null, "", href);
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function inquiryErrors(form: InquiryFormState): Partial<Record<keyof InquiryFormState, string>> {
   const errors: Partial<Record<keyof InquiryFormState, string>> = {};
   const email = cleanText(form.email);
@@ -472,6 +489,7 @@ function AuthBadge() {
 
 function Shell() {
   const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
+  const [menuOpen, setMenuOpen] = useState(false);
   const showDesk = isDeskHash(hash);
 
   useEffect(() => {
@@ -483,22 +501,48 @@ function Shell() {
   return (
     <main className="min-h-screen bg-neutral-50 text-[#17211f]">
       <header className="bg-white/95 shadow-sm shadow-neutral-200/70">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-6">
+        <div className="mx-auto flex max-w-7xl items-start justify-between gap-4 px-4 py-4 md:items-center md:px-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#0d6b63]">Rental agency workspace</p>
-            <Link className={cx("mt-1 block text-3xl font-semibold tracking-normal text-neutral-950 md:text-4xl", focusRing)} to="/">
+            <Link className={cx("mt-1 block text-2xl font-semibold tracking-normal text-neutral-950 md:text-4xl", focusRing)} to="/">
               OpenHouse Desk
             </Link>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
+            <p className="mt-2 hidden max-w-2xl text-sm leading-6 text-neutral-600 sm:block">
               Public listings for renters, plus the protected desk that keeps inventory and leads moving.
             </p>
           </div>
-          <AuthBadge />
+          <div className="hidden items-center gap-6 md:flex">
+            <nav className="flex gap-6 text-sm font-semibold text-neutral-700">
+              <NavItem to="/">Listings</NavItem>
+              <DeskNavItem />
+            </nav>
+            <AuthBadge />
+          </div>
+          <button
+            className={cx("inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-neutral-50 ring-1 ring-inset ring-neutral-200 md:hidden", focusRing)}
+            type="button"
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="grid gap-1" aria-hidden="true">
+              <span className={cx("block h-0.5 w-5 rounded-full bg-neutral-900 transition", menuOpen ? "translate-y-1.5 rotate-45" : "")} />
+              <span className={cx("block h-0.5 w-5 rounded-full bg-neutral-900 transition", menuOpen ? "opacity-0" : "")} />
+              <span className={cx("block h-0.5 w-5 rounded-full bg-neutral-900 transition", menuOpen ? "-translate-y-1.5 -rotate-45" : "")} />
+            </span>
+          </button>
         </div>
-        <nav className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 pb-4 text-sm font-semibold text-neutral-700 md:px-6">
-          <NavItem to="/">Listings</NavItem>
-          <DeskNavItem />
-        </nav>
+        {menuOpen ? (
+          <div className="border-t border-neutral-100 px-4 py-3 md:hidden">
+            <div className="mx-auto grid max-w-7xl gap-3">
+              <nav className="flex gap-6 text-sm font-semibold text-neutral-700" onClick={() => setMenuOpen(false)}>
+                <NavItem to="/">Listings</NavItem>
+                <DeskNavItem />
+              </nav>
+              <AuthBadge />
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {showDesk ? (
@@ -552,8 +596,8 @@ function ListingCard({ media, property }: { media: PropertyMediaRecord[]; proper
   const amenities = splitMultiValue(property.amenities).slice(0, 3);
 
   return (
-    <article className="group grid gap-3 transition hover:-translate-y-0.5">
-      <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-neutral-200 shadow-sm shadow-neutral-300/50">
+    <article className="group grid overflow-hidden rounded-lg bg-white shadow-sm shadow-neutral-200/80 ring-1 ring-inset ring-neutral-200 transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-neutral-200/80 hover:ring-neutral-300">
+      <div className="relative aspect-[4/3] overflow-hidden bg-neutral-200">
         {property.primaryImageUrl ? (
           <img alt={`${property.title} primary photo`} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" src={property.primaryImageUrl} />
         ) : (
@@ -561,19 +605,24 @@ function ListingCard({ media, property }: { media: PropertyMediaRecord[]; proper
             Image coming soon
           </div>
         )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#17211f]/55 to-transparent" />
         <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
           <span className={cx("rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ring-1 ring-inset", availability.className)}>
             {availability.label}
           </span>
-          {property.floorPlanUrl ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-neutral-800 shadow-sm ring-1 ring-inset ring-white/70">Floor plan</span> : null}
+            {property.floorPlanUrl ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-neutral-800 shadow-sm ring-1 ring-inset ring-white/70">Floor plan</span> : null}
           {property.youtubeUrl ? <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-neutral-800 shadow-sm ring-1 ring-inset ring-white/70">Tour</span> : null}
         </div>
+        <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5 text-sm font-semibold text-neutral-950 shadow-sm ring-1 ring-inset ring-white/70">
+          {formatMoney(property.price, property.currency)}
+          {property.transactionMode === "rent" ? <span className="font-medium text-neutral-500"> / mo</span> : null}
+        </span>
         <span className="absolute bottom-3 right-3 rounded-full bg-[#17211f]/85 px-2.5 py-1 text-xs font-semibold text-white">
           {photoCount} photo{photoCount === 1 ? "" : "s"}
         </span>
       </div>
 
-      <div className="grid gap-3 px-1 pb-2">
+      <div className="grid gap-3 p-4">
         <div className="grid gap-1.5">
           <div className="flex items-start justify-between gap-3">
             <p className="min-w-0 text-sm font-semibold text-[#0f766d]">{locationText(property)}</p>
@@ -582,10 +631,6 @@ function ListingCard({ media, property }: { media: PropertyMediaRecord[]; proper
             </span>
           </div>
           <h2 className="text-xl font-semibold leading-tight text-neutral-950">{property.title}</h2>
-          <p className="text-xl font-semibold text-neutral-950">
-            {formatMoney(property.price, property.currency)}
-            {property.transactionMode === "rent" ? <span className="text-sm font-medium text-neutral-500"> / mo</span> : null}
-          </p>
         </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-700">
@@ -647,22 +692,19 @@ function ListingsPage() {
 
   function resetFilters() {
     setSearch("");
-    setMode("all");
     setType("all");
     setMinPrice("");
     setMaxPrice("");
     setBeds("any");
     setBaths("any");
     setSort("newest");
+    setDensity("comfortable");
   }
 
   const activeFilters = useMemo(() => {
     const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
     if (search) {
       chips.push({ key: "search", label: `Search: ${search}`, onRemove: () => setSearch("") });
-    }
-    if (mode !== "all") {
-      chips.push({ key: "mode", label: transactionModeLabels[mode as keyof typeof transactionModeLabels] ?? mode, onRemove: () => setMode("all") });
     }
     if (type !== "all") {
       chips.push({ key: "type", label: propertyTypeLabels[type as keyof typeof propertyTypeLabels] ?? type, onRemove: () => setType("all") });
@@ -680,11 +722,28 @@ function ListingsPage() {
       chips.push({ key: "baths", label: `${baths}+ baths`, onRemove: () => setBaths("any") });
     }
     return chips;
-  }, [baths, beds, maxPrice, minPrice, mode, search, type]);
+  }, [baths, beds, maxPrice, minPrice, search, type]);
 
   const locationSummary = search ? `in ${search}` : "across current markets";
 
-  function renderFilterControls(prefix: string) {
+  function renderModeTabs() {
+    return (
+      <div className="flex gap-5 overflow-x-auto text-sm font-semibold" aria-label="Listing mode">
+        {[{ label: "All", value: "all" }, ...transactionModes.map((item) => ({ label: transactionModeLabels[item].replace("For ", ""), value: item }))].map((item) => (
+          <button
+            key={item.value}
+            className={underlineTabClass(mode === item.value, "capitalize")}
+            type="button"
+            onClick={() => setMode(item.value)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderFilterControls(prefix: string, showReset: boolean) {
     return (
       <div className="grid gap-3">
         <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr_0.75fr]">
@@ -738,44 +797,44 @@ function ListingsPage() {
             onInput={setBaths}
           />
         </div>
+        <div className="grid gap-3 border-t border-neutral-100 pt-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-semibold text-neutral-800">Card density</legend>
+            <div className="flex gap-4 text-sm font-semibold">
+              {(["comfortable", "compact"] as const).map((item) => (
+                <button key={item} className={underlineTabClass(density === item, "capitalize")} type="button" onClick={() => setDensity(item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          {showReset ? (
+            <button className={quietButton} type="button" onClick={resetFilters}>
+              Reset
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
 
   return (
-    <section className="grid gap-7 pb-10">
+    <section className="grid gap-5 pb-10 md:gap-7">
       <div className="bg-white">
-        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 md:px-6 lg:grid-cols-[1fr_360px] lg:items-end">
+        <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 md:px-6 md:py-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#0d6b63]">Public listings</p>
-            <h1 className="mt-2 max-w-4xl text-3xl font-semibold tracking-normal md:text-5xl">Find a place, then ask the agency for the live details.</h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-neutral-600">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0d6b63] md:text-xs">Public listings</p>
+            <h1 className="mt-1 max-w-4xl text-2xl font-semibold leading-tight tracking-normal md:mt-2 md:text-5xl">Find a place, then ask the agency for the live details.</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-neutral-600 md:mt-3 md:text-base md:leading-7">
               Search current inventory, compare move-in costs, and send one focused inquiry when a listing looks right.
             </p>
-          </div>
-          <div className="grid gap-4">
-            <div className="flex gap-5 overflow-x-auto text-sm font-semibold" aria-label="Listing mode">
-              {[{ label: "All", value: "all" }, ...transactionModes.map((item) => ({ label: transactionModeLabels[item].replace("For ", ""), value: item }))].map((item) => (
-                <button
-                  key={item.value}
-                  className={underlineTabClass(mode === item.value, "capitalize")}
-                  type="button"
-                  onClick={() => setMode(item.value)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <a className={ctaButton} href="#results">
-              Browse results
-            </a>
           </div>
         </div>
       </div>
 
       <div className="mx-auto grid w-full max-w-7xl gap-5 px-4 md:px-6">
         <section className="hidden gap-5 rounded-lg bg-white p-5 shadow-sm shadow-neutral-200/80 lg:grid">
-          {renderFilterControls("desktop")}
+          {renderFilterControls("desktop", true)}
           {activeFilters.length ? (
             <div className="flex flex-wrap gap-2">
               {activeFilters.map((chip) => (
@@ -799,16 +858,7 @@ function ListingsPage() {
               <button className={cx(secondaryButton, "lg:hidden")} type="button" onClick={() => setFiltersOpen(true)}>
                 Filters
               </button>
-              <div className="flex gap-4 text-sm font-semibold">
-                {(["comfortable", "compact"] as const).map((item) => (
-                  <button key={item} className={underlineTabClass(density === item, "capitalize")} type="button" onClick={() => setDensity(item)}>
-                    {item}
-                  </button>
-                ))}
-              </div>
-              <button className={quietButton} type="button" onClick={resetFilters}>
-                Reset
-              </button>
+              {renderModeTabs()}
             </div>
           </div>
           {activeFilters.length ? (
@@ -864,7 +914,7 @@ function ListingsPage() {
                 Close
               </button>
             </div>
-            {renderFilterControls("mobile")}
+            {renderFilterControls("mobile", false)}
             <div className="sticky bottom-0 -mx-4 grid grid-cols-2 gap-2 bg-white p-4 shadow-[0_-14px_30px_rgba(15,23,42,0.08)]">
               <button className={secondaryButton} type="button" onClick={resetFilters}>
                 Reset
@@ -899,12 +949,46 @@ function PropertyGallery({ media, property }: { media: PropertyMediaRecord[]; pr
         }
       ];
   const [selectedId, setSelectedId] = useState(gallery[0]?.id ?? "");
-  const selected = gallery.find((item) => item.id === selectedId) ?? gallery[0];
+  const selectedIndex = Math.max(0, gallery.findIndex((item) => item.id === selectedId));
+  const selected = gallery[selectedIndex] ?? gallery[0];
+
+  function showAdjacentPhoto(offset: number) {
+    if (gallery.length < 2) {
+      return;
+    }
+
+    const nextIndex = (selectedIndex + offset + gallery.length) % gallery.length;
+    setSelectedId(gallery[nextIndex].id);
+  }
 
   return (
     <section id="photos" className="grid gap-3 scroll-mt-20">
       <div className="relative overflow-hidden rounded-lg bg-neutral-200 shadow-sm shadow-neutral-300/60">
         <img alt={selected.altText || property.title} className="aspect-[4/3] w-full object-cover lg:aspect-[16/11]" src={selected.url || property.primaryImageUrl} />
+        {gallery.length > 1 ? (
+          <>
+            <button
+              aria-label="Show previous photo"
+              className={cx("absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/70 text-neutral-950 shadow-sm ring-1 ring-inset ring-white/75 backdrop-blur transition hover:bg-white/90 sm:h-10 sm:w-10", focusRing)}
+              type="button"
+              onClick={() => showAdjacentPhoto(-1)}
+            >
+              <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+              </svg>
+            </button>
+            <button
+              aria-label="Show next photo"
+              className={cx("absolute right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/70 text-neutral-950 shadow-sm ring-1 ring-inset ring-white/75 backdrop-blur transition hover:bg-white/90 sm:h-10 sm:w-10", focusRing)}
+              type="button"
+              onClick={() => showAdjacentPhoto(1)}
+            >
+              <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <path d="M9 5l7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
+              </svg>
+            </button>
+          </>
+        ) : null}
         <div className="absolute bottom-3 left-3 flex flex-wrap gap-2">
           <span className="rounded-full bg-[#17211f]/85 px-2.5 py-1 text-xs font-semibold text-white">
             {gallery.length} photo{gallery.length === 1 ? "" : "s"}
@@ -914,7 +998,7 @@ function PropertyGallery({ media, property }: { media: PropertyMediaRecord[]; pr
         </div>
       </div>
       {gallery.length > 1 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="hidden gap-2 overflow-x-auto pb-1 sm:flex">
           {gallery.map((item) => (
             <button
               key={item.id}
@@ -935,6 +1019,17 @@ function PropertyGallery({ media, property }: { media: PropertyMediaRecord[]; pr
 
 function InquiryForm({ prefillMessage, property }: { prefillMessage: string; property: PropertyRecord }) {
   const createInquiry = useMutation<[input: InquiryFormState & { propertyId: string; sourcePage: string }], MutationResult<{ id: string; propertyTitle: string }>>("createInquiry");
+  const messageTemplate = listingContactTemplate(property);
+  const encodedTemplate = encodeURIComponent(messageTemplate);
+  const whatsappNumber = agencyPhoneNumber.replace(/\D/g, "");
+  const contactActions = [
+    { label: "Call", href: `tel:${agencyPhoneNumber}`, helper: agencyPhoneDisplay },
+    { label: "WhatsApp", href: `https://wa.me/${whatsappNumber}?text=${encodedTemplate}`, helper: "Prefilled", external: true },
+    { label: "LINE", href: `https://line.me/R/msg/text/?${encodedTemplate}`, helper: "Prefilled", external: true },
+    { label: "Message", href: `sms:${agencyPhoneNumber}?&body=${encodedTemplate}`, helper: "Prefilled" },
+    { label: "Instagram", href: "https://ig.me/m/openhousedesk", helper: "Use template", external: true }
+  ];
+  const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<InquiryFormState>({
     name: "",
     email: "",
@@ -942,7 +1037,7 @@ function InquiryForm({ prefillMessage, property }: { prefillMessage: string; pro
     preferredContactMethod: "email",
     moveInTimeline: "",
     budget: "",
-    message: `I am interested in ${property.title}.`
+    message: messageTemplate
   });
   const [result, setResult] = useState<MutationResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -956,6 +1051,7 @@ function InquiryForm({ prefillMessage, property }: { prefillMessage: string; pro
     }
 
     setForm((current) => ({ ...current, message: prefillMessage }));
+    setFormOpen(true);
     setResult(null);
   }, [prefillMessage]);
 
@@ -977,18 +1073,39 @@ function InquiryForm({ prefillMessage, property }: { prefillMessage: string; pro
     setResult(response);
     setSubmitting(false);
     if (response.ok) {
-      setForm((current) => ({ ...current, message: `I am interested in ${property.title}.` }));
+      setForm((current) => ({ ...current, message: messageTemplate }));
     }
   }
 
   return (
     <section id="inquiry" className={cx("grid scroll-mt-20 gap-4", surfaceClass)}>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#0d6b63]">Usually same business day</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#0d6b63]">Contact agency</p>
         <h2 className="mt-1 text-2xl font-semibold">Ask about {property.title}</h2>
-        <p className="mt-1 text-sm leading-6 text-neutral-600">We use this only to respond about this listing and confirm availability, fees, and viewing options.</p>
+        <p className="mt-1 text-sm leading-6 text-neutral-600">Use a quick channel now, or open the desk inquiry form when you want a tracked follow-up.</p>
       </div>
-      <ResultMessage result={result} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {contactActions.map((action) => (
+          <a
+            key={action.label}
+            className={cx(action.label === "Call" ? primaryButton : secondaryButton, "min-h-12 flex-col gap-0.5 px-2 py-2 text-center")}
+            href={action.href}
+            rel={action.external ? "noreferrer" : undefined}
+            target={action.external ? "_blank" : undefined}
+          >
+            <span>{action.label}</span>
+            <span className={cx("text-[11px] font-medium", action.label === "Call" ? "text-white/80" : "text-neutral-500")}>{action.helper}</span>
+          </a>
+        ))}
+      </div>
+      <div className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-700 ring-1 ring-inset ring-neutral-100">
+        <p className="font-semibold text-neutral-950">Message template</p>
+        <p className="mt-1">{messageTemplate}</p>
+      </div>
+      <button className={formOpen ? secondaryButton : ctaButton} type="button" onClick={() => setFormOpen((current) => !current)}>
+        {formOpen ? "Hide inquiry form" : "Open inquiry form"}
+      </button>
+      {formOpen || result ? <ResultMessage result={result} /> : null}
       {result?.ok ? (
         <div className="grid gap-2 rounded-md bg-emerald-50 p-3 text-sm text-emerald-900 ring-1 ring-inset ring-emerald-200">
           <p className="font-semibold">Inquiry received for {property.title}.</p>
@@ -996,45 +1113,49 @@ function InquiryForm({ prefillMessage, property }: { prefillMessage: string; pro
           <button className={cx(secondaryButton, "min-h-8 justify-self-start px-3 py-1.5 text-xs text-emerald-900")} type="button" onClick={() => {
             setAttempted(false);
             setResult(null);
+            setFormOpen(true);
           }}>
             Send another question
           </button>
         </div>
       ) : null}
-      <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field error={errors.name} label="Name" name="name" value={form.name} onInput={(value) => setField("name", value)} />
-          <Field error={errors.email} label="Email" name="email" type="email" value={form.email} onInput={(value) => setField("email", value)} />
-          <Field error={errors.phone} label="Phone" name="phone" value={form.phone} onInput={(value) => setField("phone", value)} />
-          <SelectField
-            label="Preferred contact"
-            name="preferredContactMethod"
-            value={form.preferredContactMethod}
-            options={[
-              { label: "Email", value: "email" },
-              { label: "Phone", value: "phone" },
-              { label: "Text", value: "text" }
-            ]}
-            onInput={(value) => setField("preferredContactMethod", value)}
-          />
-        </div>
-        <TextAreaField error={errors.message} label="Message" name="message" rows={4} value={form.message} onInput={(value) => setField("message", value)} />
-        <details className="rounded-md bg-neutral-50 p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-neutral-800">Optional details</summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Move-in timeline" name="moveInTimeline" value={form.moveInTimeline} onInput={(value) => setField("moveInTimeline", value)} />
-            <Field label="Budget" name="budget" value={form.budget} onInput={(value) => setField("budget", value)} />
+      {formOpen && !result?.ok ? (
+        <form className="grid gap-3 border-t border-neutral-100 pt-4" onSubmit={(event) => void submit(event)}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field error={errors.name} label="Name" name="name" value={form.name} onInput={(value) => setField("name", value)} />
+            <Field error={errors.email} label="Email" name="email" type="email" value={form.email} onInput={(value) => setField("email", value)} />
+            <Field error={errors.phone} label="Phone" name="phone" value={form.phone} onInput={(value) => setField("phone", value)} />
+            <SelectField
+              label="Preferred contact"
+              name="preferredContactMethod"
+              value={form.preferredContactMethod}
+              options={[
+                { label: "Email", value: "email" },
+                { label: "Phone", value: "phone" },
+                { label: "Text", value: "text" }
+              ]}
+              onInput={(value) => setField("preferredContactMethod", value)}
+            />
           </div>
-        </details>
-        <button className={cx(ctaButton, "w-full sm:w-auto")} disabled={submitting || result?.ok} type="submit">
-          {submitting ? "Sending..." : "Send inquiry"}
-        </button>
-      </form>
+          <TextAreaField error={errors.message} label="Message" name="message" rows={4} value={form.message} onInput={(value) => setField("message", value)} />
+          <details className="rounded-md bg-neutral-50 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-neutral-800">Optional details</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Move-in timeline" name="moveInTimeline" value={form.moveInTimeline} onInput={(value) => setField("moveInTimeline", value)} />
+              <Field label="Budget" name="budget" value={form.budget} onInput={(value) => setField("budget", value)} />
+            </div>
+          </details>
+          <button className={cx(ctaButton, "w-full sm:w-auto")} disabled={submitting} type="submit">
+            {submitting ? "Sending..." : "Send inquiry"}
+          </button>
+        </form>
+      ) : null}
     </section>
   );
 }
 
 function FaqChat({ faqs, onNeedHelp, property }: { faqs: FaqRecord[]; onNeedHelp: (question: string) => void; property: PropertyRecord }) {
+  const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(initialFaqAnswer);
   const [lastQuestion, setLastQuestion] = useState("");
@@ -1048,44 +1169,56 @@ function FaqChat({ faqs, onNeedHelp, property }: { faqs: FaqRecord[]; onNeedHelp
     setAnswer(nextAnswer);
     setLastQuestion(value);
     setQuestion("");
+    setOpen(true);
   }
 
   return (
     <section id="faq" className={cx("grid scroll-mt-20 gap-4", surfaceClass)}>
-      <div>
-        <h2 className="text-2xl font-semibold">Questions about this listing</h2>
-        <p className="mt-1 text-sm leading-6 text-neutral-600">Answered from listing details and approved FAQ only.</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {suggestedFaqQuestions.map((item) => (
-          <button key={item} className={cx(secondaryButton, "min-h-9 px-3 py-1.5")} type="button" onClick={() => answerQuestion(item)}>
-            {item}
-          </button>
-        ))}
-      </div>
-      <div className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-800">{answer}</div>
-      <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => {
-        event.preventDefault();
-        answerQuestion(question);
-      }}>
-        <input
-          className={cx(fieldClass, "min-w-0 flex-1 border-neutral-200 hover:border-neutral-300 focus:border-[#0f766d]")}
-          placeholder="Ask about rent, availability, floor plan, location..."
-          value={question}
-          onInput={(event) => setQuestion((event.currentTarget as HTMLInputElement).value)}
-        />
-        <button className={darkButton} type="submit">
-          Ask
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Questions about this listing</h2>
+          <p className="mt-1 text-sm leading-6 text-neutral-600">Open quick answers from listing details and approved FAQ only.</p>
+        </div>
+        <button className={open ? secondaryButton : darkButton} type="button" onClick={() => setOpen((current) => !current)}>
+          {open ? "Hide FAQ" : "Ask FAQ"}
         </button>
-      </form>
-      <button
-        className={cx(secondaryButton, "justify-self-start text-[#7c2b1e] hover:bg-[#f8e7e1]")}
-        type="button"
-        onClick={() => onNeedHelp(lastQuestion || question || `I have a question about ${property.title}.`)}
-      >
-        I still need help
-      </button>
-      <p className="text-xs leading-5 text-neutral-500">Confirm property details, pricing, and availability with the agency before making a decision.</p>
+      </div>
+      {open ? (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {suggestedFaqQuestions.map((item) => (
+              <button key={item} className={cx(secondaryButton, "min-h-9 px-3 py-1.5")} type="button" onClick={() => answerQuestion(item)}>
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-800">{answer}</div>
+          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => {
+            event.preventDefault();
+            answerQuestion(question);
+          }}>
+            <input
+              className={cx(fieldClass, "min-w-0 flex-1 border-neutral-200 hover:border-neutral-300 focus:border-[#0f766d]")}
+              placeholder="Ask about rent, availability, floor plan, location..."
+              value={question}
+              onInput={(event) => setQuestion((event.currentTarget as HTMLInputElement).value)}
+            />
+            <button className={darkButton} type="submit">
+              Ask
+            </button>
+          </form>
+          <button
+            className={cx(secondaryButton, "justify-self-start text-[#7c2b1e] hover:bg-[#f8e7e1]")}
+            type="button"
+            onClick={() => onNeedHelp(lastQuestion || question || `I have a question about ${property.title}.`)}
+          >
+            I still need help
+          </button>
+          <p className="text-xs leading-5 text-neutral-500">Confirm property details, pricing, and availability with the agency before making a decision.</p>
+        </>
+      ) : (
+        <p className="rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-600">Tap to ask about rent, availability, floor plans, location, or viewing details without expanding the full section by default.</p>
+      )}
     </section>
   );
 }
@@ -1098,13 +1231,13 @@ function DetailAnchorNav({ hasFloorPlan, hasMap }: { hasFloorPlan: boolean; hasM
     ...(hasMap ? [{ href: "#map", label: "Map" }] : []),
     ...(hasFloorPlan ? [{ href: "#floor-plan", label: "Floor plan" }] : []),
     { href: "#faq", label: "FAQ" },
-    { href: "#inquiry", label: "Inquiry" }
+    { href: "#inquiry", label: "Contact" }
   ];
 
   return (
     <nav className="sticky top-0 z-20 -mx-4 flex gap-6 overflow-x-auto bg-white/95 px-4 py-3 text-sm font-semibold shadow-sm shadow-neutral-200/80 backdrop-blur md:-mx-6 md:px-6 lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:shadow-none" aria-label="Property sections">
       {anchors.map((anchor) => (
-        <a key={anchor.href} className={underlineTabClass(false, "px-0")} href={anchor.href}>
+        <a key={anchor.href} className={underlineTabClass(false, "px-0")} href={anchor.href} onClick={(event) => smoothScrollToHash(event, anchor.href)}>
           {anchor.label}
         </a>
       ))}
@@ -1270,8 +1403,8 @@ function PropertyDetailPage() {
             ))}
           </div>
           <div className="grid gap-2">
-            <a className={ctaButton} href="#inquiry">
-              Ask about this listing
+            <a className={ctaButton} href="#inquiry" onClick={(event) => smoothScrollToHash(event, "#inquiry")}>
+              Contact agency
             </a>
             {mapUrl ? (
               <a className={secondaryButton} href={mapUrl} rel="noreferrer" target="_blank">
@@ -1354,8 +1487,8 @@ function PropertyDetailPage() {
             <p className="truncate text-sm font-semibold text-neutral-950">{property.title}</p>
             <p className="text-xs text-neutral-600">{formatMoney(property.price, property.currency)}{property.transactionMode === "rent" ? " / mo" : ""}</p>
           </div>
-          <a className={ctaButton} href="#inquiry">
-            Inquire
+          <a className={ctaButton} href="#inquiry" onClick={(event) => smoothScrollToHash(event, "#inquiry")}>
+            Contact
           </a>
         </div>
       </div>
