@@ -414,9 +414,14 @@ function inquiryErrors(form: InquiryFormState): Partial<Record<keyof InquiryForm
   return errors;
 }
 
+function isDeskHash(hash: string): boolean {
+  return hash === "#desk" || hash === "#admin";
+}
+
 function NavItem({ children, to }: { children: string; to: string }) {
   const current = typeof window === "undefined" ? "/" : window.location.pathname;
-  const active = to === "/" ? current === "/" : current.startsWith(to);
+  const hash = typeof window === "undefined" ? "" : window.location.hash;
+  const active = to === "/" ? current === "/" && !isDeskHash(hash) : current.startsWith(to);
 
   return (
     <Link
@@ -426,6 +431,16 @@ function NavItem({ children, to }: { children: string; to: string }) {
     >
       {children}
     </Link>
+  );
+}
+
+function DeskNavItem() {
+  const active = typeof window !== "undefined" && isDeskHash(window.location.hash);
+
+  return (
+    <a aria-current={active ? "page" : undefined} className={underlineTabClass(active, "px-0")} href="/#desk">
+      Admin
+    </a>
   );
 }
 
@@ -456,6 +471,15 @@ function AuthBadge() {
 }
 
 function Shell() {
+  const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
+  const showDesk = isDeskHash(hash);
+
+  useEffect(() => {
+    const updateHash = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", updateHash);
+    return () => window.removeEventListener("hashchange", updateHash);
+  }, []);
+
   return (
     <main className="min-h-screen bg-neutral-50 text-[#17211f]">
       <header className="bg-white/95 shadow-sm shadow-neutral-200/70">
@@ -473,26 +497,30 @@ function Shell() {
         </div>
         <nav className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 pb-4 text-sm font-semibold text-neutral-700 md:px-6">
           <NavItem to="/">Listings</NavItem>
-          <NavItem to="/admin">Admin</NavItem>
+          <DeskNavItem />
         </nav>
       </header>
 
-      <Routes>
-        <Route path="/" element={<ListingsPage />} />
-        <Route path="/property/:slug" element={<PropertyDetailPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route
-          path="*"
-          element={
-            <section className="mx-auto max-w-4xl px-4 py-16 md:px-6">
-              <h1 className="text-3xl font-semibold">That page is not listed.</h1>
-              <Link className={cx(primaryButton, "mt-4")} to="/">
-                Back to listings
-              </Link>
-            </section>
-          }
-        />
-      </Routes>
+      {showDesk ? (
+        <AdminPage />
+      ) : (
+        <Routes>
+          <Route path="/" element={<ListingsPage />} />
+          <Route path="/property/:slug" element={<PropertyDetailPage />} />
+          <Route path="/desk" element={<AdminPage />} />
+          <Route
+            path="*"
+            element={
+              <section className="mx-auto max-w-4xl px-4 py-16 md:px-6">
+                <h1 className="text-3xl font-semibold">That page is not listed.</h1>
+                <Link className={cx(primaryButton, "mt-4")} to="/">
+                  Back to listings
+                </Link>
+              </section>
+            }
+          />
+        </Routes>
+      )}
     </main>
   );
 }

@@ -11,6 +11,26 @@
       "permanent": false
     },
     {
+      "source": "/admin",
+      "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/#desk",
+      "permanent": false
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/#desk",
+      "permanent": false
+    },
+    {
+      "source": "/desk",
+      "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/#desk",
+      "permanent": false
+    },
+    {
+      "source": "/desk/:path*",
+      "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/#desk",
+      "permanent": false
+    },
+    {
       "source": "/:path*",
       "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/:path*",
       "permanent": false

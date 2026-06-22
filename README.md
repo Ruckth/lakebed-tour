@@ -5,7 +5,7 @@ A Lakebed capsule for a rental-first real estate agency workspace.
 The app includes:
 
 - Public listing browse, search, filters, details, media, floor plan links, map links, and inquiry capture.
-- Google-authenticated admin listing management for owned rows.
+- Google-authenticated admin desk at `/#desk` for owned listing management.
 - CSV listing import with shared client/server parsing and validation.
 - Inquiry inbox and lead status tracking for owned properties.
 - Admin-managed FAQ records plus controlled public FAQ answers.
