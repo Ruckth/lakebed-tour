@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "",
-  "buildCommand": "npx lakebed build . --target anonymous --json"
+  "buildCommand": "npx lakebed build . --target anonymous --json",
+  "outputDirectory": "public"
 }
