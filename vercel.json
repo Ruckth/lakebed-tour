@@ -6,6 +6,11 @@
   "outputDirectory": "public",
   "redirects": [
     {
+      "source": "/",
+      "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app",
+      "permanent": false
+    },
+    {
       "source": "/:path*",
       "destination": "https://quiet-meadow-8e2df2f0d7.lakebed.app/:path*",
       "permanent": false
