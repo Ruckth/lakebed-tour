@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "npx lakebed build . --target anonymous --json",
+    "deploy:lakebed": "npx lakebed deploy . --public-inspect --json",
+    "dev": "npx lakebed dev"
+  }
+}
